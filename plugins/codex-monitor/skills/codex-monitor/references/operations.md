@@ -5,6 +5,14 @@ Use the same `--state PATH` throughout. `init` is for new state only. On macOS u
 token read directly from its file; never print token contents. Service registration and process locks
 do not prove HTTP health. Adding a source requires receiver restart to reload credentials.
 
+For “is monitoring working?”, inspect the requested binding with `sessions NAME`, and report
+configuration, receiver process, producer observation, and delivery evidence separately. For a managed
+collector use `monitor status NAME --thread THREAD_ID` instead. External producer health remains
+unknown until checked through that producer's own supported health interface; a successful old event
+or Discord REST authentication does not prove a live Gateway connection. Inspect the latest receipt
+when delivery diagnosis is requested. Native consumption proves input processing, not task completion
+or a reply reaching its destination. State the missing check rather than calling everything healthy.
+
 A CI/server-hook adapter posts `id`, `source`, `type`, `data` to `POST /v1/events/SESSION_NAME` with its
 source bearer token. Prefer `data.message` for readable content. Keep stable IDs, authenticate upstream
 events, and filter unchanged/non-actionable state. The receiver does not verify arbitrary vendor

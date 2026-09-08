@@ -2,6 +2,36 @@
 from .lock import process_alive
 
 
+def _assessment(sessions, receiver_running):
+    """Describe configuration and process state without inferring producer health."""
+    if not sessions:
+        return {
+            "delivery_enabled": False,
+            "assessment": "no sessions attached",
+            "action": "attach a session before starting the receiver",
+        }
+
+    enabled = [session["enabled"] for session in sessions]
+    if all(enabled):
+        delivery = "enabled"
+    elif any(enabled):
+        delivery = "partly paused"
+    else:
+        delivery = "paused"
+
+    actions = []
+    if not all(enabled):
+        actions.append("To resume: unpause the paused binding(s)")
+    if not receiver_running:
+        actions.append("start the receiver with `codex-monitor serve`")
+    actions.append("check the external producer separately; its health is unverified")
+    return {
+        "delivery_enabled": any(enabled),
+        "assessment": f"delivery {delivery}; receiver {'running' if receiver_running else 'stopped'}; source unverified",
+        "action": "; ".join(actions),
+    }
+
+
 def overview(monitor, name=None):
     bindings = monitor.bindings()
     if name is not None:
@@ -18,22 +48,28 @@ def overview(monitor, name=None):
             sessions.append({**binding, "enabled": bool(binding["enabled"]), "events": counts,
                              "producer_health": "unknown", "target_verification": "not_checked",
                              "last_event": dict(row) if row else None})
-    return {"receiver_running": process_alive(monitor.root / "serve.lock"), "sessions": sessions,
-            "note": "Receiver process and binding configuration only; source health and model activity are not inferred."}
+    receiver_running = process_alive(monitor.root / "serve.lock")
+    return {"receiver_running": receiver_running, "sessions": sessions,
+            **_assessment(sessions, receiver_running),
+            "note": ("Receiver process and binding configuration only; source health and model activity are not inferred. "
+                     "An accepted event means Codex storage accepted it; it does not prove model completion or task success. "
+                     "Use `codex-monitor inspect DELIVERY_ID` to compare local acceptance with native queue/history evidence.")}
 
 
 def display(value):
-    lines = ["Receiver: " + ("running" if value["receiver_running"] else "stopped")]
+    receiver = "running (process is alive)" if value["receiver_running"] else "stopped (process is not alive)"
+    lines = [f"Assessment: {value['assessment']}", f"Action: {value['action']}", f"Receiver: {receiver}"]
     for session in value["sessions"]:
-        state = "enabled" if session["enabled"] else "paused"
+        state = "enabled (delivery allowed)" if session["enabled"] else "paused (delivery blocked)"
         lines += [f"\n{session['name']} — binding {state}", f"  Conversation: {session['thread']}",
-                  "  Sources: " + ", ".join(session["sources"]),
-                  "  Producer: unknown (not supervised by receiver)",
+                  "  Sources: " + ", ".join(session["sources"]) + " (external producer health unverified)",
                   "  Target: not checked (use doctor --thread with this conversation ID)",
                   "  Events: " + (", ".join(f"{k}={v}" for k, v in session["events"].items()) or "none")]
         if session["last_event"]:
-            lines.append("  Latest: " + session["last_event"]["type"] + " (" + session["last_event"]["id"] + ")")
+            delivery_id = session["last_event"]["id"]
+            lines.append("  Latest receipt: " + session["last_event"]["type"] + " (" + delivery_id + ")")
+            lines.append("  Inspect: codex-monitor inspect " + delivery_id)
     if not value["sessions"]:
         lines.append("No sessions attached. Use attach NAME --thread THREAD --source SOURCE.")
-    lines.append("\nUse inspect DELIVERY_ID for native delivery evidence. Source health is not inferred.")
+    lines.append("\n" + value["note"])
     return "\n".join(lines)

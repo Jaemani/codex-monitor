@@ -10,6 +10,21 @@ target thread to be loaded on their server.
 
 ## Confirmed
 
+- Session usability update: the skill now routes event monitoring away from scheduled model polling,
+  explains optional relay conversations, preserves stored envelopes for authorized forwarding, and
+  keeps routine replies free of transport diagnostics. The updated owned local skill was installed
+  without restarting the receiver. Skill format validation passed. The final regression suite passed
+  141 tests in 27.483 seconds. Readable session status now separates delivery configuration, receiver
+  process liveness and unverified producer health, with a latest-receipt inspection command. It was
+  checked against existing local state without mutation. The running installed receiver/runtime was
+  not upgraded; the new CLI display is available in the checkout. Fresh-client natural-language
+  behavior for this revision remains unverified.
+- Read-only inspection of the user-reported external relay test confirmed an enabled binding,
+  a running receiver process and native consumption of its test receipt. The supplied transcript
+  reports PM forwarding and destination replies; those remote actions were not independently repeated.
+  External producer health remains unknown, and producer-specific claim/delivered tracking is outside
+  this core verification. Receipt consumption does not prove continued source availability.
+
 - The final macOS regression passed 66 tests in 21.880 seconds, including five
   installer tests. Isolated archive checks covered hashes, relative-wheel
   installation, status, upgrade, failed-upgrade preservation, helper discovery,

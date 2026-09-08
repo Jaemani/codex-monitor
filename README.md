@@ -113,6 +113,28 @@ Identical binding/source/event IDs and content return the existing receipt. Reus
 
 See [session management and replies](docs/SESSION-WORKFLOW.md), [adapters](docs/ADAPTERS.md), and [cancellation behavior](docs/CANCELLATION-QUEUE.md).
 
+## Is monitoring working?
+
+Ask `$codex-monitor check monitoring status for this conversation`, or run
+`"$MONITOR" sessions work` for an external binding. For managed files use
+`"$MONITOR" monitor status NAME --thread "$THREAD_ID"`.
+
+| Observation | What it establishes |
+|---|---|
+| Binding enabled | Delivery is configured for that conversation |
+| Receiver running | Receiver process exists; check authenticated HTTP readiness separately |
+| Managed collector observation | Last observed sampling state and errors |
+| External producer unknown | Check the producer's own connection/health; old deliveries do not establish current health |
+| Receipt accepted / native consumed | Codex accepted input / input reached conversation history; neither proves completed work |
+| Intended action and destination reply verified | That particular end-to-end workflow succeeded |
+
+Event monitoring uses a receiver and a producer outside the model instead of scheduled model prompts.
+The chosen conversation processes arriving events, with native queueing while busy. A separate relay
+conversation is optional, useful when deliberately separating routing from PM work. Installation alone
+does not configure a source or select the conversation. A native monitoring badge is not provided.
+Ordinary replies can stay concise; `event DELIVERY_ID` retains the full submitted envelope for explicit
+forwarding and `inspect DELIVERY_ID` provides transport diagnostics.
+
 ## Development
 
 ```bash

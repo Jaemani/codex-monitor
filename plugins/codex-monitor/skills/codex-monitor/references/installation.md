@@ -1,7 +1,8 @@
 # Installation
 
-The skill/plugin and receiver runtime are separate. No public registry package or repository URL has
-been established for this project; use a user-provided trusted checkout or release archive.
+The skill/plugin and receiver runtime are separate. The source repository is
+https://github.com/Jaemani/codex-monitor. Use a trusted checkout or release archive;
+no public package-registry release is established.
 
 From the checkout: `python3 scripts/install.py --with-skill install`.
 From an archive: `python3 scripts/install.py --wheel /absolute/release/wheels/codex_monitor-0.1.0-py3-none-any.whl --with-skill install`.

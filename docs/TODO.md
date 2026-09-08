@@ -10,6 +10,13 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Next: reliable everyday use
 
+- [x] **Event-first session guidance.** Explain optional relay conversations, full-envelope forwarding,
+  concise destination replies and separate configuration/process/delivery evidence. Updated local skill
+  installed; this does not establish fresh-client behavioral validation.
+- [ ] **External producer health integration.** Surface observed connection state and freshness from
+  authenticated producers. Receiver liveness, REST credentials and an old successful receipt must not
+  imply a currently connected event stream. Preserve unknown until observation exists.
+
 - [x] **Conversation-scoped local file monitors.** Create/list/status/pause/resume/remove use the exact conversation. Identical names in two conversations, persistent checkpoints, receiver-owned sampling, installed process isolation and actual ordinary TUI event/follow-up checks passed. The managed Desktop event also arrived in the same conversation after the preceding assistant turn ended; pixel and approval cases remain unverified.
 
 
