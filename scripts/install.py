@@ -38,6 +38,8 @@ SKILL_OWNER = "codex-monitor-skill-installer"
 SCHEMA = 1
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILL_SOURCE = REPO_ROOT / "plugins" / "codex-monitor" / "skills" / SKILL_NAME
+DEFAULT_PREFIX = Path.home() / ".local" / "share" / PRODUCT
+DEFAULT_BIN_DIR = Path.home() / ".local" / "bin"
 
 
 class InstallError(RuntimeError):
@@ -202,6 +204,8 @@ class Installer:
         with_skill: bool = False,
         skill_root: Path | str | None = None,
         launch_agents_dir: Path | str | None = None,
+        bin_dir: Path | str | None = None,
+        no_command: bool = False,
     ):
         self.prefix = _absolute(prefix, "prefix")
         if self.prefix in (Path("/"), Path.home()) or self.prefix.is_symlink():
@@ -216,6 +220,10 @@ class Installer:
             launch_agents_dir or (Path.home() / "Library" / "LaunchAgents"),
             "LaunchAgents directory",
         )
+        if no_command and bin_dir is not None:
+            raise InstallError("--no-command cannot be combined with --bin-dir")
+        self.bin_dir = _absolute(bin_dir, "bin directory") if bin_dir is not None else None
+        self.no_command = no_command
 
     @property
     def marker_path(self) -> Path:
@@ -232,6 +240,16 @@ class Installer:
     @property
     def executable(self) -> Path:
         return self.prefix / "bin" / PRODUCT
+
+    @property
+    def default_command_path(self) -> Path | None:
+        if self.bin_dir is not None:
+            return self.bin_dir / PRODUCT
+        if self.no_command:
+            return None
+        if self.prefix == _absolute(DEFAULT_PREFIX, "default prefix"):
+            return _absolute(DEFAULT_BIN_DIR, "default bin directory") / PRODUCT
+        return None
 
     @property
     def skill_path(self) -> Path:
@@ -323,6 +341,7 @@ class Installer:
             raise InstallError(f"invalid installer ownership marker: {self.marker_path}")
         for release in releases:
             _valid_release_inventory(release["files"])
+        self._marker_command(marker)
         return marker
 
     def _read_owned(self) -> dict:
@@ -358,6 +377,156 @@ class Installer:
         self.executable.parent.mkdir(parents=True, exist_ok=True)
         if not self.executable.is_symlink():
             self.executable.symlink_to(Path("..") / "current" / "bin" / PRODUCT)
+
+    def _marker_command(self, marker: dict) -> dict | None:
+        value = marker.get("command")
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise InstallError(f"invalid command ownership marker: {self.marker_path}")
+        path = value.get("path")
+        target = value.get("target")
+        if (
+            not isinstance(path, str)
+            or not isinstance(target, str)
+            or not path
+            or not target
+            or not Path(path).is_absolute()
+            or "\x00" in path
+            or "\x00" in target
+            or Path(path).name != PRODUCT
+            or target != str(self.executable)
+        ):
+            raise InstallError(f"invalid command ownership marker: {self.marker_path}")
+        return {"path": path, "target": target}
+
+    def _command_path(self, marker: dict | None) -> Path | None:
+        recorded = self._marker_command(marker) if marker is not None else None
+        if recorded is not None:
+            recorded_path = Path(recorded["path"])
+            configured = self.bin_dir / PRODUCT if self.bin_dir is not None else None
+            if configured is not None and recorded_path != configured:
+                raise InstallError(
+                    "configured bin directory differs from the owned command path: "
+                    f"{configured.parent} != {recorded_path.parent}"
+                )
+            return recorded_path
+        return self.default_command_path
+
+    def _command_record(self, path: Path) -> dict[str, str]:
+        if path == self.executable:
+            raise InstallError(f"refusing command link that replaces the managed launcher: {path}")
+        try:
+            path.relative_to(self.prefix)
+        except ValueError:
+            pass
+        else:
+            raise InstallError(f"refusing command link inside the managed runtime prefix: {path}")
+        return {"path": str(path), "target": str(self.executable)}
+
+    def _preflight_command(self, action: str, marker: dict | None) -> Path | None:
+        if action == "uninstall" and marker is not None and self._marker_command(marker) is None:
+            # Legacy markers predate the PATH command.  An unrelated command
+            # at the default location must remain entirely outside uninstall.
+            return None
+        path = self._command_path(marker)
+        if path is None:
+            if action == "link":
+                raise InstallError(
+                    "link requires --bin-dir when installing a non-default prefix"
+                )
+            return None
+        record = self._command_record(path)
+        parent = path.parent
+        if parent.is_symlink():
+            raise InstallError(f"refusing symlinked command directory: {parent}")
+        if parent.exists() and not parent.is_dir():
+            raise InstallError(f"command directory is not a directory: {parent}")
+        exists = path.exists() or path.is_symlink()
+        if not exists:
+            if marker is not None and marker.get("command") is not None:
+                # A missing link owned by this installer is safe to recreate.
+                return path
+            return path
+        if marker is None or self._marker_command(marker) is None:
+            raise InstallError(f"refusing foreign existing command path: {path}")
+        if not path.is_symlink() or os.readlink(path) != record["target"]:
+            raise InstallError(f"refusing modified owned command link: {path}")
+        return path
+
+    def _ensure_command(self, marker: dict) -> dict | None:
+        path = self._preflight_command("install", marker)
+        if path is None:
+            return None
+        record = self._command_record(path)
+        created = False
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists() and not path.is_symlink():
+                path.symlink_to(record["target"])
+                created = True
+            if marker.get("command") != record:
+                marker["command"] = record
+                _atomic_json(self.marker_path, marker)
+        except Exception:
+            if created:
+                try:
+                    if path.is_symlink() and os.readlink(path) == record["target"]:
+                        path.unlink()
+                except FileNotFoundError:
+                    pass
+            raise
+        return {
+            "path": str(path),
+            "target": record["target"],
+            "created": created,
+        }
+
+    def _remove_command(self, marker: dict) -> dict | None:
+        if self._marker_command(marker) is None:
+            return None
+        path = self._command_path(marker)
+        if path is None:
+            return None
+        record = self._command_record(path)
+        if not path.exists() and not path.is_symlink():
+            return {"path": str(path), "removed": False}
+        if not path.is_symlink() or os.readlink(path) != record["target"]:
+            raise InstallError(f"refusing to remove modified owned command link: {path}")
+        path.unlink()
+        return {"path": str(path), "removed": True}
+
+    def _command_status(self, marker: dict | None) -> dict:
+        path = self._command_path(marker)
+        command = path or self.executable
+        recorded = self._marker_command(marker) if marker is not None else None
+        if path is None:
+            link_status = "unmanaged"
+        elif not path.exists() and not path.is_symlink():
+            link_status = "missing"
+        elif recorded is None:
+            link_status = "foreign"
+        elif path.is_symlink() and os.readlink(path) == recorded["target"]:
+            link_status = "owned"
+        else:
+            link_status = "modified"
+        path_on_path = any(
+            Path(os.path.abspath(entry or os.curdir)) == command.parent
+            for entry in os.environ.get("PATH", "").split(os.pathsep)
+        )
+        effective = shutil.which(PRODUCT)
+        effective_path = os.path.abspath(effective) if effective else None
+        setup_hint = None
+        if not path_on_path:
+            setup_hint = f'Add {command.parent} to PATH, for example: export PATH="{command.parent}:$PATH"'
+        return {
+            "command": str(command),
+            "link_status": link_status,
+            "path_on_path": path_on_path,
+            "effective_command": effective_path,
+            "command_shadowed": bool(path_on_path and effective_path and effective_path != str(command)),
+            "setup_hint": setup_hint,
+        }
 
     def _build_wheel(self, directory: Path) -> Path:
         _run(
@@ -664,6 +833,10 @@ class Installer:
     def _install_or_upgrade(self, action: str) -> dict:
         if sys.version_info < (3, 11):
             raise InstallError("Python 3.11 or newer is required")
+        # Check the externally visible command before claiming a new prefix or
+        # preparing a release.  A foreign path must never cause partial work.
+        preflight_marker = self._claim_or_read() if self.marker_path.exists() else None
+        self._preflight_command(action, preflight_marker)
         marker = self._claim_or_read()
         self._validate_runtime_paths(marker)
         current = self._current_release(marker)
@@ -674,6 +847,7 @@ class Installer:
         if action == "upgrade":
             self._refuse_managed_services("upgrade")
         self._check_shim()
+        self._preflight_command(action, marker)
         self._preflight_skill(action)
         with tempfile.TemporaryDirectory(prefix="codex-monitor-wheel-") as temporary:
             wheel = self.wheel_arg or self._build_wheel(Path(temporary))
@@ -685,17 +859,43 @@ class Installer:
             _atomic_json(self.marker_path, marker)
             registered = True
             self._ensure_shim()
+            command = self._ensure_command(marker)
             self._switch_current(release_record["id"])
         finally:
             if not registered:
                 shutil.rmtree(release, ignore_errors=True)
+        command_status = self._command_status(marker)
         return {
             "action": "installed" if action == "install" else "upgraded",
             "prefix": str(self.prefix),
             "version": release_record["version"],
             "release": str(release),
             "executable": str(self.executable),
+            "link": command,
+            **command_status,
             "skill": skill,
+            "state": "preserved outside the managed runtime prefix",
+        }
+
+    def link(self) -> dict:
+        with self._mutation_lock():
+            return self._link()
+
+    def _link(self) -> dict:
+        marker = self._read_owned()
+        self._validate_runtime_paths(marker)
+        if self._current_release(marker) is None:
+            raise InstallError(f"codex-monitor is not installed; use install: {self.prefix}")
+        self._check_shim()
+        self._preflight_command("link", marker)
+        command = self._ensure_command(marker)
+        command_status = self._command_status(marker)
+        return {
+            "action": "linked",
+            "prefix": str(self.prefix),
+            "executable": str(self.executable),
+            "link": command,
+            **command_status,
             "state": "preserved outside the managed runtime prefix",
         }
 
@@ -729,6 +929,7 @@ class Installer:
         marker = self._read_owned()
         self._validate_runtime_paths(marker)
         self._refuse_managed_services("uninstall")
+        self._preflight_command("uninstall", marker)
         self._preflight_skill("uninstall")
         state = Path(os.environ.get("CODEX_MONITOR_HOME", Path.home() / ".local/state/codex-monitor")).expanduser()
         try:
@@ -741,10 +942,12 @@ class Installer:
             )
         self._verify_runtime_tree(marker)
         skill = self._remove_skill()
+        command = self._remove_command(marker)
         shutil.rmtree(self.prefix)
         return {
             "action": "uninstalled",
             "prefix": str(self.prefix),
+            "link": command,
             "skill": skill,
             "preserved_state": str(state.absolute()),
         }
@@ -777,7 +980,12 @@ class Installer:
 
     def status(self) -> dict:
         if not self.prefix.exists():
-            result = {"prefix": str(self.prefix), "installed": False, "executable": str(self.executable)}
+            result = {
+                "prefix": str(self.prefix),
+                "installed": False,
+                "executable": str(self.executable),
+                **self._command_status(None),
+            }
         else:
             marker = self._read_owned()
             current = self._current_release(marker)
@@ -794,6 +1002,7 @@ class Installer:
                 ],
                 "executable": str(self.executable),
                 "services": self._service_records(),
+                **self._command_status(marker),
             }
         if self.with_skill:
             result["skill"] = self._skill_status()
@@ -804,8 +1013,18 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Install codex-monitor from this checkout or a local wheel.")
     parser.add_argument(
         "--prefix",
-        default=str(Path.home() / ".local" / "share" / PRODUCT),
+        default=str(DEFAULT_PREFIX),
         help="absolute user-owned runtime prefix (default: ~/.local/share/codex-monitor)",
+    )
+    command_options = parser.add_mutually_exclusive_group()
+    command_options.add_argument(
+        "--bin-dir",
+        help="absolute directory for the PATH command link (default only for the standard prefix)",
+    )
+    command_options.add_argument(
+        "--no-command",
+        action="store_true",
+        help="do not create a new PATH command link; use the absolute launcher path",
     )
     parser.add_argument("--wheel", help="relative or absolute local codex-monitor wheel; otherwise build this checkout")
     parser.add_argument("--with-skill", action="store_true", help="also manage the bundled $codex-monitor skill")
@@ -813,7 +1032,7 @@ def _parser() -> argparse.ArgumentParser:
         "--skill-root",
         help="absolute skills root (default: $CODEX_HOME/skills or ~/.codex/skills; requires --with-skill)",
     )
-    parser.add_argument("action", choices=("install", "upgrade", "status", "uninstall"))
+    parser.add_argument("action", choices=("install", "upgrade", "link", "status", "uninstall"))
     return parser
 
 
@@ -828,6 +1047,8 @@ def main(argv: list[str] | None = None) -> int:
             wheel=args.wheel,
             with_skill=args.with_skill,
             skill_root=args.skill_root,
+            bin_dir=args.bin_dir,
+            no_command=args.no_command,
         )
         if args.action in ("install", "upgrade"):
             result = installer.install_or_upgrade(args.action)

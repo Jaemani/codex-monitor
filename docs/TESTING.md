@@ -1,5 +1,19 @@
 # Test design and results
 
+## Graphical dashboard and global command verification (2026-09-09)
+
+The graphical dashboard adds a persistent live header, color-coded status labels and selectable
+conversation-grouped rows. Verify animation separately from snapshot reads: a pulsing indicator is
+not producer health. Check plain snapshots, color overrides, `NO_COLOR`, reduced motion, selection
+in long inventories, details, narrow/CJK clipping and terminal restoration. PTY reports below cover
+this separate terminal view, not native Codex conversation delivery.
+
+The installer command link must point to the stable launcher and pass arbitrary CLI flags from
+another working directory. Verify an existing runtime can register its link without a receiver
+restart; custom-prefix tests must stay inside their temporary directory. Exercise upgrade continuity,
+foreign command conflicts, modified-link preservation, legacy ownership markers and uninstall.
+Record actual candidate and installed results in STATUS.md and the public evidence summary.
+
 ## Read-only dashboard and OS health-hook example (2026-09-09)
 
 The dashboard regression covers no runtime/RPC construction, read-only inventory, exact filtering,

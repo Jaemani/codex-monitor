@@ -16,10 +16,12 @@ import select
 import shutil
 import sqlite3
 import sys
+import threading
 import time
 import re
 import stat as stat_module
 import unicodedata
+from datetime import datetime
 from typing import Any, TextIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -274,14 +276,13 @@ def _request_inventory(root: Path, thread: str, now: float, deadline: float | No
         db.close()
 
 
-def receiver_process_alive(path: Path) -> bool:
-    """Check the existing receiver lock without creating or changing it."""
-
+def _receiver_lock_probe(path: Path) -> bool | None:
+    """Return lock state, or ``None`` when the read-only probe is inconclusive."""
     try:
         if not stat_module.S_ISREG(path.lstat().st_mode):
             return False
     except OSError:
-        return False
+        return None
     try:
         flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(path, flags)
@@ -312,7 +313,13 @@ def receiver_process_alive(path: Path) -> bool:
                     pass
             return False
     except OSError:
-        return False
+        return None
+
+
+def receiver_process_alive(path: Path) -> bool:
+    """Check the existing receiver lock without creating or changing it."""
+
+    return _receiver_lock_probe(path) is True
 
 
 class DashboardReader:
@@ -420,14 +427,15 @@ class DashboardReader:
 
     def _receiver(self) -> dict[str, Any]:
         lock_path = self.root / "serve.lock"
-        process = receiver_process_alive(lock_path)
+        probe = _receiver_lock_probe(lock_path)
+        process = probe is True
         result: dict[str, Any] = {
-            "process_alive": process,
+            "process_alive": None if probe is None else process,
             "status_checked": False,
             "ready": False,
-            "reason": "receiver lock is not held" if not process else None,
+            "reason": "receiver lock status is unknown" if probe is None else ("receiver lock is not held" if not process else None),
         }
-        if not process:
+        if probe is not True:
             return result
         config_path = self.root / "config.json"
         try:
@@ -524,26 +532,113 @@ class DashboardReader:
         }
 
 
+_ANSI_SGR = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _cell_width(char: str) -> int:
+    if unicodedata.combining(char) or unicodedata.category(char) in {"Cc", "Cf", "Cs"}:
+        return 0
+    return 2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1
+
+
 def _clip(text: str, width: int) -> str:
-    text = _safe(text, max(width * 4, 32))
+    """Clip a terminal line by display cells, retaining only our SGR codes."""
+
     if width <= 0:
         return ""
+    # Preserve only the small SGR vocabulary emitted by this module; every
+    # other control character is sanitized as ordinary producer text.
+    raw = str(text)
+    sanitized: list[str] = []
+    position = 0
+    while position < len(raw):
+        match = _ANSI_SGR.match(raw, position)
+        if match:
+            sanitized.append(match.group(0))
+            position = match.end()
+        else:
+            sanitized.append(_safe(raw[position], 1))
+            position += 1
+    text = "".join(sanitized)
     def char_width(char: str) -> int:
-        if unicodedata.combining(char) or unicodedata.category(char) in {"Cc", "Cf", "Cs"}:
-            return 0
-        return 2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1
+        return _cell_width(char)
 
-    if sum(char_width(char) for char in text) <= width:
+    visible = sum(char_width(char) for char in _ANSI_SGR.sub("", text))
+    if visible <= width:
         return text
-    result = []
+    result: list[str] = []
     used = 0
-    for char in text:
+    position = 0
+    while position < len(text):
+        match = _ANSI_SGR.match(text, position)
+        if match:
+            result.append(match.group(0))
+            position = match.end()
+            continue
+        char = text[position]
         size = char_width(char)
         if used + size + 1 > width:
             break
         result.append(char)
         used += size
-    return "".join(result) + ("…" if width >= 1 else "")
+        position += 1
+    clipped = "".join(result)
+    return clipped + ("…\x1b[0m" if "\x1b[" in clipped else "…")
+
+
+def _paint(text: Any, code: int | None, color: bool) -> str:
+    value = _safe(text)
+    return f"\x1b[{code}m{value}\x1b[0m" if color and code is not None else value
+
+
+def _status(value: str, color: bool) -> str:
+    codes = {"ON": 32, "OFF": 31, "STALE": 33, "UNKNOWN": 33}
+    return _paint(value, codes.get(value), color)
+
+
+def _status_cell(value: str, color: bool, width: int = 8) -> str:
+    """Render a status label with stable display-cell width in the table."""
+
+    return _status(value, color) + " " * max(0, width - len(value))
+
+
+def _receiver_status(receiver: dict[str, Any]) -> str:
+    if receiver.get("process_alive") is None:
+        return "UNKNOWN"
+    if receiver.get("process_alive") is False:
+        return "OFF"
+    if receiver.get("ready") and receiver.get("health") != "degraded":
+        return "ON"
+    return "STALE" if receiver.get("status_checked") else "UNKNOWN"
+
+
+def _binding_status(binding: dict[str, Any]) -> str:
+    enabled = binding.get("enabled")
+    if enabled is True:
+        return "ON"
+    if enabled is False:
+        return "OFF"
+    return "UNKNOWN"
+
+
+def _collector_status(collector: dict[str, Any]) -> str:
+    if collector.get("enabled") is False:
+        return "OFF"
+    if collector.get("last_error") or collector.get("last_sample_error") or collector.get("checkpoint", {}).get("error"):
+        return "STALE"
+    if collector.get("worker_seen_status") == "stale":
+        return "STALE"
+    if collector.get("enabled") is True and collector.get("worker_seen_status") == "fresh":
+        return "ON"
+    return "UNKNOWN"
+
+
+def _fit(text: Any, width: int) -> str:
+    """Return a fixed-width plain table cell without padding untrusted ANSI."""
+
+    value = _clip(_safe(text), max(0, width))
+    visible = sum(_cell_width(char) for char in value)
+    return value + " " * max(0, width - visible)
 
 
 def _event_summary(value: dict[str, Any]) -> str:
@@ -556,110 +651,175 @@ def _event_summary(value: dict[str, Any]) -> str:
     return rendered
 
 
-def _binding_summary(connection: dict[str, Any], binding: dict[str, Any]) -> str:
-    counts = binding.get("events", {}).get("counts", {})
-    pending = sum(counts.get(state, 0) for state in ("pending", "submitting", "uncertain"))
-    failed = sum(counts.get(state, 0) for state in ("dead", "failed"))
-    latest = binding.get("events", {}).get("latest") or {}
-    collectors = [
-        collector for collector in connection.get("collectors", [])
-        if collector.get("binding") == binding.get("name")
-    ]
-    collector_values = []
-    for item in collectors:
-        if item.get("enabled") is False:
-            state = "paused"
-        elif item.get("worker_state") == "running" and item.get("worker_seen_status") == "stale":
-            state = "stale"
-        elif item.get("worker_state") == "running" and item.get("worker_seen_status") == "fresh":
-            state = "running/fresh"
-        else:
-            state = item.get("worker_state") or "unknown"
-        collector_values.append(f"{_safe(item.get('name'), 16)}:{_safe(state, 14)}")
-    collector_state = ",".join(collector_values) or "-"
-    return (
-        f"  {_safe(binding.get('name'), 24):24} "
-        f"{('on' if binding.get('enabled') else 'paused'):6} "
-        f"{pending:4} {failed:4} {_age_text(latest.get('age_seconds')):>7} {collector_state}"
+def _event_compact(value: dict[str, Any]) -> str:
+    """Summarize counts and age without putting receipt UUIDs in the table."""
+
+    counts = value.get("counts") or {}
+    rendered = ", ".join(f"{_safe(key)}={count}" for key, count in sorted(counts.items())) or "none"
+    latest = value.get("latest")
+    if latest:
+        rendered += f"; {_safe(latest.get('state'))} {_age_text(latest.get('age_seconds'))}"
+    return rendered
+
+
+def _binding_rows(snapshot: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any], int]]:
+    rows: list[tuple[dict[str, Any], dict[str, Any], int]] = []
+    index = 0
+    for connection in snapshot.get("connections") or []:
+        for binding in connection.get("bindings") or []:
+            rows.append((connection, binding, index))
+            index += 1
+    return rows
+
+
+def _refresh_line(snapshot: dict[str, Any], now: float) -> str:
+    timestamp = _number(snapshot.get("generated_at"))
+    if timestamp is None:
+        return "Last refreshed: unknown (age unknown)"
+    refreshed = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+    age = max(0.0, now - timestamp)
+    return f"Last refreshed: {refreshed} (age {_age_text(age)})"
+
+
+def _detail_lines(connection: dict[str, Any], binding: dict[str, Any], color: bool) -> list[str]:
+    """Render details only after the user explicitly asks for them."""
+
+    lines = [f"  Details: {_safe(binding.get('name'))} in {_safe(connection.get('thread'))}"]
+    lines.append(
+        f"    status {_status(_binding_status(binding), color)} · endpoint {_safe(binding.get('endpoint'))} · "
+        f"sources {', '.join(_safe(source) for source in binding.get('sources', [])) or 'none'}"
     )
+    if binding.get("schema_error"):
+        lines.append("    schema error: " + _safe(binding["schema_error"]))
+    lines.append("    events: " + _event_summary(binding.get("events", {})))
+    requests = connection.get("requests") or {}
+    lines.append("    requests: " + (_event_summary(requests) if requests.get("available") else _safe(requests.get("reason", "unavailable"))))
+    collectors = [item for item in connection.get("collectors", []) if item.get("binding") == binding.get("name")]
+    for collector in collectors:
+        observation = collector.get("checkpoint", {}).get("last_observation") or {}
+        observed = _safe(observation.get("state"), 40) if observation else "none"
+        lines.append(
+            f"    collector {_safe(collector.get('name'))}: {_status(_collector_status(collector), color)}; "
+            f"seen {_age_text(collector.get('worker_seen_age_seconds'))}/{_safe(collector.get('worker_seen_status'))}; sample={observed}"
+        )
+        errors = [collector.get("last_error"), collector.get("last_sample_error"), collector.get("checkpoint", {}).get("error")]
+        errors = [_safe(error) for error in errors if error]
+        if errors:
+            lines.append("      error: " + "; ".join(errors))
+    return lines
 
 
-def render_lines(snapshot: dict[str, Any], width: int = 100) -> list[str]:
-    """Render logical lines without ANSI escapes or terminal control input."""
+def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = False,
+                 selected: int = 0, detail: bool | str = False, live: bool = False,
+                 frame: bool = False, animate: bool = True, now: float | None = None) -> list[str]:
+    """Render a compact, clipped dashboard frame with optional trusted SGR."""
 
     width = max(1, int(width or 1))
-    lines = ["codex-monitor dashboard  [read-only]"]
-    if not snapshot.get("ok"):
-        lines.append("ERROR: " + _safe(snapshot.get("error"), width - 7))
-        lines.append("The state inventory will be retried while the dashboard is running.")
-        return [_clip(line, width) for line in lines]
+    now = time.time() if now is None else now
+    indicator = "●" if (frame or not animate) else "○"
+    title = f"codex-monitor dashboard  {_paint('LIVE VIEW ' + indicator if live else 'SNAPSHOT', 36, color)}  {_paint('[read-only]', 2, color)}"
+    lines = [title]
     receiver = snapshot.get("receiver") or {}
-    process = "alive" if receiver.get("process_alive") else "stopped"
+    receiver_state = _receiver_status(receiver)
+    process = (
+        "alive" if receiver.get("process_alive") is True else
+        "stopped" if receiver.get("process_alive") is False else
+        "unknown"
+    )
     readiness = "ready" if receiver.get("ready") else "not ready"
     reason = receiver.get("reason")
-    health = receiver.get("health")
-    lines.append(f"Receiver process: {process}; authenticated /v1/status: {readiness}"
-                 + (f" [{_safe(health)}]" if health else "")
-                 + (f" ({_safe(reason)})" if reason else ""))
-    lines.append("External producer health: unknown (receipts do not prove a live producer)")
+    lines.append(
+        f"Receiver {_status(receiver_state, color)} · process {process} · /v1/status {readiness}"
+        + (f" [{_safe(receiver.get('health'))}]" if receiver.get("health") else "")
+        + (f" ({_safe(reason)})" if reason else "")
+    )
+    lines.append(_refresh_line(snapshot, now))
+    lines.append(
+        "Status: " + " ".join(
+            f"{_status(label, color)} {description}" for label, description in (
+                ("ON", "enabled/ready"), ("OFF", "paused/stopped"),
+                ("STALE", "old/unhealthy"), ("UNKNOWN", "unavailable"),
+            )
+        )
+    )
+    if not snapshot.get("ok"):
+        lines.append("ERROR: " + _safe(snapshot.get("error"), max(1, width - 7)))
+        lines.append("The state inventory will be retried while the dashboard is running.")
+        return [_clip(line, width) for line in lines]
     if snapshot.get("thread_filter"):
         lines.append("Filter: thread=" + _safe(snapshot["thread_filter"]))
-    connections = snapshot.get("connections") or []
-    if not connections:
-        lines.append("No conversation bindings found.")
-    else:
-        lines.append("Summary: BINDING                 STATE   PEND FAIL    LAST COLLECTOR")
-        for connection in connections:
-            for binding in connection.get("bindings", []):
-                lines.append(_binding_summary(connection, binding))
-    for connection in connections:
-        lines.append("")
-        lines.append("Conversation: " + _safe(connection.get("thread")))
-        for binding in connection.get("bindings", []):
-            enabled = "enabled" if binding.get("enabled") else "paused"
-            lines.append(
-                f"  Binding {_safe(binding.get('name'))} [{enabled}] -> {_safe(binding.get('endpoint'))}; "
-                f"sources: {', '.join(_safe(source) for source in binding.get('sources', [])) or 'none'}"
-            )
-            if binding.get("schema_error"):
-                lines.append("    schema error: " + _safe(binding["schema_error"]))
-            lines.append("    events: " + _event_summary(binding.get("events", {})))
-        lines.append("  Conversation events: " + _event_summary(connection.get("events", {})))
-        requests = connection.get("requests") or {}
-        if requests.get("available"):
-            lines.append("  Requests: " + _event_summary(requests))
-        else:
-            lines.append("  Requests: " + _safe(requests.get("reason", "unavailable")))
-        for collector in connection.get("collectors", []):
-            errors = [collector.get("last_error"), collector.get("last_sample_error"), collector.get("checkpoint", {}).get("error")]
-            errors = [_safe(error) for error in errors if error]
-            observation = collector.get("checkpoint", {}).get("last_observation") or {}
-            observed = _safe(observation.get("state"), 40) if observation else "none"
+    lines.append("CONVERSATIONS")
+    lines.append("    " + _paint("STATE   BINDING              ENDPOINT        EVENTS                    COLLECTOR", 1, color))
+    rows = _binding_rows(snapshot)
+    if not rows:
+        lines.append("  No conversation bindings found.")
+    for connection in snapshot.get("connections") or []:
+        lines.append("  Conversation: " + _safe(connection.get("thread")))
+        bindings = connection.get("bindings") or []
+        for binding in bindings:
+            row_index = next(index for conn, item, index in rows if conn is connection and item is binding)
+            collectors = [item for item in connection.get("collectors", []) if item.get("binding") == binding.get("name")]
+            collector_names = ",".join(_safe(item.get("name"), 16) for item in collectors) or "-"
             line = (
-                f"  Collector {_safe(collector.get('name'))} [{_safe(collector.get('worker_state'))}; "
-                f"seen {_age_text(collector.get('worker_seen_age_seconds'))}/{_safe(collector.get('worker_seen_status'))}; activity unknown] "
-                f"sample={observed} checkpoint changed={_age_text(collector.get('checkpoint', {}).get('age_seconds'))}"
+                f"  {'▶' if row_index == selected else ' '} "
+                f"{_status_cell(_binding_status(binding), color)}"
+                f"{_fit(binding.get('name'), 20)} "
+                f"{_fit(binding.get('endpoint'), 14)} "
+                f"{_fit(_event_compact(binding.get('events', {})), 25)} "
+                f"{_fit(collector_names, 18)}"
             )
+            if row_index == selected and color:
+                line = "\x1b[7m" + line + "\x1b[0m"
             lines.append(line)
-            if errors:
-                lines.append("    error: " + "; ".join(errors))
+            if detail == "all" or (detail and row_index == selected):
+                lines.append("")
+                lines.extend(_detail_lines(connection, binding, color))
     if snapshot.get("warnings"):
         lines.append("Warnings: " + "; ".join(_safe(value) for value in snapshot["warnings"]))
     return [_clip(line, width) for line in lines]
 
 
-def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24, scroll: int = 0) -> str:
-    """Render a bounded viewport for a terminal of the given size."""
+def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24, scroll: int = 0,
+                color: bool = False, selected: int = 0, detail: bool | str = False, live: bool = False,
+                frame: bool = False, animate: bool = True, now: float | None = None) -> str:
+    """Render a bounded viewport with a persistent header and compact table."""
 
     width = max(1, int(width or 1))
     height = max(2, int(height or 2))
-    body = render_lines(snapshot, width)
-    viewport = max(1, height - 1)
-    maximum = max(0, len(body) - viewport)
+    body = render_lines(snapshot, width, color=color, selected=selected, detail=detail,
+                        live=live, frame=frame, animate=animate, now=now)
+    # Title, receiver state and refresh age stay pinned.  The compact legend
+    # scrolls with the table so it does not consume most of a short terminal.
+    header_count = min(3, len(body))
+    header = body[:header_count]
+    table = body[header_count:]
+    available = max(1, height - 1)
+    body_slots = max(0, available - header_count)
+    maximum = max(0, len(table) - body_slots)
     offset = min(max(int(scroll), 0), maximum)
-    visible = body[offset:offset + viewport]
-    visible += [""] * (viewport - len(visible))
-    footer = f"q/Ctrl-C quit · j/k or ↑/↓ scroll · {offset + 1}-{min(offset + viewport, len(body))}/{len(body)}"
+    # Selection is global across grouped conversation headers.  Keep the
+    # highlighted row visible even when the table has many groups.
+    selected_line = next(
+        (index for index, line in enumerate(table) if _ANSI_SGR.sub("", line).startswith("  ▶ ")),
+        None,
+    )
+    if selected_line is not None and body_slots:
+        if detail is True:
+            # Details are inserted immediately after the selected row. Start
+            # that panel at the selected row so ``d`` is useful even for the
+            # last binding in a long, multi-conversation inventory.
+            offset = min(maximum, max(0, selected_line - 1))
+        elif selected_line < offset:
+            offset = selected_line
+        elif selected_line >= offset + body_slots:
+            offset = min(maximum, selected_line - body_slots + 1)
+    visible = header + table[offset:offset + body_slots]
+    visible = visible[:available]
+    visible += [""] * (available - len(visible))
+    footer = (
+        f"q/Ctrl-C quit · j/k scroll/select · d details · "
+        f"{offset + 1}-{min(offset + len(table), len(table))}/{len(table)}"
+    )
     return "\n".join(visible + [_clip(footer, width)])
 
 
@@ -692,8 +852,34 @@ def _key(stdin: TextIO) -> str | None:
     }.get(bytes(sequence))
 
 
+def _color_enabled(mode: str, stream: TextIO, environ: dict[str, str] | None = None) -> bool:
+    if mode not in {"auto", "always", "never"}:
+        raise ValueError("dashboard color must be auto, always or never")
+    if mode == "never":
+        return False
+    environ = os.environ if environ is None else environ
+    if mode == "auto":
+        return bool(getattr(stream, "isatty", lambda: False)()) and environ.get("TERM") != "dumb" and not environ.get("NO_COLOR")
+    return True
+
+
+def _draw_frame(stdout: TextIO, rendered: str) -> None:
+    """Rewrite rows in place without clearing the whole alternate screen."""
+
+    rows = rendered.splitlines()
+    stdout.write("\x1b[H")
+    for index, row in enumerate(rows):
+        stdout.write("\x1b[2K" + row)
+        if index + 1 < len(rows):
+            stdout.write("\n")
+    # Clear only stale rows below the new viewport.  In particular, do not
+    # emit CSI 2J on every animation frame; that causes visible flicker.
+    stdout.write("\x1b[J")
+
+
 def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: bool = False,
                   interval: float = 2.0, thread: str | None = None,
+                  color: str = "auto", animate: bool = True,
                   stdout: TextIO | None = None, stdin: TextIO | None = None) -> int:
     """Run one dashboard render or the interactive TTY view."""
 
@@ -703,6 +889,12 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
         raise ValueError("--json is only available with --once")
     stdout = sys.stdout if stdout is None else stdout
     stdin = sys.stdin if stdin is None else stdin
+    color_enabled = _color_enabled(color, stdout)
+    # Snapshot output is commonly redirected or captured.  Keep it stable
+    # and copy/paste friendly in auto mode even if a caller supplies a TTY;
+    # --color always remains an explicit opt-in.
+    if once and color == "auto":
+        color_enabled = False
     reader = DashboardReader(root, thread=thread)
     if once:
         snapshot = reader.snapshot()
@@ -711,7 +903,7 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
             stdout.write("\n")
         else:
             width = shutil.get_terminal_size((100, 24)).columns if stdout.isatty() else 100
-            stdout.write("\n".join(render_lines(snapshot, width)))
+            stdout.write("\n".join(render_lines(snapshot, width, color=color_enabled, detail="all", animate=animate)))
             stdout.write("\n")
         stdout.flush()
         return 0 if snapshot.get("ok") else 2
@@ -721,40 +913,93 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
     import tty
     old = termios.tcgetattr(stdin.fileno())
     scroll = 0
+    selected = 0
+    detail = False
     try:
         tty.setcbreak(stdin.fileno())
         stdout.write("\x1b[?1049h\x1b[?25l")
+        # The first snapshot is synchronous so a healthy state appears
+        # immediately.  Later reads run in a daemon worker; a slow status
+        # probe therefore cannot freeze the 0.5 second live animation.
+        snapshot = reader.snapshot()
+        poll_lock = threading.Lock()
+        poll_running = False
+        pending_snapshot: dict[str, Any] | None = None
+
+        def start_poll() -> None:
+            nonlocal poll_running
+            with poll_lock:
+                if poll_running:
+                    return
+                poll_running = True
+
+            def poll() -> None:
+                nonlocal poll_running, pending_snapshot
+                try:
+                    value = reader.snapshot()
+                    with poll_lock:
+                        pending_snapshot = value
+                finally:
+                    with poll_lock:
+                        poll_running = False
+
+            threading.Thread(target=poll, name="codex-monitor-dashboard-read", daemon=True).start()
+
+        next_poll = time.monotonic() + float(interval)
+        next_frame = time.monotonic()
+        frame = False
         while True:
-            snapshot = reader.snapshot()
-            size = shutil.get_terminal_size((100, 24))
-            body_count = len(render_lines(snapshot, size.columns))
-            scroll = min(max(scroll, 0), max(0, body_count - max(1, size.lines - 1)))
-            stdout.write("\x1b[2J\x1b[H" + render_text(snapshot, width=size.columns, height=size.lines, scroll=scroll))
-            stdout.flush()
-            deadline = time.monotonic() + float(interval)
-            while True:
-                remaining = max(0.0, deadline - time.monotonic())
-                if remaining == 0:
-                    break
-                ready, _, _ = select.select([stdin], [], [], min(.2, remaining))
-                if not ready:
-                    continue
-                value = _key(stdin)
-                if value in ("q", "Q", "\x03"):
-                    return 0
-                if value in ("j", "down"):
-                    scroll += 1
-                elif value in ("k", "up"):
-                    scroll = max(0, scroll - 1)
-                elif value == "pageup":
-                    scroll = max(0, scroll - max(1, size.lines - 2))
-                elif value == "pagedown":
-                    scroll += max(1, size.lines - 2)
-                elif value == "home":
-                    scroll = 0
-                elif value == "end":
-                    scroll = 10**9
-                break
+            now_mono = time.monotonic()
+            with poll_lock:
+                if pending_snapshot is not None:
+                    snapshot = pending_snapshot
+                    pending_snapshot = None
+            if now_mono >= next_poll:
+                start_poll()
+                next_poll += float(interval)
+                if next_poll <= now_mono:
+                    next_poll = now_mono + float(interval)
+            if now_mono >= next_frame:
+                frame = not frame
+                next_frame = now_mono + (0.5 if animate else float(interval))
+                size = shutil.get_terminal_size((100, 24))
+                rows = _binding_rows(snapshot)
+                selected = min(max(selected, 0), max(0, len(rows) - 1))
+                rendered = render_text(
+                    snapshot, width=size.columns, height=size.lines, scroll=scroll,
+                    color=color_enabled, selected=selected, detail=detail, live=True,
+                    frame=frame, animate=animate,
+                )
+                _draw_frame(stdout, rendered)
+                stdout.flush()
+            wait = min(.1, max(0.0, next_frame - now_mono), max(0.0, next_poll - now_mono))
+            ready, _, _ = select.select([stdin], [], [], wait)
+            if not ready:
+                continue
+            value = _key(stdin)
+            if value in ("q", "Q", "\x03"):
+                return 0
+            rows = _binding_rows(snapshot)
+            if value in ("j", "down"):
+                selected = min(selected + 1, max(0, len(rows) - 1))
+            elif value in ("k", "up"):
+                selected = max(0, selected - 1)
+            elif value == "pageup":
+                selected = max(0, selected - max(1, size.lines - 2))
+            elif value == "pagedown":
+                selected = min(max(0, len(rows) - 1), selected + max(1, size.lines - 2))
+            elif value == "home":
+                selected = 0
+            elif value == "end":
+                selected = max(0, len(rows) - 1)
+            elif value == "d":
+                detail = not detail
+            else:
+                continue
+            # Keep the selected row visible while preserving the old scroll
+            # behavior for callers that use render_text directly.
+            scroll = max(0, selected - max(1, size.lines - 7))
+            next_frame = 0.0
     except KeyboardInterrupt:
         return 0
     finally:

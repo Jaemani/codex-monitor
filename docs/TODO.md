@@ -10,6 +10,15 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Next: reliable everyday use
 
+- [x] **Global command registration.** The default runtime installer owns a stable
+  `~/.local/bin/codex-monitor` link; `link` registers an existing install without restarting it.
+  Custom prefixes require an explicit command directory. Foreign commands and modified owned links
+  are preserved; shell configuration is unchanged. Plugin-only installation still requires runtime setup.
+- [x] **Graphical connection overview.** Conversation-grouped rows, selected details, green/red/amber
+  status labels and a persistent animated live header replace repeated diagnostics in the main view.
+  Color and animation can be disabled. Live refresh is distinct from producer/model health; monitor
+  grouping does not invent agent ancestry. See [dashboard guide](DASHBOARD.md).
+
 - [x] **Read-only multi-conversation terminal dashboard.** `dashboard` provides a live summary and
   scrollable details, plus text/JSON snapshots and conversation filtering. It separates receiver
   readiness, delivery configuration, collector observations and explicit request states. It uses

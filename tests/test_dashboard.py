@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest import mock
 
-from codex_monitor.dashboard import DashboardReader, _ro_connect, render_text
+from codex_monitor.dashboard import DashboardReader, _color_enabled, _ro_connect, render_text
 from codex_monitor.lock import ProcessLock
 from codex_monitor.monitor import Monitor
 from codex_monitor import cli
@@ -92,6 +92,65 @@ class DashboardTest(unittest.TestCase):
         self.assertNotIn("\x1b", rendered)
         self.assertLessEqual(max(map(len, rendered.splitlines())), 36)
         self.assertIn("scroll", rendered)
+
+    def test_compact_render_groups_connections_and_keeps_details_explicit(self):
+        snapshot = {
+            "ok": True,
+            "read_only": True,
+            "generated_at": 1_000,
+            "receiver": {"process_alive": True, "ready": True, "status_checked": True},
+            "connections": [{
+                "thread": "thread-a",
+                "bindings": [
+                    {"name": "on-binding", "enabled": True, "endpoint": "shared-local", "sources": ["build"],
+                     "events": {"counts": {"pending": 1}, "latest": {"state": "pending", "delivery_id": "uuid-on", "age_seconds": 1}}},
+                    {"name": "paused-binding", "enabled": False, "endpoint": "shared-local", "sources": ["build"],
+                     "events": {"counts": {}, "latest": None}},
+                    {"name": "unknown-binding", "enabled": None, "endpoint": "shared-local", "sources": [],
+                     "events": {"counts": {}, "latest": None}},
+                ],
+                "events": {"counts": {}, "latest": None},
+                "requests": {"available": False, "reason": "none"},
+                "collectors": [],
+            }],
+        }
+        compact = render_text(snapshot, width=120, height=20, color=True, live=True, frame=True, now=1_001)
+        self.assertIn("LIVE VIEW", compact)
+        self.assertIn("Last refreshed", compact)
+        self.assertIn("Conversation: thread-a", compact)
+        self.assertIn("ON", compact)
+        self.assertIn("OFF", compact)
+        self.assertIn("UNKNOWN", compact)
+        self.assertNotIn("uuid-on", compact)
+        self.assertIn("\x1b[32m", compact)
+        self.assertIn("\x1b[31m", compact)
+        self.assertIn("\x1b[33m", compact)
+
+        details = render_text(snapshot, width=120, height=20, color=False, detail=True, selected=0, now=1_001)
+        self.assertIn("uuid-on", details)
+        self.assertIn("Details: on-binding", details)
+        self.assertNotIn("\x1b", details)
+
+        many = dict(snapshot)
+        many["connections"] = [{
+            "thread": f"thread-{index}",
+            "bindings": [{"name": f"binding-{index}", "enabled": True, "endpoint": "shared-local", "sources": [],
+                           "events": {"counts": {}, "latest": None}}],
+            "events": {"counts": {}, "latest": None},
+            "requests": {"available": False, "reason": "none"},
+            "collectors": [],
+        } for index in range(10)]
+        last_details = render_text(many, width=100, height=8, color=False, detail=True, selected=9, now=1_001)
+        self.assertIn("Conversation: thread-9", last_details)
+        self.assertIn("Details: binding-9", last_details)
+
+    def test_color_policy_honors_no_color_and_dumb_terminal(self):
+        stream = io.StringIO()
+        stream.isatty = lambda: True
+        self.assertFalse(_color_enabled("auto", stream, {"TERM": "dumb"}))
+        self.assertFalse(_color_enabled("auto", stream, {"TERM": "xterm-256color", "NO_COLOR": "1"}))
+        self.assertFalse(_color_enabled("never", stream, {"TERM": "xterm-256color"}))
+        self.assertTrue(_color_enabled("always", stream, {"TERM": "dumb", "NO_COLOR": "1"}))
 
     def _status_server(self, status=200, body=None, location=None):
         seen = []

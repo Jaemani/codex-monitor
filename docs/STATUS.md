@@ -10,6 +10,27 @@ target thread to be loaded on their server.
 
 ## Confirmed
 
+- Graphical dashboard and global command update: the default installer now registers
+  `~/.local/bin/codex-monitor`; `link` supports existing installs without a receiver restart.
+  Foreign commands, modified owned links, legacy markers, opt-out and removal have focused coverage.
+  The actual command worked from a different directory and a fresh zsh login shell, with no PATH
+  shadowing on the tested host. Plugin-only installation still needs the runtime setup step.
+- The dashboard now groups compact rows by conversation, provides selected details, green/red/amber
+  labels and a fixed animated `LIVE VIEW` indicator with snapshot age. Animation does not increase
+  read/probe frequency. Color and motion controls preserve plain snapshots and read-only behavior.
+  Grouping represents destination routing, not a parent/child agent hierarchy.
+- Final local regression: **157 tests passed in 50.153 seconds**. The installed graphical wheel
+  passed **39 actual dashboard PTY checks in 7.789 seconds**, including animation, color, navigation,
+  resizing, receiver outage/recovery and terminal restoration. Source PTY: 39 checks in 7.721 seconds.
+  A separate 20-conversation render check verified last-row details and marker-like characters in
+  conversation names. These are dashboard checks, not new Codex conversation or Desktop UI evidence.
+- The tested wheel (SHA-256 `7cea50f597f40ad614f936df0dc5d6d7b678e9c0ac61ba8d58ef990ff3f67cdc`)
+  was installed locally; all 19 runtime modules matched. Controlled receiver upgrade preserved all
+  eight bindings, credentials and six pre-existing receipts. The service returned authenticated-ready
+  after startup. The disposable candidate runtime, skill and owned command link also uninstalled cleanly.
+  Initial post-bootstrap status preceded process readiness; subsequent bounded readiness verification passed.
+
+
 - Implementation commit `dc06e0a` passed hosted macOS/Linux checks on Python 3.11 and 3.14,
   including the 151-test regression suite and release packaging:
   [CI run](https://github.com/Jaemani/codex-monitor/actions/runs/34263553188).

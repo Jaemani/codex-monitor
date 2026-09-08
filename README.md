@@ -50,7 +50,12 @@ Requires **Python 3.11+**, Codex CLI and a local CLI/Desktop conversation. The i
 git clone https://github.com/Jaemani/codex-monitor.git
 cd codex-monitor
 python3 scripts/install.py --with-skill install
+codex-monitor --help
 ```
+
+The default installer registers `~/.local/bin/codex-monitor`. If that directory is not on your
+`PATH`, follow the printed shell hint or use the printed absolute command. Plugin-only installation
+provides Codex integration assets; run the trusted runtime installer once to add the executable.
 
 Start a new Codex session for skill discovery, then ask:
 
@@ -67,11 +72,10 @@ Choose a real regular file. The first sample establishes a silent baseline; late
 Set `THREAD_ID` to your exact existing conversation ID. Initialize a new state once; reuse existing state on subsequent runs.
 
 ```bash
-MONITOR="$HOME/.local/share/codex-monitor/bin/codex-monitor"
-"$MONITOR" init
-"$MONITOR" doctor --thread "$THREAD_ID"
-"$MONITOR" monitor create build --thread "$THREAD_ID" --file /absolute/project/build-status.json
-"$MONITOR" serve
+codex-monitor init
+codex-monitor doctor --thread "$THREAD_ID"
+codex-monitor monitor create build --thread "$THREAD_ID" --file /absolute/project/build-status.json
+codex-monitor serve
 ```
 
 `serve` stays in the foreground. For persistent macOS operation use the installed runtime's `service install`; see [receiver operations](docs/OPERATIONS.md). On Linux use an OS supervisor appropriate to your host. Use the same `--state PATH` throughout when changing the default `~/.local/state/codex-monitor`.
@@ -85,13 +89,24 @@ See [installation and upgrades](docs/INSTALLATION.md), [file monitor lifecycle](
 From a second terminal, with the receiver running:
 
 ```bash
-MONITOR="$HOME/.local/share/codex-monitor/bin/codex-monitor"
-"$MONITOR" dashboard
+codex-monitor dashboard
 ```
+
+The fixed **LIVE VIEW** indicator pulses while the view refreshes. **Green ON**, **red OFF** and
+**amber STALE/UNKNOWN** distinguish configuration and observed health. Rows are grouped by
+conversation; select one and press `d` for details. Use `--no-animate` or `--color never` when preferred.
 
 Use `--once` for a snapshot, `--once --json` for structured output, or `--thread "$THREAD_ID"` to filter a conversation. The display refreshes observations without calling Codex or the model. See [dashboard controls and status meanings](docs/DASHBOARD.md).
 
 The inventory covers bindings in the selected local state, not every Codex agent or every host. External producer health stays **unknown** until a supported observation exists. A running receiver, an accepted event and a completed work request are different facts. Native consumption remains an explicit `inspect DELIVERY_ID` check.
+
+### Are monitors related?
+
+Monitors are grouped by their **destination conversation**, not a parent agent. One conversation can
+receive several monitors, and one receiver can serve several independent conversations. A PM or relay
+conversation is optional: choose it when you want coordination, or route each source directly to its
+project conversation. Sharing a receiver does not create a team or broadcast events to every binding.
+See the [domain vocabulary](CONTEXT.md).
 
 ## What can I use it for?
 

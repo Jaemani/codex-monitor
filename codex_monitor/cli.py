@@ -129,6 +129,9 @@ def parser():
     dashboard.add_argument("--json", action="store_true", help="emit one JSON snapshot (requires --once)")
     dashboard.add_argument("--interval", type=float, default=2.0, help="live refresh interval in seconds")
     dashboard.add_argument("--thread", help="limit the inventory to one conversation ID")
+    dashboard.add_argument("--color", choices=["auto", "always", "never"], default="auto",
+                           help="color policy for the terminal dashboard (default: auto)")
+    dashboard.add_argument("--no-animate", action="store_true", help="disable the live indicator animation")
     sessions = commands.add_parser("sessions", help="show attached conversations and receiver state without waking Codex")
     sessions.add_argument("name", nargs="?")
     sessions.add_argument("--json", action="store_true")
@@ -249,6 +252,8 @@ def main(argv=None):
                 as_json=args.json,
                 interval=args.interval,
                 thread=args.thread,
+                color=args.color,
+                animate=not args.no_animate,
             )
         config = json.loads(config_path.read_text())
         if config.get("version") != 1:

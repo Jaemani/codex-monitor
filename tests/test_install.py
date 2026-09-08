@@ -60,6 +60,152 @@ def make_wheel(directory: Path, version: str, *, help_exit: int = 0) -> Path:
 
 
 class InstallTest(unittest.TestCase):
+    def test_global_command_link_lifecycle_migration_and_path_status(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            prefix = root / "runtime"
+            bin_dir = root / "bin"
+            wheel1 = make_wheel(root, "1.0.0")
+            wheel2 = make_wheel(root, "2.0.0")
+
+            with patch.object(installer, "DEFAULT_PREFIX", prefix), patch.object(
+                installer, "DEFAULT_BIN_DIR", bin_dir
+            ):
+                manager = installer.Installer(prefix, wheel=wheel1)
+                first = manager.install_or_upgrade("install")
+                command = bin_dir / "codex-monitor"
+                executable = prefix / "bin" / "codex-monitor"
+                self.assertTrue(command.is_symlink())
+                self.assertEqual(os.readlink(command), str(executable))
+                self.assertTrue(first["link"]["created"])
+                self.assertFalse(first["path_on_path"])
+                self.assertIn(str(bin_dir), first["setup_hint"])
+
+                tracked = installer.Installer(prefix, wheel=wheel2, no_command=True).install_or_upgrade(
+                    "upgrade"
+                )
+                self.assertEqual(tracked["link_status"], "owned")
+                self.assertTrue(command.is_symlink())
+
+                marker_path = prefix / installer.MARKER
+                marker = json.loads(marker_path.read_text())
+                marker.pop("command")
+                marker_path.write_text(json.dumps(marker) + "\n")
+                command.unlink()
+                migrated = installer.Installer(prefix, wheel=wheel1).link()
+                self.assertEqual(migrated["action"], "linked")
+                self.assertTrue(command.is_symlink())
+                self.assertTrue(json.loads(marker_path.read_text()).get("command"))
+
+                with patch.dict(os.environ, {"PATH": str(bin_dir)}):
+                    repeated = installer.Installer(prefix, wheel=wheel1).link()
+                self.assertFalse(repeated["link"]["created"])
+                self.assertTrue(repeated["path_on_path"])
+                self.assertIsNone(repeated["setup_hint"])
+
+                previous_target = os.readlink(prefix / "current")
+                upgraded = installer.Installer(prefix, wheel=wheel2).install_or_upgrade("upgrade")
+                self.assertEqual(upgraded["version"], "2.0.0")
+                self.assertEqual(os.readlink(command), str(executable))
+                self.assertNotEqual(os.readlink(prefix / "current"), previous_target)
+
+                removed = installer.Installer(prefix).uninstall()
+                self.assertTrue(removed["link"]["removed"])
+                self.assertFalse(command.exists())
+
+    def test_link_does_not_touch_services_and_foreign_paths_fail_preflight(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            prefix = root / "runtime"
+            bin_dir = root / "bin"
+            wheel = make_wheel(root, "1.0.0")
+            launch_agents = root / "LaunchAgents"
+            manager = installer.Installer(
+                prefix, wheel=wheel, bin_dir=bin_dir, launch_agents_dir=launch_agents
+            )
+            manager.install_or_upgrade("install")
+
+            launch_agents.mkdir()
+            plist_path = launch_agents / "com.codex.monitor.test.plist"
+            plist_path.write_bytes(
+                plistlib.dumps(
+                    {
+                        "Label": "com.codex.monitor.test",
+                        "ProgramArguments": [
+                            str(prefix / "current" / "bin" / "python"),
+                            "-m",
+                            "codex_monitor",
+                            "--state",
+                            str(root / "state"),
+                            "serve",
+                        ],
+                    }
+                )
+            )
+            before = plist_path.read_bytes()
+            manager.link()
+            self.assertEqual(plist_path.read_bytes(), before)
+
+            command = bin_dir / "codex-monitor"
+            command.unlink()
+            command.symlink_to(root / "foreign-target")
+            current = os.readlink(prefix / "current")
+            with self.assertRaisesRegex(installer.InstallError, "modified owned command link"):
+                installer.Installer(prefix, wheel=wheel, bin_dir=bin_dir).install_or_upgrade("upgrade")
+            self.assertEqual(os.readlink(prefix / "current"), current)
+            with self.assertRaisesRegex(installer.InstallError, "modified owned command link"):
+                installer.Installer(prefix, bin_dir=bin_dir).uninstall()
+            self.assertTrue(prefix.exists())
+
+            foreign_prefix = root / "foreign-runtime"
+            foreign_bin = root / "foreign-bin"
+            foreign_bin.mkdir()
+            (foreign_bin / "codex-monitor").write_text("user command\n")
+            with self.assertRaisesRegex(installer.InstallError, "foreign existing command path"):
+                installer.Installer(foreign_prefix, wheel=wheel, bin_dir=foreign_bin).install_or_upgrade(
+                    "install"
+                )
+            self.assertFalse(foreign_prefix.exists())
+
+    def test_no_command_allows_foreign_default_path_and_legacy_uninstall_preserves_it(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            prefix = root / "runtime"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            command = bin_dir / "codex-monitor"
+            command.write_text("user command\n")
+            wheel1 = make_wheel(root, "1.0.0")
+            wheel2 = make_wheel(root, "2.0.0")
+
+            with patch.object(installer, "DEFAULT_PREFIX", prefix), patch.object(
+                installer, "DEFAULT_BIN_DIR", bin_dir
+            ):
+                first = installer.Installer(prefix, wheel=wheel1, no_command=True).install_or_upgrade(
+                    "install"
+                )
+                self.assertEqual(first["link_status"], "unmanaged")
+                self.assertEqual(command.read_text(), "user command\n")
+
+                second = installer.Installer(prefix, wheel=wheel2, no_command=True).install_or_upgrade(
+                    "upgrade"
+                )
+                self.assertEqual(second["version"], "2.0.0")
+                self.assertEqual(command.read_text(), "user command\n")
+
+                # This is the old marker shape: no command ownership record.
+                command.unlink()
+                command.symlink_to(prefix / "bin" / "codex-monitor")
+                removed = installer.Installer(prefix).uninstall()
+                self.assertIsNone(removed["link"])
+                self.assertTrue(command.is_symlink(), "legacy uninstall must preserve unrelated command paths")
+
+    def test_no_command_and_bin_dir_are_mutually_exclusive(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with self.assertRaisesRegex(installer.InstallError, "cannot be combined"):
+                installer.Installer(root / "runtime", bin_dir=root / "bin", no_command=True)
+
     def test_actual_install_guarded_upgrade_failed_candidate_and_uninstall(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

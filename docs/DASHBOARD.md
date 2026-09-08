@@ -5,11 +5,12 @@ configured conversations, managed collector observations, delivery receipts and 
 reports. It does not call the Codex App Server, create model turns or change monitoring configuration.
 
 ```bash
-MONITOR="$HOME/.local/share/codex-monitor/bin/codex-monitor"
-"$MONITOR" dashboard
-"$MONITOR" dashboard --thread "$THREAD_ID"
-"$MONITOR" dashboard --once
-"$MONITOR" dashboard --once --json
+codex-monitor dashboard
+codex-monitor dashboard --thread "$THREAD_ID"
+codex-monitor dashboard --once
+codex-monitor dashboard --once --json
+codex-monitor dashboard --no-animate
+codex-monitor dashboard --color never
 ```
 
 Use `--state /absolute/state` before `dashboard` for a different local receiver. The default refresh
@@ -19,7 +20,9 @@ Use snapshot mode in scripts and redirected output.
 ## Controls
 
 - `q` or Ctrl-C: leave the dashboard. The receiver and monitors continue running.
-- `j` / `k` or down / up: scroll through the inventory.
+- `j` / `k` or down / up: select a binding and scroll the inventory.
+- Home / End and Page Up / Page Down: navigate longer inventories.
+- `d`: toggle details for the selected binding.
 - Resize the terminal to fit your workspace; the next render adapts to its dimensions.
 
 The dashboard preserves the terminal's input settings on normal exit. Its read-only view cannot
@@ -27,6 +30,22 @@ pause bindings, replay events, send replies or restart the receiver. Use explici
 for those actions after inspecting the relevant conversation and receipt.
 
 ## Reading the screen
+
+The fixed header shows **LIVE VIEW** with a pulsing dot and the last snapshot time. This indicates
+that the view is refreshing, not that every producer or Codex model is connected. Animation reuses
+the latest snapshot; it does not increase the configured read/probe frequency or invoke the model.
+
+The overview groups compact binding rows by conversation. Select a row and press `d` for source,
+receipt, request and collector details rather than scanning repeated diagnostics in the main view.
+
+- **Green ON:** binding enabled or receiver ready, according to the field.
+- **Red OFF:** binding paused or receiver stopped.
+- **Amber STALE / UNKNOWN:** old, unhealthy or unavailable observations; inspect the details.
+
+Text labels remain visible without color. Use `--color auto|always|never`; auto honors `NO_COLOR`
+and `TERM=dumb`. Use `--no-animate` for a steady live indicator. Text snapshots are plain by default;
+`--color always` opts into ANSI colors, while JSON remains machine-readable.
+
 
 | Field | Meaning |
 |---|---|
@@ -42,6 +61,16 @@ for those actions after inspecting the relevant conversation and receipt.
 The screen shows registered connections across conversations, not every native Codex agent. It does
 not infer model selection, token use, current generation or successful work from event traffic. A
 thread filter selects the inventory to display; it does not retarget any delivery.
+
+## Relationships
+
+The dashboard groups routes by their destination conversation. A managed monitor belongs to one
+conversation; several monitors can feed that conversation. Several conversations can share one
+receiver without sharing a parent agent. A binding routes permitted sources to one exact conversation;
+allowing a source on multiple bindings does not automatically broadcast its events.
+
+A PM or relay conversation is optional and must be selected explicitly. The dashboard does not infer
+native agent teams, ancestry or work dependencies. See the [domain vocabulary](../CONTEXT.md).
 
 ## Failures and scope
 

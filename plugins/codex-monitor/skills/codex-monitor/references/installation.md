@@ -7,7 +7,13 @@ no public package-registry release is established.
 From the checkout: `python3 scripts/install.py --with-skill install`.
 From an archive: `python3 scripts/install.py --wheel /absolute/release/wheels/codex_monitor-0.1.0-py3-none-any.whl --with-skill install`.
 
-Default executable: `~/.local/share/codex-monitor/bin/codex-monitor`. For a custom prefix set
+The default runtime installer also registers `~/.local/bin/codex-monitor`; use
+`codex-monitor dashboard` from any directory once that directory is on `PATH`. Follow the installer's
+printed visibility result and shell hint. For an existing runtime, `python3 scripts/install.py link`
+registers the command without restarting the receiver. Custom prefixes require explicit `--bin-dir`
+for command registration. Plugin-only installation does not execute the runtime installer.
+
+Default stable executable: `~/.local/share/codex-monitor/bin/codex-monitor`. For a custom prefix set
 `CODEX_MONITOR_BIN` to the installed executable's absolute path. The installer prints actual paths.
 Standalone skill installation uses `CODEX_HOME/skills` or `~/.codex/skills`. A new Codex session may be
 needed for discovery. Installing a skill does not attach a conversation or start a producer.

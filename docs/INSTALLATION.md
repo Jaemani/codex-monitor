@@ -2,7 +2,7 @@
 
 `codex-monitor` is not assumed to exist on a public package registry. Install it from a trusted checkout, a local wheel, or the project release archive. The installer requires Python 3.11 or newer and currently supports macOS and Linux. Its atomic release switch uses POSIX symlinks; this installer has not been validated on Windows and refuses to run there.
 
-The runtime and the optional `$codex-monitor` skill are separate. Installing either one does not initialize monitor state, start the receiver, attach a conversation, or create an event producer.
+The runtime and the optional `$codex-monitor` skill are separate. Plugin-only installation adds Codex integration assets; it does not register an OS command. The trusted installer below installs the runtime, registers the command, and optionally installs the skill in one invocation. Installing either one does not initialize monitor state, start the receiver, attach a conversation, or create an event producer.
 
 ## Install from a checkout
 
@@ -50,7 +50,33 @@ Every successful install or upgrade prints JSON containing the exact absolute ex
 ~/.local/share/codex-monitor/bin/codex-monitor
 ```
 
-The installer does not edit shell startup files and does not claim that this directory is on `PATH`. Invoke the printed absolute path, or set `CODEX_MONITOR_BIN` to it for the bundled skill helper.
+With the default prefix, the installer also creates an owned command link at
+`~/.local/bin/codex-monitor`. Once that directory is on `PATH`, commands and flags work from any
+working directory:
+
+```bash
+codex-monitor --help
+codex-monitor dashboard
+codex-monitor dashboard --thread "$THREAD_ID" --no-animate
+codex-monitor --state /absolute/state dashboard --once --json
+```
+
+The installer does not edit shell startup files. It reports command visibility and prints a `PATH`
+hint when needed. You can always invoke the printed absolute executable, or set `CODEX_MONITOR_BIN`
+to it for the bundled skill helper.
+
+For an already installed runtime, register the command without rebuilding or restarting the receiver:
+
+```bash
+python3 scripts/install.py link
+```
+
+Use `--no-command` on install or upgrade to skip new command registration and use the absolute
+launcher instead. This preserves any previously registered link's ownership; it does not unlink it.
+`--no-command` and `--bin-dir` are mutually exclusive.
+
+The link targets the stable launcher, so upgrades retain the same command. Existing foreign commands
+are never overwritten; a user-replaced owned link is preserved and reported for review.
 
 The prefix layout is:
 
@@ -76,6 +102,14 @@ Use an absolute runtime prefix when the default is unsuitable:
 python3 scripts/install.py \
   --prefix /absolute/user-owned/codex-monitor \
   install
+```
+
+Custom runtime prefixes do not write to `~/.local/bin` by default. Add an explicit command directory
+when you want a global command for that runtime:
+
+```bash
+python3 scripts/install.py --prefix /absolute/user-owned/codex-monitor \
+  --bin-dir /absolute/user-owned/bin install
 ```
 
 Use `--with-skill` and an absolute `--skill-root` to manage the skill elsewhere:
@@ -163,6 +197,8 @@ Remove the managed runtime:
 ```bash
 python3 scripts/install.py uninstall
 ```
+
+Uninstall removes the registered command only when it still matches its ownership record.
 
 This removes only a prefix with the installer's valid ownership marker and expected managed entries. It refuses a non-empty unowned prefix, a changed launcher, untracked prefix entries, untracked release directories, or a runtime referenced by a launchd service. Stop and uninstall the service with the exact commands in the error before retrying.
 

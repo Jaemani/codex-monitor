@@ -1479,6 +1479,65 @@
           "Linux Python 3.14"
         ]
       }
+    },
+    {
+      "local_report": "dashboard-graphical-installed-2026-09-09.json",
+      "result": "PASS",
+      "scope": "installed macOS graphical dashboard PTY; fixture receiver; no model or Desktop pixel test",
+      "elapsed_seconds": 7.789,
+      "checks": {
+        "managed_collector_is_visible": true,
+        "json_snapshot_is_read_only": true,
+        "json_snapshot_filters_thread": true,
+        "json_snapshot_contains_bindings": true,
+        "json_snapshot_excludes_other_thread": true,
+        "json_snapshot_contains_collector": true,
+        "json_snapshot_reports_receiver_ready": true,
+        "text_snapshot_contains_multiple_bindings": true,
+        "text_snapshot_contains_collector": true,
+        "text_snapshot_contains_compact_table": true,
+        "text_snapshot_labels_configuration_states": true,
+        "text_snapshot_has_no_terminal_controls": true,
+        "text_snapshot_lines_fit_default_width": true,
+        "text_snapshot_has_persistent_header": true,
+        "no_color_snapshot_is_plain": true,
+        "unfiltered_json_contains_other_thread": true,
+        "missing_state_snapshot_fails_read_only": true,
+        "missing_state_remains_missing": true,
+        "live_dashboard_reports_receiver_ready": true,
+        "live_dashboard_renders_multiple_bindings": true,
+        "live_dashboard_renders_paused_binding": true,
+        "compact_table_shows_collector": true,
+        "row_navigation_reaches_last_conversation": true,
+        "live_unfiltered_dashboard_reaches_other_thread": true,
+        "row_navigation_changes_viewport": true,
+        "live_indicator_animates_independently": true,
+        "live_animation_keeps_snapshot_age_source": true,
+        "live_color_attributes_are_present": true,
+        "live_renderer_avoids_full_screen_clear": true,
+        "narrow_resize_keeps_lines_bounded": true,
+        "narrow_resize_keeps_dashboard_visible": true,
+        "receiver_outage_is_visible": true,
+        "receiver_recovery_is_visible": true,
+        "q_process_cleaned_up": true,
+        "q_termios_restored": true,
+        "ctrl_c_process_cleaned_up": true,
+        "ctrl_c_termios_restored": true,
+        "dashboard_does_not_mutate_database": true,
+        "no_model_session_calls": true
+      },
+      "wheel_sha256": "7cea50f597f40ad614f936df0dc5d6d7b678e9c0ac61ba8d58ef990ff3f67cdc",
+      "regression_tests": 157,
+      "regression_elapsed_seconds": 50.153,
+      "owned_local_upgrade": {
+        "runtime_modules_match": 19,
+        "bindings_preserved": 8,
+        "prior_receipts_preserved": 6,
+        "config_and_credentials_preserved": true,
+        "receiver_authenticated_ready": true,
+        "global_command_from_other_cwd_and_fresh_zsh": true
+      },
+      "candidate_owned_uninstall_passed": true
     }
   ]
 }
