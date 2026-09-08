@@ -107,7 +107,7 @@ Conversation-scoped managed file collectors now support create/list/status/pause
 
 The frozen managed-feature wheel passed 75 regression tests on macOS and Debian 12 arm64/Python 3.11, plus 16 installed receiver/collector process checks on both platforms. An actual ordinary macOS TUI rendered and consumed a managed file event, then completed a user follow-up response in the same conversation. A 60.054-second managed-collector soak passed with six events, one receiver restart and no duplicates. This does not extend the earlier one-hour transport/TUI result to the new collector.
 
-The new managed Desktop event was accepted by the official queue but was still queued at the latest read-only inspection during this active task. New managed-collector Desktop consumption is pending; earlier Desktop baseline evidence remains separate. No forced turn or duplicate test event was used.
+The new managed Desktop event arrived as external input in this same conversation after the preceding assistant turn ended. The receipt matched the single previously accepted test event, which had remained queued during active work. This is direct conversation-arrival evidence; no new history inspection, pixel verification or business-task completion is claimed. No forced turn or duplicate test event was used.
 
 General condition policies, correlated request lifecycles and workload isolation remain future work. File sampling is sequential and its inter-read budget cannot interrupt an individual blocked OS read.
 

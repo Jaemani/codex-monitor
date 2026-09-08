@@ -634,9 +634,12 @@
     },
     {
       "local_report": "managed-desktop-2026-09-08.json",
-      "result": "ACCEPTED_AWAITING_NATIVE_CONSUMPTION",
-      "scope": "managed file event accepted; latest native inspection queued during active Desktop task",
-      "client_ui_verified": false
+      "result": "DESKTOP_CONVERSATION_ARRIVAL_CONFIRMED",
+      "scope": "single managed file event arrived in the owning Desktop conversation after the preceding assistant turn ended; earlier inspection had shown queued",
+      "client_ui_verified": false,
+      "conversation_arrival_verified": true,
+      "native_history_reinspection": false,
+      "business_task_completion_verified": false
     },
     {
       "result": "PASS",

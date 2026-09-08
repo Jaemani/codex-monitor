@@ -25,7 +25,7 @@ python3 scripts/managed-monitor-canary.py --run \
   --soak-seconds 60 --tui --report /tmp/managed-monitor.json
 ```
 
-The TUI option requires Codex and the optional `pyte` dependency. Unavailable TUI dependencies yield an incomplete result, never a UI PASS. Process checks without `--tui` do not verify a real client. The new Desktop managed event is accepted but remains queued at the latest inspection; its native consumption is pending.
+The TUI option requires Codex and the optional `pyte` dependency. Unavailable TUI dependencies yield an incomplete result, never a UI PASS. Process checks without `--tui` do not verify a real client. The new Desktop managed event subsequently arrived as external input in the same conversation after the preceding assistant turn ended. Its receipt matched the previously queued test event. This proves conversation arrival, not pixel visibility or completed business work; no new source polling was needed.
 
 ## Test boundaries
 
