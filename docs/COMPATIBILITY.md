@@ -1,7 +1,8 @@
 # Client connectivity and validation scope
 
 The 2026-09-09 JSON predicate extension passed installed macOS/Linux process
-checks and an actual ordinary Unix remote TUI matched/recovery/follow-up flow.
+checks and actual ordinary default shared-local and Unix remote TUI
+matched/recovery/follow-up flows.
 Live receivers advertise capabilities; new predicate creation and request
 mutations refuse an older active receiver. This does not make older binaries
 safe against newer state, and adds no Desktop pixel or Windows evidence.

@@ -263,3 +263,14 @@ The final source suite including the five report-lifecycle regressions passed
 A sixth report-lifecycle regression subsequently passed with the focused
 suite: terminal capture and thread archival failures still close all owned
 resources, verify temporary-directory removal, and finalize the report as FAIL.
+
+The same final predicate wheel also passed the ordinary default shared-local
+CLI TUI in 55.757 seconds: matched and recovered events each had one exact
+client ID in native history, both rendered, and a user follow-up received a
+response. Workspace trust was observed; no command approval occurred. This
+adds the default CLI path to the separate Unix remote result.
+
+Latency commit `2914e1e` passed all four hosted regression and packaging jobs
+([run](https://github.com/Jaemani/codex-monitor/actions/runs/34254314660)).
+The workflow now pins official checkout v7.0.1 and setup-python v7.0.0 commits
+to replace the deprecated Node 20 action versions.

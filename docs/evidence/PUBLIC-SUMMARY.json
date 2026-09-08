@@ -1390,6 +1390,26 @@
       "scope": "four completed samples followed by inability to confirm the fifth busy scenario using screen text; replaced by native-state driver",
       "completed_samples": 4,
       "note": "Original failure and earlier agent attempts retained; not counted as a complete latency run"
+    },
+    {
+      "local_report": "predicate-default-tui-2026-09-09.json",
+      "result": "PASS",
+      "scope": "ordinary default shared-local CLI predicate matched/recovery/follow-up",
+      "elapsed_seconds": 55.757,
+      "wheel_sha256": "26dff6e334728c872fd6307e10a3567d955488d6e64d8241976dcfbdcc682b4a",
+      "matched_native_count": 1,
+      "recovered_native_count": 1,
+      "followup_response_seen": true,
+      "command_approval_seen": false,
+      "client_ui_verified": true,
+      "business_completion_verified": false
+    },
+    {
+      "local_report": "latency-hosted-ci-2026-09-09",
+      "result": "PASS",
+      "commit": "2914e1e8d587036d70d74de8ea4c9b18fdba15f6",
+      "url": "https://github.com/Jaemani/codex-monitor/actions/runs/34254314660",
+      "scope": "all four macOS/Linux Python 3.11/3.14 regression and packaging jobs including 140 tests"
     }
   ]
 }

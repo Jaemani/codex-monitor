@@ -334,3 +334,8 @@ values where the category has enough observations, plus a small-sample caveat.
 These are signed observer intervals and bounded observations, not latency
 guarantees or service-level objectives. The canary rejects command approval
 prompts and only accepts the exact disposable workspace trust dialog.
+
+The final predicate wheel also passed `managed-predicate-canary.py --tui`
+without `--remote` in 55.757 seconds, using the ordinary shared-local CLI.
+Matched and recovered events rendered and were correlated once each by exact
+client ID; the subsequent user response passed. No command approval occurred.
