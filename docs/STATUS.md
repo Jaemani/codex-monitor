@@ -12,8 +12,26 @@ target thread to be loaded on their server.
 
 - README now includes managed-file, stable-condition, multi-worker PM, optional relay and scoped
   status/pause examples, with external adapter prerequisites. A read-only multi-conversation terminal
-  dashboard is recommended and tracked as planned work; current commands provide snapshots only.
-  This documentation update adds no runtime or real-client verification evidence.
+  dashboard was subsequently implemented; current scope and verification are described below.
+- `dashboard` implements a separate read-only terminal view with conversation filtering, scrolling,
+  resize handling and text/JSON snapshots. It reads local database snapshots and checks authenticated
+  receiver HTTP readiness without constructing a monitor store, Codex RPC client or model session.
+  Source connectivity remains unknown; collector freshness and explicitly reported request state
+  are separate observations. The final local regression suite passed 151 tests in 32.617 seconds, including seven dashboard
+  regressions and three health-hook tests. The installed wheel matched all 19 runtime modules
+  (SHA-256 `64e4d4e52f1fe7ebcd435c57ed7beff2b6a297aec19db3b1e00b11050cc84014`).
+- The final installed-wheel dashboard PTY passed 31 checks in 8.118 seconds at the default
+  two-second refresh interval: multiple conversations, exact filtering, full snapshots, scrolling,
+  narrow resize, receiver outage/recovery, q/Ctrl-C and terminal restoration. Earlier failed reports
+  are retained: the harness initially resolved the virtualenv interpreter to its base Python, and
+  the actual macOS terminal retained PENDIN after TCSADRAIN. The harness preserves the venv path;
+  runtime cleanup now flushes pending navigation input while restoring settings. The owned local
+  runtime and skill were upgraded, the receiver returned authenticated-ready, and all eight bindings,
+  credentials and previous receipts were preserved. External producer health remains unknown.
+- The OS timer health-hook example passed three focused tests, including an actual probe subprocess
+  sending through the CLI to an authenticated local receiver and a real HTTP health fixture. Healthy
+  checks and recovery stay quiet; confirmed outages are deduplicated after acknowledgement loss,
+  and a later outage has a new identity. These checks use a local delivery sink, not model repair.
 
 - Session usability update: the skill now routes event monitoring away from scheduled model polling,
   explains optional relay conversations, preserves stored envelopes for authorized forwarding, and

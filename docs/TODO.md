@@ -10,12 +10,16 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Next: reliable everyday use
 
-- [ ] **P1 — Read-only multi-conversation terminal dashboard.** Refresh configured bindings and managed
-  collector observations from one selected state directory without model calls. Show pause state,
-  receiver readiness, observation age, unknown/stale producer health, pending/failed deliveries and
-  receipt details. Bound refresh work and keep errors visible. Validate terminal resize, exit and
-  receiver outage behavior. Native client badges, unregistered agents and cross-host discovery are
-  outside this initial scope. Dashboard implementation has not started.
+- [x] **Read-only multi-conversation terminal dashboard.** `dashboard` provides a live summary and
+  scrollable details, plus text/JSON snapshots and conversation filtering. It separates receiver
+  readiness, delivery configuration, collector observations and explicit request states. It uses
+  bounded read-only queries without model calls. See [dashboard scope](DASHBOARD.md) and the dated
+  verification in STATUS.md. Native badges, unregistered agents and cross-host discovery remain
+  outside this initial implementation.
+- [x] **OS timer health-hook example.** A small HTTP probe emits only after consecutive failed checks,
+  persists outage IDs across failed sends, and stays quiet after acknowledgement and on recovery.
+  Local HTTP/inbox and real probe-process/receiver checks passed. Actual timer deployment and
+  model-driven recovery require a selected service and authorized procedure; see [recipe](HEALTH-HOOK.md).
 
 - [x] **Event-first session guidance.** Explain optional relay conversations, full-envelope forwarding,
   concise destination replies and separate configuration/process/delivery evidence. Updated local skill

@@ -60,6 +60,12 @@ completion or expiry, read [requests.md](references/requests.md).
 
 ## Manage and diagnose
 
+For a live overview, use `dashboard` in a separate interactive terminal. For an assistant's status
+check use `dashboard --once --json`, optionally filtered with `--thread THREAD_ID`; live mode must
+not occupy the conversation's tool loop. The view reads registered local connections and probes
+receiver readiness without model calls. External producer and agent activity remain unknown unless
+supported observations or explicit work reports exist.
+
 For a managed monitor, use `monitor status`, `monitor pause`, `monitor resume`, or `monitor remove`
 with its name and the exact current `--thread`. `monitor list` is scoped the same way. Removal preserves
 old receipts and checkpoints; recreating a name starts a separate generation. Pause/removal cannot

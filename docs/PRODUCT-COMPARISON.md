@@ -1,6 +1,6 @@
 # Compatibility, reliability, and usability assessment
 
-Assessment date: **2026-09-08**. The comparison covers Claude Code's documented Channels, `asyncRewake` hooks, subagents, and agent teams. Claude behavior comes from [first-party documentation research](CLAUDE-COMPARISON.md); codex-monitor behavior comes from saved execution evidence. The two products have not undergone the same large-scale fault-injection campaign, so this document does not claim an overall reliability advantage.
+Assessment date: **2026-09-09**. The comparison covers Claude Code's documented Channels, `asyncRewake` hooks, subagents, and agent teams. Claude behavior comes from [first-party documentation research](CLAUDE-COMPARISON.md); codex-monitor behavior comes from saved execution evidence. The two products have not undergone the same large-scale fault-injection campaign, so this document does not claim an overall reliability advantage.
 
 ## Current conclusion
 
@@ -14,7 +14,7 @@ The core flow is implemented and verified: one selected conversation can continu
 | Long-running behavior | 3,600-second TUI soak and 3,600-second receiver fault run with 55 restarts; failure records retained | Bounded real-world validation passed; no overall superiority claim |
 | Local intervention and permissions | Draft and active-turn concurrency plus TUI recovery after Ctrl+C and a new user prompt | Core behavior met; Desktop draft and approval cases remain |
 | CLI and Desktop support | Verified macOS/Linux TUI combinations and the current Desktop app | Other Windows, WSL, IDE, and SSH combinations remain unverified |
-| Native UI integration | External `sessions` status and readable queued event messages | Less integrated than Claude's native channel indicator and reply tools |
+| Native UI integration | External read-only dashboard, `sessions` snapshots and readable queued event messages | Less integrated than Claude's native channel indicator and reply tools |
 | Event latency | Current Codex `shared-local` consumer checks external queue changes about every 10 seconds | No latency parity with Claude MCP push; immediate response is not guaranteed |
 | Conversation management | `$codex-monitor` skill, scoped `monitor` commands, plus external `attach`, `sessions`, `pause`, and `reply` | Easier management; installing the skill does not start the runtime or a producer |
 | Continuous producer management | Receiver supervises conversation-scoped managed file collectors with checkpoints and observed health; external/legacy producers remain separate | Local file lifecycle and real TUI checks passed; broader producer supervision and Desktop interaction remain gaps |
@@ -55,3 +55,32 @@ Connect the same producer and event set to both products and record:
 | Explicit reply, lost response, and retry | Correct recipient, persistence, deduplication, and required user actions |
 
 Claude Channels does not document delivery while its session is closed. Any comparison of that case must say whether an additional adapter was used and must not attribute adapter behavior to the base feature.
+
+## Native Codex and current Claude scope
+
+The [README comparison](../README.md#how-it-compares) includes native Codex explicitly.
+Codex already exposes subagent activity in local clients, `/agent` in the CLI, lifecycle hooks and
+scheduled tasks that can return to an existing chat. On eligible plans, supported Gmail, Slack and
+GitHub app events can trigger tasks on ChatGPT web/mobile; the official documentation excludes that
+feature from local Desktop, CLI and IDE. This is a surface distinction, not an assertion that OpenAI
+products cannot react to events. See [scheduled tasks](https://learn.chatgpt.com/docs/automations),
+[subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents), and
+[hooks](https://learn.chatgpt.com/docs/hooks).
+
+Claude's documented mechanisms serve different purposes:
+
+| Mechanism | Trigger and lifecycle | Important boundary |
+|---|---|---|
+| [Channels](https://code.claude.com/docs/en/channels) | MCP push into an opted-in, running session; source-labelled inbound display | Research preview with account, plugin and organization controls; not a promise of offline delivery |
+| [Channel queue and reply tools](https://code.claude.com/docs/en/channels-reference) | Busy arrivals queue in order and may be processed as a group next turn | Transport write is not processing acknowledgement; persistence and confirmation require server design |
+| [`async` hook](https://code.claude.com/docs/en/hooks) | Background command; completion context delivered on a later turn | Ordinary async completion waits if the conversation is idle |
+| [`asyncRewake` hook](https://code.claude.com/docs/en/hooks) | Background command can wake an idle session when it exits 2 | A hook completion mechanism, not a generic durable external inbox |
+| [`/loop` and session schedules](https://code.claude.com/docs/en/scheduled-tasks) | Due prompts enqueue between turns; no catch-up for every missed interval | Needs a running session; recurring tasks expire after seven days; eligible unexpired tasks can restore on resume |
+| [Desktop scheduled tasks](https://code.claude.com/docs/en/desktop-scheduled-tasks) | Persisted local schedules start fresh sessions | Requires awake computer and open app; distinct from continuing an existing monitored conversation |
+| [Cloud Routines](https://code.claude.com/docs/en/routines) | Schedule/API/GitHub triggers start autonomous cloud sessions | Runs with laptop off but does not provide the same local files or existing-session context |
+| [Subagents](https://code.claude.com/docs/en/sub-agents) and [teams](https://code.claude.com/docs/en/agent-teams) | Background work, completion notifications; experimental teams share tasks/mailboxes | Work orchestration, not external source monitoring; team/task state is not a source connection guarantee |
+
+The dashboard observes codex-monitor's configured local connections and explicit request reports. It
+does not discover all native agents, grant remote approvals, or replace either product's task UI.
+Current external producer connectivity remains unknown without producer telemetry. Claims about
+exactly-once side effects, superior tail latency or platform-wide reliability require matched tests.

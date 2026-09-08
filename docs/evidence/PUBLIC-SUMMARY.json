@@ -1418,6 +1418,56 @@
       "url": "https://github.com/Jaemani/codex-monitor/actions/runs/34254670555",
       "scope": "Ubuntu Python3.11 reconnect regression timed out during healthy reconciliation; other matrix jobs passed",
       "test": "test_timeout_reconnects_and_reconciles_persisted_acceptance_once"
+    },
+    {
+      "local_report": "dashboard-installed-2026-09-09.json",
+      "result": "PASS",
+      "scope": "installed macOS terminal dashboard PTY; local fixture receiver; no Codex model or Desktop pixel test",
+      "elapsed_seconds": 8.118,
+      "checks": {
+        "managed_collector_is_visible": true,
+        "json_snapshot_is_read_only": true,
+        "json_snapshot_filters_thread": true,
+        "json_snapshot_contains_bindings": true,
+        "json_snapshot_excludes_other_thread": true,
+        "json_snapshot_contains_collector": true,
+        "json_snapshot_reports_receiver_ready": true,
+        "text_snapshot_contains_multiple_bindings": true,
+        "text_snapshot_contains_collector": true,
+        "text_snapshot_has_no_terminal_controls": true,
+        "text_snapshot_lines_fit_default_width": true,
+        "text_snapshot_contains_full_multi_conversation_output": true,
+        "unfiltered_json_contains_other_thread": true,
+        "missing_state_snapshot_fails_read_only": true,
+        "missing_state_remains_missing": true,
+        "live_dashboard_reports_receiver_ready": true,
+        "live_dashboard_renders_multiple_bindings": true,
+        "live_dashboard_renders_paused_binding": true,
+        "row_navigation_reaches_managed_collector": true,
+        "live_unfiltered_dashboard_reaches_other_thread": true,
+        "row_navigation_changes_viewport": true,
+        "narrow_resize_keeps_lines_bounded": true,
+        "narrow_resize_keeps_dashboard_visible": true,
+        "receiver_outage_is_visible": true,
+        "receiver_recovery_is_visible": true,
+        "q_process_cleaned_up": true,
+        "q_termios_restored": true,
+        "ctrl_c_process_cleaned_up": true,
+        "ctrl_c_termios_restored": true,
+        "dashboard_does_not_mutate_database": true,
+        "no_model_session_calls": true
+      },
+      "cleanup": {
+        "errors": [],
+        "remaining_owned_ptys": []
+      },
+      "wheel_sha256": "64e4d4e52f1fe7ebcd435c57ed7beff2b6a297aec19db3b1e00b11050cc84014",
+      "regression_tests": 151,
+      "earlier_failures": [
+        "test harness resolved virtualenv interpreter symlink; corrected to preserve environment",
+        "macOS terminal PENDIN persisted with TCSADRAIN; fixed with input-flushing restoration"
+      ],
+      "local_upgrade": "receiver restored ready; eight bindings, credentials and prior receipts preserved"
     }
   ]
 }

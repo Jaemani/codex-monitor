@@ -26,6 +26,7 @@ from .watch import ChangeWatcher, atomic_json, file_sample
 from .replies import ReplyStore
 from .requests import RequestStore
 from .sessions import overview, display
+from .dashboard import run_dashboard
 
 
 def output(value):
@@ -123,6 +124,11 @@ def parser():
     bind.add_argument("--endpoint", default="shared-local")
     commands.add_parser("serve")
     commands.add_parser("status")
+    dashboard = commands.add_parser("dashboard", help="read-only inventory of attached conversations")
+    dashboard.add_argument("--once", action="store_true", help="render one snapshot and exit")
+    dashboard.add_argument("--json", action="store_true", help="emit one JSON snapshot (requires --once)")
+    dashboard.add_argument("--interval", type=float, default=2.0, help="live refresh interval in seconds")
+    dashboard.add_argument("--thread", help="limit the inventory to one conversation ID")
     sessions = commands.add_parser("sessions", help="show attached conversations and receiver state without waking Codex")
     sessions.add_argument("name", nargs="?")
     sessions.add_argument("--json", action="store_true")
@@ -192,7 +198,7 @@ def main(argv=None):
     args = parser().parse_args(argv)
     root = Path(args.state).expanduser().resolve()
     config_path = root / "config.json"
-    pool = SessionPool()
+    pool = None
     try:
         if args.command == "init":
             if config_path.exists():
@@ -232,6 +238,18 @@ def main(argv=None):
                 endpoint = f"ws://127.0.0.1:{args.port}"
                 os.execvp("codex", ["codex", "app-server", "--listen", endpoint])
             os.execvp("codex", ["codex", "--remote", args.endpoint or endpoint, "-C", args.cwd])
+        if args.command == "dashboard":
+            # The dashboard does not need configuration to read the local
+            # inventory.  A missing or malformed config only makes the
+            # receiver readiness probe unavailable; it must not turn a
+            # useful read-only snapshot into a state-changing initialization.
+            return run_dashboard(
+                root,
+                once=args.once,
+                as_json=args.json,
+                interval=args.interval,
+                thread=args.thread,
+            )
         config = json.loads(config_path.read_text())
         if config.get("version") != 1:
             raise ValueError("unsupported config version")
@@ -244,6 +262,7 @@ def main(argv=None):
             )
             output(getattr(manager, args.action)())
             return 0
+        pool = SessionPool()
         if args.command == "source":
             if not NAME.fullmatch(args.name) or "/" in args.name:
                 raise ValueError("invalid source name")
@@ -420,4 +439,5 @@ def main(argv=None):
         print(f"codex-monitor: {exc}", file=sys.stderr)
         return 2
     finally:
-        pool.close()
+        if pool is not None:
+            pool.close()

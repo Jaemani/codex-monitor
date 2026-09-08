@@ -1,5 +1,30 @@
 # Test design and results
 
+## Read-only dashboard and OS health-hook example (2026-09-09)
+
+The dashboard regression covers no runtime/RPC construction, read-only inventory, exact filtering,
+missing/corrupt state, terminal-control sanitization, narrow rendering, full snapshots and authenticated
+receiver readiness including failure responses. The health-hook regression uses an HTTP fixture and
+the durable inbox for quiet healthy checks, consecutive failures, lost-ack deduplication, quiet
+recovery and a distinct later outage. A separate real probe subprocess sends through the CLI to an
+authenticated receiver with a local sink. These tests do not invoke a Codex model or repair a server.
+
+The opt-in dashboard canary drives an actual PTY and checks navigation, resizing, receiver
+outage/recovery, missing-state preservation and terminal settings after `q` and Ctrl-C. It compares
+database semantics before and after observation. Use an installed Python path to test a wheel
+independently from the checkout:
+
+```bash
+.venv/bin/python scripts/dashboard-canary.py --run \
+  --dashboard-python /absolute/installed-runtime/bin/python \
+  --report /tmp/codex-monitor-dashboard.json
+```
+
+Requires a POSIX terminal environment and the development `pyte` extra. This validates the dashboard's
+own UI, not Codex TUI conversation delivery or Desktop pixels. See STATUS.md for measured runs.
+
+## Earlier delivery evidence
+
 Results below are dated 2026-09-08. The primary environment was macOS with
 Python 3.14.6, Codex CLI 0.153.4, and `websockets` 16.1.1. Linux wheel and
 TUI checks used Debian 12 arm64 and Python 3.11 where stated.
