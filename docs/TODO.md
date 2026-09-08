@@ -66,6 +66,6 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 - [x] Receiver lifecycle, crash/restart and one-hour unavailable-endpoint validation.
 - [x] Human-readable events, attach/sessions/pause/unpause/reply and honest unknown producer/target status.
 - [x] Runtime installer and skill/plugin assets; isolated macOS/Linux archive lifecycle tests.
-- [x] 140 regression tests in hosted macOS/Linux CI and official skill/plugin format validators.
+- [x] 151 regression tests in hosted macOS/Linux CI and official skill/plugin format validators.
 
 Raw transcripts remain local. See [public evidence](evidence/README.md) and [compatibility](COMPATIBILITY.md).

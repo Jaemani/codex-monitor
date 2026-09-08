@@ -71,6 +71,7 @@ Claude's documented mechanisms serve different purposes:
 
 | Mechanism | Trigger and lifecycle | Important boundary |
 |---|---|---|
+| [Monitor](https://code.claude.com/docs/en/tools-reference#monitor-tool) | Background script output lines or WebSocket events reach the same working session; plugins can declare monitors that start when active | Native watch lifecycle stops with its session or owning subagent; provider and telemetry-setting availability restrictions apply |
 | [Channels](https://code.claude.com/docs/en/channels) | MCP push into an opted-in, running session; source-labelled inbound display | Research preview with account, plugin and organization controls; not a promise of offline delivery |
 | [Channel queue and reply tools](https://code.claude.com/docs/en/channels-reference) | Busy arrivals queue in order and may be processed as a group next turn | Transport write is not processing acknowledgement; persistence and confirmation require server design |
 | [`async` hook](https://code.claude.com/docs/en/hooks) | Background command; completion context delivered on a later turn | Ordinary async completion waits if the conversation is idle |
@@ -84,3 +85,9 @@ The dashboard observes codex-monitor's configured local connections and explicit
 does not discover all native agents, grant remote approvals, or replace either product's task UI.
 Current external producer connectivity remains unknown without producer telemetry. Claims about
 exactly-once side effects, superior tail latency or platform-wide reliability require matched tests.
+
+Claude Monitor directly supports log tails, PR/CI polling, file watches and WebSocket feeds without
+pausing the conversation. The documented tool is unavailable on Bedrock, Google Cloud Agent Platform
+and Microsoft Foundry, or with the specified telemetry-disable settings. This is stronger native
+monitor integration than codex-monitor provides; the separate dashboard does not create equivalent
+Codex-native lifecycle controls. See the [Monitor reference](https://code.claude.com/docs/en/tools-reference#monitor-tool).

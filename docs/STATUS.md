@@ -10,6 +10,12 @@ target thread to be loaded on their server.
 
 ## Confirmed
 
+- Implementation commit `dc06e0a` passed hosted macOS/Linux checks on Python 3.11 and 3.14,
+  including the 151-test regression suite and release packaging:
+  [CI run](https://github.com/Jaemani/codex-monitor/actions/runs/34263553188).
+  The README comparison now also covers Claude's documented native `Monitor` tool for background
+  scripts and WebSocket events, with availability and session-lifetime limitations.
+
 - README now includes managed-file, stable-condition, multi-worker PM, optional relay and scoped
   status/pause examples, with external adapter prerequisites. A read-only multi-conversation terminal
   dashboard was subsequently implemented; current scope and verification are described below.
