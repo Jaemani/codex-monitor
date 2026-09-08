@@ -29,9 +29,31 @@ Local Desktop does not require SSH. SSH is a separate transport option for an ex
 
 The installed Codex returned `MCP event subscriptions are only supported for hosted apps` for `mcpServer/event/stream/start`. Registering a normal local MCP server therefore did not provide the same event ingress as Claude Channels. No supported local plugin mechanism for hidden channel input or a persistent monitor badge was confirmed.
 
-Direct WebSocket/Unix/daemon adapters can address the server that owns an already-loaded thread. They may offer a different notification path, but their lower latency across ordinary CLI and Desktop is not established. The real Unix remote-TUI baseline verifies functionality, not a latency advantage. Desktop's current internal server cannot be assumed to be an arbitrary independently launched WebSocket server.
+Direct WebSocket/Unix/daemon adapters can address the server that owns an already-loaded thread. Managed monitors now accept an explicit owner endpoint. An actual Unix remote-TUI measurement is recorded below; latency distributions and Desktop equivalence remain unverified. Desktop's current internal server cannot be assumed to be an arbitrary independently launched WebSocket server.
 
 The present limitation is the verified shared-local path, not proof that every Codex integration must poll forever. Decreasing codex-monitor's HTTP or dispatch interval alone cannot remove the owner's external-queue scan interval.
+
+## Managed Unix remote-TUI observation (2026-09-09)
+
+One installed-wheel run used a test-owned Unix App Server with an ordinary
+`codex --remote` TUI. The exact target thread was loaded on that server and the
+monitor retained the supplied endpoint. It rendered and consumed the managed
+file event and accepted a subsequent user turn.
+
+| Observed interval | Seconds |
+|---|---:|
+| File change to local intake | 0.529 |
+| Local intake to native acceptance | 0.002 |
+| Native acceptance to observed consumption | 0.394 |
+| Observed consumption to visible content | 0.108 |
+| File change to visible content | 1.032 |
+
+These timestamps come from sampled client observations and include observer
+delay. They are not precise model-start measurements, p50/p95 statistics or a
+latency guarantee. They do establish a functioning direct-owner CLI option;
+shared-local behavior remains unchanged. The official
+[App Server documentation](https://learn.chatgpt.com/docs/app-server)
+classifies the transport as experimental and unsupported for production.
 
 ## Improvement acceptance criteria
 

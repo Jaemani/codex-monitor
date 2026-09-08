@@ -5,10 +5,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import socket
 import threading
 import time
+from urllib.parse import parse_qs, urlsplit
 
 from .errors import IngressError
 from .monitor import MANAGED_SOURCE
 from .replies import ReplyStore
+from .requests import RequestStore
+from .request_dispatch import RequestDispatcher
 from .sessions import overview
 
 
@@ -106,6 +109,8 @@ class Server:
         self.sources = sources
         self.admin = admin_token
         self.replies = ReplyStore(monitor.root)
+        self.requests = RequestStore(monitor.root, clock=monitor.clock)
+        self.request_dispatcher = RequestDispatcher(monitor, self.requests)
         self.stop = threading.Event()
         self.worker = None
         self.worker_error = None
@@ -138,20 +143,65 @@ class Server:
                 value = self.headers.get("Authorization", "")
                 return value[7:] if value.startswith("Bearer ") else ""
 
+            def source(self):
+                token = self.token()
+                source = next((name for name, secret in owner.sources.items()
+                               if hmac.compare_digest(token.encode(), secret.encode())), None)
+                if source is None:
+                    raise IngressError("source credentials required", 401)
+                return source
+
+            def body(self, label):
+                if self.headers.get("Transfer-Encoding"):
+                    raise IngressError("chunked requests are not supported", 400)
+                try:
+                    size = int(self.headers.get("Content-Length", "-1"))
+                except ValueError:
+                    size = -1
+                if size < 0:
+                    raise IngressError("Content-Length required", 411)
+                if size > 32768:
+                    raise IngressError(f"{label} exceeds 32 KiB", 413)
+                if self.headers.get_content_type() != "application/json":
+                    raise IngressError("Content-Type must be application/json", 415)
+                return json.loads(self.rfile.read(size))
+
+            def original(self, source, delivery_id):
+                if not isinstance(delivery_id, str) or not delivery_id or len(delivery_id) > 200:
+                    raise IngressError("delivery_id must be a nonempty identifier", 400)
+                event = owner.monitor.event(delivery_id)
+                if event["source"] != source:
+                    raise IngressError("delivery not found", 404)
+                return event
+
+            @staticmethod
+            def query_values(query, allowed):
+                unexpected = sorted(set(query) - set(allowed))
+                if unexpected:
+                    raise IngressError("unknown query parameter", 400)
+                values = {}
+                for name in allowed:
+                    items = query.get(name)
+                    if items is None:
+                        continue
+                    if len(items) != 1:
+                        raise IngressError(f"query parameter {name} must occur once", 400)
+                    values[name] = items[0]
+                return values
+
             def handle_request(self, write=False):
                 try:
                     if self.headers.get("Origin"):
                         raise IngressError("browser origins are not accepted", 403)
-                    if self.path == "/v1/replies" or self.path.startswith("/v1/replies/"):
-                        token = self.token()
-                        source = next((name for name, secret in owner.sources.items()
-                                       if hmac.compare_digest(token.encode(), secret.encode())), None)
-                        if source is None:
-                            raise IngressError("source credentials required", 401)
-                        if not write and self.path == "/v1/replies":
+                    parsed = urlsplit(self.path)
+                    path = parsed.path
+                    query = parse_qs(parsed.query, keep_blank_values=True)
+                    if path == "/v1/replies" or path.startswith("/v1/replies/"):
+                        source = self.source()
+                        if not write and path == "/v1/replies":
                             self.reply(200, owner.replies.pending(source))
-                        elif write and self.path.endswith("/ack"):
-                            reply_id = self.path[len("/v1/replies/"):-len("/ack")]
+                        elif write and path.endswith("/ack"):
+                            reply_id = path[len("/v1/replies/"):-len("/ack")]
                             if not reply_id or "/" in reply_id:
                                 raise IngressError("unknown route", 404)
                             if self.headers.get("Transfer-Encoding") or self.headers.get("Content-Length", "0") != "0":
@@ -160,13 +210,71 @@ class Server:
                         else:
                             raise IngressError("unknown route", 404)
                         return
+                    if path == "/v1/requests" and write:
+                        source = self.source()
+                        self.query_values(query, ())
+                        data = self.body("request")
+                        if not isinstance(data, dict):
+                            raise IngressError("request body must be an object")
+                        event = self.original(source, data.get("delivery_id"))
+                        binding = next((item for item in owner.monitor.bindings()
+                                        if item["name"] == event["binding"]), None)
+                        if binding is None:
+                            raise IngressError("delivery binding not found", 404)
+                        value = owner.requests.create(
+                            binding["thread"], source, data.get("request_key"),
+                            event["id"], event["binding"], data.get("payload", {}),
+                            expires_at=data.get("expires_at"),
+                        )
+                        self.reply(201, value)
+                        return
+                    if path.startswith("/v1/requests/") and not write and "/" not in path[len("/v1/requests/"):]:
+                        source = self.source()
+                        self.query_values(query, ())
+                        self.reply(200, owner.requests.get_by_id(
+                            path[len("/v1/requests/"):], source=source,
+                        ))
+                        return
+                    if path == "/v1/requests" and not write:
+                        source = self.source()
+                        values = self.query_values(query, {"thread", "limit", "after"})
+                        thread = values.get("thread")
+                        if not thread:
+                            raise IngressError("thread query parameter is required", 400)
+                        limit = values.get("limit")
+                        if limit is not None:
+                            try:
+                                limit = int(limit)
+                            except (TypeError, ValueError):
+                                raise IngressError("limit query parameter must be an integer", 400)
+                        self.reply(200, owner.requests.list_requests(
+                            thread, source=source, limit=100 if limit is None else limit,
+                            after=values.get("after"),
+                        ))
+                        return
+                    if path.startswith("/v1/requests/") and write and path.endswith("/updates"):
+                        request_id = path[len("/v1/requests/"):-len("/updates")]
+                        if not request_id or "/" in request_id:
+                            raise IngressError("unknown route", 404)
+                        source = self.source()
+                        self.query_values(query, ())
+                        request = owner.requests.get_by_id(request_id, source=source)
+                        data = self.body("request update")
+                        if not isinstance(data, dict):
+                            raise IngressError("request update body must be an object")
+                        detail = data.get("detail")
+                        summary = {"message": detail} if detail is not None else None
+                        value = owner.requests.transition(
+                            request["conversation_id"], source, request["request_key"],
+                            update_id=data.get("update_id"), target_state=data.get("state"),
+                            expected_revision=data.get("expected_revision"), summary=summary,
+                        )
+                        self.reply(200, value)
+                        return
                     if write:
-                        token = self.token()
-                        source = next((name for name, secret in owner.sources.items() if hmac.compare_digest(token.encode(), secret.encode())), None)
-                        if source is None:
-                            raise IngressError("invalid source credentials", 401)
+                        source = self.source()
                         prefix = "/v1/events/"
-                        if not self.path.startswith(prefix) or "/" in self.path[len(prefix):]:
+                        if not path.startswith(prefix) or "/" in path[len(prefix):]:
                             raise IngressError("unknown route", 404)
                         if self.headers.get("Transfer-Encoding"):
                             raise IngressError("chunked requests are not supported", 400)
@@ -183,16 +291,16 @@ class Server:
                         data = json.loads(self.rfile.read(size))
                         if not isinstance(data, dict) or data.get("source") != source:
                             raise IngressError("credential source does not match event source", 403)
-                        self.reply(202, owner.monitor.ingest(self.path[len(prefix):], data))
+                        self.reply(202, owner.monitor.ingest(path[len(prefix):], data))
                     else:
                         if not hmac.compare_digest(self.token().encode(), owner.admin.encode()):
                             raise IngressError("admin credentials required", 401)
-                        if self.path == "/v1/status":
+                        if path == "/v1/status":
                             self.reply(200, {**owner.monitor.status(), "worker_error": owner.worker_error})
-                        elif self.path == "/v1/sessions":
+                        elif path == "/v1/sessions":
                             self.reply(200, overview(owner.monitor))
-                        elif self.path.startswith("/v1/deliveries/"):
-                            self.reply(200, owner.monitor.event(self.path.removeprefix("/v1/deliveries/")))
+                        elif path.startswith("/v1/deliveries/"):
+                            self.reply(200, owner.monitor.event(path.removeprefix("/v1/deliveries/")))
                         else:
                             raise IngressError("unknown route", 404)
                 except IngressError as exc:
@@ -226,12 +334,28 @@ class Server:
 
     def _dispatch(self):
         while not self.stop.is_set():
+            errors = []
             try:
-                processed = self.monitor.dispatch_once()
-                self.worker_error = None
+                request_processed = self.request_dispatcher.pump()
             except Exception as exc:
+                request_processed = False
+                errors.append(("request", exc))
+            try:
+                monitor_processed = self.monitor.dispatch_once()
+            except Exception as exc:
+                monitor_processed = False
+                errors.append(("monitor", exc))
+            if errors:
                 processed = False
-                self.worker_error = type(exc).__name__
+                if len(errors) == 1:
+                    self.worker_error = type(errors[0][1]).__name__
+                else:
+                    self.worker_error = "; ".join(
+                        f"{label}:{type(exc).__name__}" for label, exc in errors
+                    )
+            else:
+                processed = request_processed or monitor_processed
+                self.worker_error = None
             if not processed:
                 self.monitor.wakeup.wait(.5)
                 self.monitor.wakeup.clear()

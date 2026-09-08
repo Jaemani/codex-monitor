@@ -14,7 +14,7 @@ codex-monitor doctor --thread "$THREAD_ID"
 codex-monitor monitor create build --thread "$THREAD_ID" --file /absolute/project/build-status.json
 ```
 
-Use an explicit `--thread` or exactly `CODEX_THREAD_ID` from the host. If both are present they must match; a mismatch is rejected to prevent operating on another conversation. Missing scope is an error; it never selects the latest conversation or silently operates globally. Managed collectors currently require `shared-local`.
+Use an explicit `--thread` or exactly `CODEX_THREAD_ID` from the host. If both are present they must match; a mismatch is rejected to prevent operating on another conversation. Missing scope is an error; it never selects the latest conversation or silently operates globally. The default endpoint is `shared-local`.
 
 Creating a monitor persists its definition. The receiver must be running to sample files:
 
@@ -66,6 +66,29 @@ codex-monitor monitor create build --thread "$THREAD_ID" \
 
 ## Compatibility with existing commands
 
+An existing CLI TUI connected with `codex --remote` can use the same explicit
+App Server endpoint for its managed monitor:
+
+```bash
+codex-monitor doctor --surface cli --endpoint "$ENDPOINT" --thread "$THREAD_ID"
+codex-monitor monitor create build --thread "$THREAD_ID" \
+  --endpoint "$ENDPOINT" --file /absolute/project/build-status.json
+```
+
+The configured endpoint is shown in monitor status. Creation validates its
+syntax without making a connection, so an offline definition can be stored.
+Delivery requires that exact conversation to be loaded on the selected server.
+The monitor never loads or resumes it. A remote endpoint changes delivery only;
+the watched file remains local to the receiver host.
+
+Supported adapter forms are `shared-local`, `local`, `unix://`,
+`unix:///absolute/socket`, `ssh://ALIAS`, loopback `ws://`, and `wss://`.
+Use an existing trusted host alias for SSH. Bearer credentials belong in
+`CODEX_MONITOR_SERVER_TOKEN_FILE`, not URL user information. The native
+[App Server transport](https://learn.chatgpt.com/docs/app-server#connect-the-cli-terminal-ui)
+is experimental; using an official API does not establish upstream production
+support or parity across every client. See STATUS.md for tested combinations.
+
 `watch-file` remains a separate foreground producer. It is not automatically adopted by the managed registry. `attach`, `sessions` and binding `pause`/`unpause` remain available for external webhook/agent sources. Prefer the scoped `monitor` commands for a managed collector.
 
-A native background badge and hidden channel input are not provided. Managed file events have no external reply recipient; respond in the conversation. Explicit source-scoped replies remain available for external producers. The user's ordinary CLI/Desktop conversation remains the interaction surface. Shared queue observation latency is unchanged; see [LATENCY.md](LATENCY.md). Verification and remaining limits are recorded in [STATUS.md](STATUS.md).
+A native background badge and hidden channel input are not provided. Managed file events have no external reply recipient; respond in the conversation. Explicit source-scoped replies remain available for external producers. The user's ordinary CLI/Desktop conversation remains the interaction surface. Default shared queue observation latency is unchanged; direct-owner latency must be measured separately. See [LATENCY.md](LATENCY.md). Verification and remaining limits are recorded in [STATUS.md](STATUS.md).

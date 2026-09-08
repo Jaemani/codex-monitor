@@ -225,3 +225,28 @@ For actual ordinary TUI behavior and a timed sampler soak, use `managed-monitor-
 The final 300.155-second sampler phase completed with 30 events, one receiver restart and no duplicate hashes. The combined run is INCOMPLETE because the TUI phase lacked the optional `pyte` dependency. Keep this distinction even after a separate TUI rerun; do not rewrite the original combined report as a UI PASS.
 
 The separate final ordinary macOS TUI run passed in 29.954 seconds with the same wheel: managed event display, native consumption and a subsequent user response in native history. It used Luna at xhigh with the test driver dependency installed. This is not a completed business-workflow claim, and no new Desktop pixel result is established.
+
+## Request lifecycle and managed remote CLI (2026-09-09)
+
+The request/explicit-endpoint candidate passed 124 macOS source tests and 124
+Linux installed-wheel tests. Request process/HTTP coverage passed 32 checks on
+Linux. The macOS request canary passed 37 checks including an actual ordinary
+TUI: quiet acknowledgement, retained composer draft, progress consumption
+without implicit completion, explicit completed event exactly once, and a
+subsequent native assistant response.
+
+```bash
+python3 scripts/request-lifecycle-canary.py --run \
+  --python /absolute/installed-venv/bin/python --tui \
+  --report /tmp/request-lifecycle.json
+python3 scripts/managed-monitor-canary.py --run \
+  --python /absolute/installed-venv/bin/python --tui --remote \
+  --report /tmp/managed-remote.json
+```
+
+The driver needs optional `pyte` and an authenticated Codex CLI for TUI checks.
+The second command uses a test-owned Unix App Server and ordinary `codex
+--remote`. Its recorded run passed 19 checks in 32.474 seconds. It verifies
+the configured endpoint and exact loaded thread, native event consumption,
+rendered content and a follow-up response. Latency timestamps are sampled
+observation times, not precise server-side execution-start timestamps.

@@ -872,6 +872,173 @@
       "result": "PASS",
       "scope": "default local runtime and bundled skill upgraded; existing monitor state preserved; no permanent receiver started",
       "wheel_sha256": "c7dc5234fd7608f4e41a4759bfb769bc270134be1c7aeddc12a10db804ad05f8"
+    },
+    {
+      "local_report": "request-macos-regression-2026-09-09",
+      "result": "PASS",
+      "tests": 124,
+      "elapsed_seconds": 27.432,
+      "scope": "macOS source regression",
+      "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
+    },
+    {
+      "local_report": "request-linux-2026-09-09.json",
+      "result": "FAIL",
+      "scope": "combined Linux run: regression and request phases passed; sampler cleanup failed without container init",
+      "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
+    },
+    {
+      "local_report": "request-linux-2026-09-09.json",
+      "result": "PASS",
+      "scope": "Linux installed-wheel regression and request process phases only",
+      "tests": 124,
+      "regression_seconds": 28.112,
+      "request_checks": 32,
+      "request_seconds": 6.139,
+      "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
+    },
+    {
+      "local_report": "request-linux-2026-09-09-isolation-noinit-diagnostic.json",
+      "result": "FAIL",
+      "scope": "focused no-init reproduction; remaining sampler PIDs were terminated zombies adopted by Python PID 1",
+      "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
+    },
+    {
+      "local_report": "request-archive-2026-09-09-scope-fixture.json",
+      "result": "FAIL",
+      "scope": "archive fixture inherited mismatched CODEX_THREAD_ID; runtime correctly rejected wrong scope",
+      "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
+    },
+    {
+      "result": "PASS",
+      "scope": "installed wheel / real receiver / request lifecycle CLI and HTTP",
+      "checks": {
+        "source_a_event_accepted": true,
+        "source_b_event_accepted": true,
+        "track_starts_received_request_quietly": true,
+        "track_received_is_quiet": true,
+        "track_reuses_stable_request_id": true,
+        "http_source_can_read_own_request": true,
+        "http_list_is_exact_thread_and_source_scoped": true,
+        "administrator_token_is_not_a_source_token": true,
+        "source_cannot_read_foreign_request": true,
+        "cli_thread_scope_rejects_wrong_conversation": true,
+        "request_list_is_conversation_scoped": true,
+        "http_duplicate_track_is_idempotent": true,
+        "request_key_reuse_with_different_payload_rejected": true,
+        "source_cannot_track_foreign_receipt": true,
+        "source_b_tracks_own_receipt": true,
+        "acknowledgement_is_accepted_and_quiet": true,
+        "duplicate_acknowledgement_is_stable": true,
+        "stale_update_rejected_by_compare_and_set": true,
+        "in_progress_update_is_accepted": true,
+        "meaningful_transition_emits_one_request_event": true,
+        "duplicate_transition_does_not_duplicate_event": true,
+        "completed_transition_is_accepted": true,
+        "completed_event_is_emitted_once": true,
+        "terminal_state_rejects_later_failure": true,
+        "source_b_can_read_own_request": true,
+        "explicit_cancellation_is_accepted": true,
+        "cancellation_event_is_source_scoped": true,
+        "restart_fixture_request_reaches_in_progress": true,
+        "request_state_survives_receiver_sigkill_restart": true,
+        "restart_does_not_duplicate_update_event": true,
+        "expired_request_reaches_terminal_state": true,
+        "cli_rejects_invalid_state_helpfully": true,
+        "tui_acknowledged_transition_is_quiet": true,
+        "tui_progress_consumption_preserves_draft_and_request_state": true,
+        "tui_completed_notification_is_consumed_once": true,
+        "ordinary_tui_renders_and_consumes_request_event": true,
+        "ordinary_tui_followup_response_after_request_lifecycle": true
+      },
+      "elapsed_seconds": 43.616,
+      "local_report": "request-lifecycle-2026-09-09/final-macos.json",
+      "tui": {
+        "result": "PASS",
+        "client_ui_verified": true,
+        "event_consumed": true,
+        "followup_response_seen": true
+      },
+      "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
+    },
+    {
+      "result": "PASS",
+      "scope": "installed wheel / real receiver / process-sampler isolation",
+      "checks": {
+        "healthy_monitor_baseline_progresses_beside_hung_sampler": true,
+        "healthy_monitor_change_progresses_beside_hung_sampler": true,
+        "receiver_sigkill_cleans_hung_sampler_children": true,
+        "receiver_restart_does_not_duplicate_healthy_event": true,
+        "pause_discards_hung_sampler_late_result": true,
+        "pause_discards_delayed_sampler_late_result": true,
+        "rapid_pause_resume_discards_stale_delayed_result": true,
+        "remove_discards_delayed_sampler_late_result": true,
+        "debounce_candidate_does_not_emit_early": true,
+        "debounce_reversion_cancels_candidate": true,
+        "stable_change_emits_after_debounce": true,
+        "restart_does_not_credit_pending_downtime": true,
+        "restart_candidate_emits_once_after_new_observations": true,
+        "unhealthy_sampler_does_not_credit_debounce": true,
+        "recovered_sampler_emits_outage_candidate_once": true,
+        "healthy_monitor_remains_live_after_pause_and_remove": true,
+        "receiver_remains_healthy": true
+      },
+      "local_report": "request-linux-2026-09-09-isolation-init.json",
+      "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
+    },
+    {
+      "result": "PASS",
+      "scope": "isolated archive install/status/uninstall and state preservation",
+      "checks": {
+        "sidecar_hash": true,
+        "manifest_hashes": true,
+        "runtime_payload_matches_frozen_wheel": true,
+        "install": true,
+        "request_cli": true,
+        "skill_removed": true,
+        "state_preserved": true
+      },
+      "elapsed_seconds": 3.66,
+      "archive_sha256": "f3d26a5fa3584aca441ef10cf0a2ed23b20034316f819ca0e0e83fc6ba12dbbb",
+      "local_report": "request-archive-2026-09-09.json",
+      "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
+    },
+    {
+      "local_report": "request-lifecycle-2026-09-09/managed-macos-remote.json",
+      "result": "PASS",
+      "scope": "installed managed collector and actual ordinary Unix remote TUI",
+      "checks": {
+        "missing_thread_is_rejected": true,
+        "same_name_isolated_by_thread": true,
+        "explicit_and_environment_thread_selection": true,
+        "initial_sample_is_silent": true,
+        "change_receipt_reaches_selected_thread": true,
+        "change_does_not_reach_other_thread": true,
+        "pause_suppresses_new_delivery": true,
+        "paused_thread_does_not_block_other_thread": true,
+        "pause_does_not_rewrite_prior_history": true,
+        "resume_delivers_retained_change_once": true,
+        "remove_is_scoped_to_one_thread": true,
+        "remaining_same_name_monitor_still_runs": true,
+        "sigkill_restart_preserves_checkpoint_without_duplicate": true,
+        "restart_change_is_delivered_once": true,
+        "nonregular_file_does_not_hang_other_monitor": true,
+        "receiver_remains_healthy_with_nonregular_file": true,
+        "managed_tui_endpoint_server_has_exact_loaded_thread": true,
+        "managed_tui_change_intake_acceptance_consumption_visibility_timed_separately": true,
+        "ordinary_tui_renders_managed_watch_event": true
+      },
+      "elapsed_seconds": 32.474,
+      "sample_timing": {
+        "change_to_local_intake_seconds": 0.52874,
+        "local_intake_to_native_accepted_seconds": 0.00176,
+        "native_accepted_to_consumed_seconds": 0.393748,
+        "consumed_to_visible_seconds": 0.107641,
+        "change_to_visible_seconds": 1.031889
+      },
+      "client_ui_verified": true,
+      "completed_business_work_verified": false,
+      "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
     }
   ]
 }

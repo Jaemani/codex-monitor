@@ -512,7 +512,7 @@ class Canary:
             "client_ui_verified": False,
             "model_delivery_verified": False,
         }
-        terminal = tui_receiver = rpc = None
+        terminal = tui_receiver = rpc = remote_server = None
         receiver_log = None
         try:
             import importlib.util
@@ -523,6 +523,7 @@ class Canary:
             helper = importlib.util.module_from_spec(helper_spec)
             helper_spec.loader.exec_module(helper)
             Terminal = helper.Terminal
+            RemoteServer = helper.RemoteServer
             from codex_monitor.session import Rpc
 
             work = Path(tempfile.mkdtemp(prefix="codex-monitor-tui-", dir="/tmp"))
@@ -548,6 +549,8 @@ class Canary:
             tui_cli("init", "--port", str(port))
             admin = (state / "admin.token").read_text().strip()
 
+            endpoint = "shared-local"
+
             def ready():
                 request = urllib.request.Request(
                     f"http://127.0.0.1:{port}/v1/status",
@@ -567,10 +570,17 @@ class Canary:
                 "-c", f"model_reasoning_effort=\"{self.args.reasoning_effort}\"",
                 "-c", "tui.animations=false", instruction,
             ]
+            if self.args.remote:
+                remote_server = RemoteServer(work / "app-server.sock")
+                endpoint = remote_server.endpoint
+                tui_argv[1:1] = ["--remote", endpoint]
+                tui_report.update(surface="ordinary Codex TUI through owned Unix App Server",
+                                   endpoint=endpoint)
             if self.args.model:
                 tui_argv[1:1] = ["--model", self.args.model]
             terminal = Terminal(tui_argv)
-            rpc = Rpc("shared-local")
+            rpc = Rpc(endpoint)
+            tui_report["process_model"] = {"remote_app_server_pid": remote_server.pid} if remote_server else {}
             trust_sent = False
 
             def pump_until(condition, label, timeout=None):
@@ -608,7 +618,10 @@ class Canary:
 
             def find_thread():
                 nonlocal thread
-                rows = rpc.call("thread/list", {"cwd": str(work), "limit": 10, "sourceKinds": ["cli"]})["data"]
+                list_params = {"cwd": str(work), "limit": 10}
+                if not self.args.remote:
+                    list_params["sourceKinds"] = ["cli"]
+                rows = rpc.call("thread/list", list_params)["data"]
                 if len(rows) == 1:
                     thread = rows[0]["id"]
                 return thread
@@ -616,7 +629,12 @@ class Canary:
             pump_until(find_thread, "ordinary TUI thread discovery")
             pump_until(lambda: native_has("agentMessage", "READY_TUI_MANAGED"),
                        "initial native TUI response")
-            tui_cli("monitor", "create", "tui-watch", "--thread", thread, "--file", str(file_path), "--interval", "0.2")
+            created = tui_cli("monitor", "create", "tui-watch", "--thread", thread,
+                              "--file", str(file_path), "--interval", "0.2",
+                              "--endpoint", endpoint)
+            if not isinstance(created, dict) or created.get("endpoint") != endpoint:
+                raise CanaryError(f"managed monitor did not persist explicit endpoint {endpoint!r}: {created!r}")
+            tui_report["persisted_endpoint"] = endpoint
             receiver_log = (work / "serve.log").open("w")
             tui_receiver = subprocess.Popen(
                 [str(self.args.python), "-m", "codex_monitor", "--state", str(state), "serve"],
@@ -630,6 +648,14 @@ class Canary:
                     return False
 
             pump_until(receiver_ready, "TUI receiver readiness", timeout=30)
+            loaded = rpc.call("thread/loaded/list", {})["data"]
+            self.check(
+                "managed_tui_endpoint_server_has_exact_loaded_thread",
+                loaded == [thread] or thread in loaded,
+                endpoint=endpoint, thread=thread, loaded_thread_ids=loaded,
+            )
+            if self.args.remote:
+                self.report["checks"]["managed_tui_endpoint_server_has_exact_loaded_thread"] = True
             initial_hash = digest(file_path)
             deadline = time.monotonic() + 30
             while time.monotonic() < deadline:
@@ -642,10 +668,70 @@ class Canary:
                 terminal.pump(.1)
             else:
                 raise CanaryError("TUI managed collector did not checkpoint its silent baseline")
+            change_at = time.monotonic()
             file_path.write_text("tui-managed-change\n")
             marker = digest(file_path)
-            pump_until(lambda: marker in terminal.text(), "managed event rendered in ordinary TUI")
-            pump_until(lambda: native_has("userMessage", marker), "managed event consumed by ordinary TUI", timeout=30)
+            local_intake_at = None
+            accepted_at = None
+            consumed_at = None
+            visible_at = None
+            delivery_id = None
+            timing_deadline = time.monotonic() + 30
+
+            def tui_http(path):
+                request = urllib.request.Request(
+                    f"http://127.0.0.1:{port}{path}",
+                    headers={"Authorization": "Bearer " + admin},
+                )
+                with urllib.request.urlopen(request, timeout=3) as response:
+                    return json.load(response)
+
+            while time.monotonic() < timing_deadline:
+                terminal.pump(.1)
+                status = tui_cli("monitor", "status", "tui-watch", "--thread", thread)
+                if local_intake_at is None and (status.get("last_sample") or {}).get("sha256") == marker:
+                    local_intake_at = time.monotonic()
+                last_delivery = status.get("last_delivery") or {}
+                if delivery_id is None and last_delivery.get("delivery_id"):
+                    delivery_id = last_delivery["delivery_id"]
+                if delivery_id and accepted_at is None:
+                    delivery = tui_http("/v1/deliveries/" + delivery_id)
+                    if delivery.get("state") == "accepted":
+                        accepted_at = time.monotonic()
+                if consumed_at is None and native_has("userMessage", marker):
+                    consumed_at = time.monotonic()
+                if visible_at is None and marker in terminal.text():
+                    visible_at = time.monotonic()
+                if local_intake_at and accepted_at and consumed_at and visible_at:
+                    break
+            if not all((local_intake_at, accepted_at, consumed_at, visible_at, delivery_id)):
+                raise CanaryError(
+                    "managed TUI timing sample incomplete: "
+                    f"local={local_intake_at!r} accepted={accepted_at!r} "
+                    f"consumed={consumed_at!r} visible={visible_at!r} delivery={delivery_id!r}"
+                )
+            delivery = tui_http("/v1/deliveries/" + delivery_id)
+            final_status = tui_cli("monitor", "status", "tui-watch", "--thread", thread)
+            if final_status.get("thread") != thread or final_status.get("endpoint") != endpoint:
+                raise CanaryError(
+                    "managed delivery status lost the exact target binding: "
+                    f"thread={final_status.get('thread')!r} endpoint={final_status.get('endpoint')!r}"
+                )
+            timing = {
+                "change_to_local_intake_seconds": round(local_intake_at - change_at, 6),
+                "local_intake_to_native_accepted_seconds": round(accepted_at - local_intake_at, 6),
+                "native_accepted_to_consumed_seconds": round(consumed_at - accepted_at, 6),
+                "consumed_to_visible_seconds": round(visible_at - consumed_at, 6),
+                "change_to_visible_seconds": round(visible_at - change_at, 6),
+                "delivery_id": delivery_id,
+                "local_intake_at": local_intake_at,
+                "native_accepted_at": accepted_at,
+                "native_consumed_at": consumed_at,
+                "visible_at": visible_at,
+            }
+            tui_report["sample_timing"] = timing
+            self.report["checks"]["managed_tui_change_intake_acceptance_consumption_visibility_timed_separately"] = True
+            self.step("managed_tui_change_timing_sampled", **timing)
             pump_until(
                 lambda: "esc to interrupt" not in terminal.text().lower(),
                 "ordinary TUI idle after managed event",
@@ -663,7 +749,8 @@ class Canary:
             tui_report.update(
                 result="PASS", client_ui_verified=True, rendered_hash=marker, thread=thread,
                 event_consumed=True, followup_response_seen=True,
-                process_model={"tui_pid": terminal.pid, "receiver_pid": tui_receiver.pid},
+                process_model={"tui_pid": terminal.pid, "receiver_pid": tui_receiver.pid,
+                               **({"remote_app_server_pid": remote_server.pid} if remote_server else {})},
             )
             self.report["checks"]["ordinary_tui_renders_managed_watch_event"] = True
             self.step("ordinary_tui_managed_event_rendered", thread=thread, rendered_hash=marker)
@@ -711,6 +798,8 @@ class Canary:
                 receiver_log.close()
             if rpc is not None:
                 rpc.close()
+            if remote_server is not None:
+                remote_server.close()
             self.report["tui"] = tui_report
 
     def cleanup(self):
@@ -763,6 +852,8 @@ def main() -> int:
     parser.add_argument("--soak-seconds", type=int, default=0,
                         help="optional real elapsed managed-collector soak duration")
     parser.add_argument("--tui", action="store_true", help="also run the separate opt-in ordinary Codex TUI canary")
+    parser.add_argument("--remote", action="store_true",
+                        help="run the TUI phase through an owned Unix App Server endpoint")
     parser.add_argument("--model", help="optional model override for the owned ordinary TUI")
     parser.add_argument(
         "--reasoning-effort",
@@ -777,6 +868,8 @@ def main() -> int:
         parser.error("--timeout must be at least 5 seconds")
     if args.soak_seconds < 0:
         parser.error("--soak-seconds must be non-negative")
+    if args.remote and not args.tui:
+        parser.error("--remote requires --tui")
     if args.wheel_sha256 and not re.fullmatch(r"[0-9a-fA-F]{64}", args.wheel_sha256):
         parser.error("--wheel-sha256 must be a 64-character hexadecimal digest")
     canary = Canary(args)

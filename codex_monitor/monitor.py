@@ -9,6 +9,7 @@ import time
 import uuid
 import re
 from contextlib import contextmanager
+from urllib.parse import urlsplit
 
 from .errors import IngressError, Retryable, Uncertain, Permanent
 from .conditions import ConditionDebouncer
@@ -20,10 +21,43 @@ MANAGED_SOURCE = "managed/file"
 MAX_MANAGED_WATCHES = 128
 MAX_MANAGED_WATCHES_PER_THREAD = 32
 MANAGED_LIVENESS_WINDOW = 2.0
+_SSH_ALIAS = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
 
 
 def compact(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def validate_endpoint(endpoint):
+    """Validate an endpoint without opening a network or App Server connection."""
+    if not isinstance(endpoint, str) or not endpoint or "\x00" in endpoint:
+        raise IngressError("endpoint must be a valid local or App Server transport")
+    if endpoint in ("shared-local", "local", "unix://"):
+        return endpoint
+    if endpoint.startswith("unix://"):
+        path = endpoint.removeprefix("unix://")
+        if not path.startswith("/") or "\x00" in path:
+            raise IngressError("Unix endpoint must use an absolute socket path")
+        return endpoint
+    if endpoint.startswith(("ws://", "wss://")):
+        if any(char.isspace() for char in endpoint):
+            raise IngressError("endpoint URL is malformed")
+        try:
+            parsed = urlsplit(endpoint)
+            hostname = parsed.hostname
+            parsed.port  # Force malformed and out-of-range ports to fail here.
+        except ValueError as exc:
+            raise IngressError("endpoint URL is malformed") from exc
+        if (parsed.scheme not in ("ws", "wss") or not parsed.netloc or parsed.netloc.endswith(":") or
+                not hostname or
+                parsed.username is not None or parsed.password is not None or parsed.fragment):
+            raise IngressError("endpoint URL is malformed or contains credentials")
+        if parsed.scheme == "ws" and hostname.lower() not in ("127.0.0.1", "localhost", "::1"):
+            raise IngressError("ws endpoint must use a loopback host; use wss:// for remote hosts")
+        return endpoint
+    if endpoint.startswith("ssh://") and _SSH_ALIAS.fullmatch(endpoint.removeprefix("ssh://")):
+        return endpoint
+    raise IngressError("endpoint must be shared-local, local, unix:///absolute/path, ssh://ALIAS, ws://loopback, or wss://")
 
 
 class Monitor:
@@ -126,8 +160,7 @@ class Monitor:
             raise IngressError("managed watch interval must be between 0.1 and 86400 seconds")
 
     def managed_create(self, thread, name, path, interval=2.0, endpoint="shared-local", *, debounce_seconds=0):
-        if endpoint != "shared-local":
-            raise IngressError("managed file monitors currently require --endpoint shared-local")
+        endpoint = validate_endpoint(endpoint)
         self._managed_validate(thread, name, path, interval)
         if isinstance(debounce_seconds, bool) or not isinstance(debounce_seconds, (int, float)) or not math.isfinite(debounce_seconds) or not 0 <= debounce_seconds <= 86400:
             raise IngressError("debounce seconds must be between 0 and 86400")
@@ -143,7 +176,7 @@ class Monitor:
             if db.execute("SELECT count(*) FROM managed_watches WHERE thread=? AND removed=0", (thread,)).fetchone()[0] >= MAX_MANAGED_WATCHES_PER_THREAD:
                 raise IngressError("managed watch capacity for this thread reached", 429)
             db.execute("INSERT INTO bindings(name,thread,endpoint,sources) VALUES(?,?,?,?)",
-                       (binding, thread, "shared-local", compact([MANAGED_SOURCE])))
+                       (binding, thread, endpoint, compact([MANAGED_SOURCE])))
             db.execute("""INSERT INTO managed_watches
                 (id,thread,name,path,interval,binding,created,updated,debounce_seconds)
                 VALUES(?,?,?,?,?,?,?,?,?)""",
@@ -220,6 +253,9 @@ class Monitor:
 
     def _managed_public(self, row):
         checkpoint, checkpoint_error = self._managed_checkpoint_state(row["id"])
+        with self.connect() as db:
+            binding = db.execute("SELECT endpoint FROM bindings WHERE name=?", (row["binding"],)).fetchone()
+        endpoint = binding["endpoint"] if binding is not None else None
         condition = None
         condition_error = None
         if row["debounce_seconds"]:
@@ -249,7 +285,7 @@ class Monitor:
         return {
             "id": row["id"], "thread": row["thread"], "name": row["name"], "file": row["path"],
             "interval": row["interval"], "debounce_seconds": row["debounce_seconds"],
-            "binding": row["binding"], "enabled": bool(row["enabled"]),
+            "binding": row["binding"], "endpoint": endpoint, "enabled": bool(row["enabled"]),
             "collector_status": collector_status, "last_sample": checkpoint.get("last") if checkpoint else None,
             "checkpoint_pending": bool(checkpoint and checkpoint.get("pending")),
             "checkpoint_error": checkpoint_error, "condition": condition, "condition_error": condition_error,

@@ -3,7 +3,8 @@
 ## State and permissions
 
 The `--state` directory contains `config.json`, admin and source token files,
-`monitor.sqlite3` and its WAL, `serve.lock`, and watcher checkpoints. The
+`monitor.sqlite3`, reply and request databases with their WAL files,
+`serve.lock`, and watcher checkpoints. The
 directory is created with mode `0700`; config and token files use `0600`. Do
 not add this directory to a model's writable root. Running processes as the
 same OS user is not a security boundary, and full filesystem access can still
@@ -93,11 +94,33 @@ with one trace across all bindings. The hop limit of 8 is separate.
 
 Records are not deleted automatically. Deleting old records also removes
 deduplication evidence, so define a retention policy and monitor state volume.
-Stop `serve` before making a consistent backup of the database and WAL.
+Stop `serve` and other state-writing CLI commands before backing up the entire
+state directory. Preserve all databases, WAL files and checkpoints together.
+
+## Tracked requests
+
+`request track` binds an original external receipt to a conversation and source.
+Only explicit CLI or source-authenticated HTTP updates change its work state;
+native delivery and reply acknowledgement do not complete requests. The receiver
+records expiries and drains an ordered notification outbox. A paused binding
+defers its notifications without blocking other conversations.
+
+If notification intake fails, `request status` retains the pending notification,
+error, retry time and original route. Once locally accepted, its `delivery_id`
+can be checked with `inspect`; acceptance is not proof of native consumption.
+Request-pump errors remain visible in receiver health while ordinary event
+dispatch continues. The default request store retains 10,000 requests, with
+terminal notification capacity reserved for open requests. There is no automatic
+pruning. See [request lifecycle](REQUEST-LIFECYCLE.md) for commands and limits.
 
 ## Managed collectors
 
 `monitor create` stores a conversation-scoped file watch; `serve` owns its sampling and checkpoint recovery. No external source token is needed. Use `monitor status NAME` to distinguish configured state, receiver liveness, observed sampling, errors and receipts. Pause or remove one monitor without stopping other conversations. External producers and legacy `watch-file` processes remain independently operated. See [conversation monitors](CONVERSATION-MONITORS.md) for scope, limits and recovery semantics.
+
+When running the receiver in Docker, use `--init` or an equivalent init/reaper.
+After receiver SIGKILL, terminated sampler children can otherwise remain as
+zombies owned by a Python PID 1. The Linux failure/recovery canary verifies
+reaping separately from worker termination.
 
 ## Long-running service
 

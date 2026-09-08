@@ -92,3 +92,10 @@ First-party references:
 - Queue and thread schemas from installed CLI command `codex app-server generate-json-schema --experimental`
 
 The 2026-09-09 process-sampler/debounce wheel passed 100 tests and 17 installed isolation/condition checks on macOS and Debian 12 arm64/Python 3.11. These results establish sampler recovery and condition behavior with a fake App Server peer; they do not extend Desktop screen, Windows/WSL or Linux TUI coverage.
+
+The subsequent request/explicit-endpoint wheel passed 124 macOS/Linux regression
+tests and actual ordinary macOS request-lifecycle TUI checks. Managed monitor
+delivery through an owned Unix App Server and `codex --remote` also passed.
+Other explicit endpoint forms are implemented and validated syntactically;
+this does not add SSH, Windows or Desktop screen evidence. Upstream documents
+App Server WebSocket transport as experimental and unsupported for production.

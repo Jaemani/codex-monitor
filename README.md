@@ -68,6 +68,11 @@ From another terminal, use `monitor list`, `monitor status build`, `monitor paus
 The receiver owns these collectors. Creating a definition alone does not start the receiver.
 Use `--debounce 5` to require a changed sample to remain stable for five seconds before delivery. See [conversation-scoped monitors](docs/CONVERSATION-MONITORS.md) for lifecycle and [structural limits](docs/RELIABILITY-LIMITS.md) for isolation, recovery and native-client constraints.
 
+For external work requests, the [request lifecycle](docs/REQUEST-LIFECYCLE.md)
+links the original receipt to explicit progress, completion, failure and expiry.
+The receiver sends meaningful state changes to the same conversation; receiving
+an event does not automatically mark the underlying work complete.
+
 ## Attach an existing conversation
 
 Use the exact existing conversation ID. The monitor and client must use the same OS user and Codex store (`CODEX_HOME` / `sqlite_home`).

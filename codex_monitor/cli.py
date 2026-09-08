@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
+import math
 import os
 from pathlib import Path
 import secrets
@@ -23,6 +24,7 @@ from .session import SessionPool, Rpc, AppServerSession, SharedLocalSession, ser
 from .service import ServiceManager
 from .watch import ChangeWatcher, atomic_json, file_sample
 from .replies import ReplyStore
+from .requests import RequestStore
 from .sessions import overview, display
 
 
@@ -63,6 +65,17 @@ def monitor_thread(value):
     if not NAME.fullmatch(thread):
         raise ValueError("invalid thread identifier")
     return thread
+
+
+def request_original(monitor, delivery_id, thread):
+    """Resolve an external delivery and its immutable conversation scope."""
+    event = monitor.event(delivery_id)
+    if event["source"] == MANAGED_SOURCE:
+        raise ValueError("managed file monitor deliveries cannot track requests")
+    binding = next((item for item in monitor.bindings() if item["name"] == event["binding"]), None)
+    if binding is None or binding["thread"] != thread:
+        raise ValueError("delivery does not belong to the requested conversation")
+    return event, binding
 
 
 def parser():
@@ -126,6 +139,22 @@ def parser():
     service = commands.add_parser("service", help="manage the macOS launchd receiver")
     service.add_argument("action", choices=["install", "start", "stop", "restart", "status", "uninstall"])
     service.add_argument("--codex-home", help="Codex storage home (defaults to CODEX_HOME or ~/.codex)")
+    request = commands.add_parser("request", help="track explicit work in an existing conversation")
+    request_commands = request.add_subparsers(dest="request_action", required=True)
+    track = request_commands.add_parser("track")
+    track.add_argument("delivery_id"); track.add_argument("--key", required=True)
+    track.add_argument("--thread"); track.add_argument("--summary")
+    track.add_argument("--expires-in", type=float)
+    listing = request_commands.add_parser("list")
+    listing.add_argument("--thread")
+    listing.add_argument("--limit", type=int, default=100)
+    listing.add_argument("--after", type=int)
+    status = request_commands.add_parser("status")
+    status.add_argument("request_id"); status.add_argument("--thread")
+    update = request_commands.add_parser("update")
+    update.add_argument("request_id"); update.add_argument("--thread")
+    update.add_argument("--state", dest="request_state", required=True); update.add_argument("--update-id", required=True)
+    update.add_argument("--revision", type=int, required=True); update.add_argument("--message")
     return p
 
 
@@ -201,7 +230,31 @@ def main(argv=None):
             output({"source": args.name, "token_file": str(token_path), "note": "restart serve to load the new source"})
             return 0
         monitor = Monitor(root, pool, **config.get("limits", {}))
-        if args.command == "monitor":
+        if args.command == "request":
+            thread = monitor_thread(args.thread)
+            store = RequestStore(root, clock=monitor.clock)
+            if args.request_action == "track":
+                event, binding = request_original(monitor, args.delivery_id, thread)
+                if args.expires_in is not None and (args.expires_in < 0 or not math.isfinite(args.expires_in)):
+                    raise ValueError("expires-in must be a finite non-negative number")
+                payload = {"summary": args.summary} if args.summary is not None else {}
+                value = store.create(
+                    thread, event["source"], args.key, event["id"], event["binding"], payload,
+                    expires_in=args.expires_in,
+                )
+            elif args.request_action == "list":
+                value = store.list_requests(thread, limit=args.limit, after=args.after)
+            else:
+                value = store.get_by_id(args.request_id, conversation_id=thread)
+                if args.request_action == "update":
+                    summary = {"message": args.message} if args.message is not None else None
+                    value = store.transition(
+                        thread, value["source"], value["request_key"],
+                        update_id=args.update_id, target_state=args.request_state,
+                        expected_revision=args.revision, summary=summary,
+                    )
+            output(value)
+        elif args.command == "monitor":
             thread = monitor_thread(args.thread)
             if args.monitor_action == "create":
                 path = os.path.abspath(os.path.expanduser(args.file))

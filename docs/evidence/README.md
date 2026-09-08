@@ -16,3 +16,13 @@ Key observations:
 See [testing procedures](../TESTING.md), [compatibility](../COMPATIBILITY.md), and [project TODO](../TODO.md) for scope and remaining work. New test runs should stay private until deliberately summarized for publication.
 
 The 2026-09-09 process-sampler/debounce wheel passed 100 tests and 17 installed failure/recovery checks on macOS and Linux, the macOS LaunchAgent lifecycle and archive installer lifecycle. Its implementation commit passed all four hosted CI jobs. A separate real macOS TUI event/follow-up check passed; the sampler phase completed 300.155 seconds with 30 events and no duplicates. The original combined run remains INCOMPLETE because its TUI phase lacked a test dependency. See the curated JSON summary for hashes and scope.
+
+The request/explicit-endpoint wheel passed 124 macOS/Linux tests, 32 installed
+Linux request checks and 37 macOS checks including the actual request TUI flow.
+The managed Unix remote TUI passed with one sampled 1.032-second change-to-visible
+interval. Archive installation/removal preserved request state. A Linux sampler
+cleanup failure without container init was reproduced as terminated zombie
+children; the same wheel passed all 17 checks with `--init`. The original
+combined failure remains recorded separately from its successful phases and
+the corrected run. These results do not establish a latency guarantee, new
+Desktop screen coverage or completed business work.

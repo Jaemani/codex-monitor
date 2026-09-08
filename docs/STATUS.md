@@ -109,7 +109,7 @@ The frozen managed-feature wheel passed 75 regression tests on macOS and Debian 
 
 The new managed Desktop event arrived as external input in this same conversation after the preceding assistant turn ended. The receipt matched the single previously accepted test event, which had remained queued during active work. This is direct conversation-arrival evidence; no new history inspection, pixel verification or business-task completion is claimed. No forced turn or duplicate test event was used.
 
-General condition policies, correlated request lifecycles and workload isolation remain future work. File sampling is sequential and its inter-read budget cannot interrupt an individual blocked OS read.
+At that milestone, general condition policies, correlated request lifecycles and workload isolation remained future work. The subsequent isolation milestone below replaces sequential in-process sampling with bounded child processes.
 
 The managed-collector macOS LaunchAgent canary passed ten checks in 8.604 seconds: installation/readiness, silent baseline, changed-file receipts, SIGKILL recovery without duplicates, checkpoint preservation, stop and uninstall cleanup. This used the real installed service and a fake App Server peer; it is not Desktop or model-delivery evidence.
 
@@ -128,3 +128,43 @@ The isolation canary initially timed out waiting for healthy change delivery. Re
 Implementation commit `75700ba` passed all four hosted macOS/Linux Python 3.11/3.14 regression and packaging jobs ([run](https://github.com/Jaemani/codex-monitor/actions/runs/34242698063)).
 
 The validated wheel was installed as an upgrade at the local default runtime path, and the bundled skill was refreshed. Existing monitor state remains outside the runtime prefix; no permanent receiver or new user monitor was started by the upgrade.
+
+## Request tracking and explicit CLI endpoints (2026-09-09)
+
+Tracked requests now preserve their original source, receipt and conversation,
+with explicit revisions, acknowledgement, progress, terminal state and expiry.
+Meaningful transitions enter a durable, ordered notification outbox. Quiet
+acknowledgement, duplicate/CAS conflicts, pause deferral, restart replay,
+notification ordering and request-worker failure isolation are covered. Queue
+acceptance and consumption never mark a request completed automatically.
+
+The frozen wheel passed 124 macOS source tests in 27.432 seconds and 124
+installed-wheel tests on Linux/Python 3.11 in 28.112 seconds. The installed
+request lifecycle canary passed 32 process/HTTP checks on Linux. Its enhanced
+macOS run passed 37 checks in 43.616 seconds, including ordinary TUI draft
+preservation, quiet acknowledgement, explicit completion rendered/consumed once,
+and a native assistant response to subsequent user input. These do not establish
+the truth of a producer's completion report or long-term business-task quality.
+
+Managed file monitors can now persist explicit existing owner endpoints.
+Creation and status remain offline operations; dispatch still requires the exact
+thread to be loaded on a direct server. The installed managed remote canary
+passed 19 checks in 32.474 seconds using an owned Unix App Server and actual
+`codex --remote` TUI. A sampled change reached the visible TUI in 1.032 seconds.
+This is one observation, not a latency bound or a change to shared-local timing.
+The official App Server transport remains experimental.
+
+The local archive passed checksum and runtime-payload comparison against the
+frozen wheel, isolated installation, request CLI, uninstall and state preservation
+in 3.660 seconds. Its first fixture inherited a different CODEX_THREAD_ID and
+correctly failed the scope guard; the corrected isolated fixture passed. The
+archive remains unpublished. Default request retention is bounded to 10,000
+records; explicit archival remains future work.
+
+The combined Linux run's sampler cleanup phase initially failed without a
+container init process. A focused reproduction identified both remaining PIDs
+as terminated zombies adopted by Python PID 1. The same wheel passed all 17
+isolation checks with Docker `--init`, leaving no sampler PIDs. The original
+combined FAIL is preserved; its successful regression and request phases are
+reported separately. Container deployments need an init/reaper for orphaned
+children after forced receiver termination.
