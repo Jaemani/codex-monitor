@@ -274,3 +274,11 @@ Latency commit `2914e1e` passed all four hosted regression and packaging jobs
 ([run](https://github.com/Jaemani/codex-monitor/actions/runs/34254314660)).
 The workflow now pins official checkout v7.0.1 and setup-python v7.0.0 commits
 to replace the deprecated Node 20 action versions.
+
+The refreshed-action run exposed a timing-sensitive Ubuntu/Python 3.11 test
+failure during healthy reconnect reconciliation. The test had reused its
+intentional 0.1-second lost-response timeout for normal reconnect calls. The
+short deadline now applies only to the deliberately dropped response; normal
+startup and reconciliation retain their existing bounded test budget. The
+focused test and 20 repetitions passed. Production timeouts are unchanged;
+the failed hosted run remains recorded.

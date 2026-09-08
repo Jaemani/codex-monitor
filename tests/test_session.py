@@ -38,7 +38,11 @@ class SessionTest(unittest.TestCase):
             instances = []
 
             def connect(*_args, **_kwargs):
-                rpc = original_rpc(command=[sys.executable, str(Path(__file__).with_name("fake_app_server.py")), state], timeout=.1)
+                # Keep subprocess startup and healthy reconciliation on a
+                # normal bounded budget. The short timeout is applied only
+                # after the first connection is ready, immediately before
+                # the intentionally dropped response.
+                rpc = original_rpc(command=[sys.executable, str(Path(__file__).with_name("fake_app_server.py")), state], timeout=.5)
                 instances.append(rpc)
                 return rpc
 
@@ -47,6 +51,7 @@ class SessionTest(unittest.TestCase):
                 try:
                     first = pool("shared-local")
                     first.rpc.call("test/drop-response", {})
+                    first.rpc.timeout = .1
                     with self.assertRaises(Uncertain):
                         first.deliver("thread-user", "lost-1", "once only")
                     self.assertTrue(first.rpc.closed)

@@ -1410,6 +1410,14 @@
       "commit": "2914e1e8d587036d70d74de8ea4c9b18fdba15f6",
       "url": "https://github.com/Jaemani/codex-monitor/actions/runs/34254314660",
       "scope": "all four macOS/Linux Python 3.11/3.14 regression and packaging jobs including 140 tests"
+    },
+    {
+      "local_report": "ci-session-timeout-2026-09-09.log",
+      "result": "FAIL",
+      "commit": "4cb25c9993bdccd24bf295bb19cea21133a850d0",
+      "url": "https://github.com/Jaemani/codex-monitor/actions/runs/34254670555",
+      "scope": "Ubuntu Python3.11 reconnect regression timed out during healthy reconciliation; other matrix jobs passed",
+      "test": "test_timeout_reconnects_and_reconciles_persisted_acceptance_once"
     }
   ]
 }
