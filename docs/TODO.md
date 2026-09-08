@@ -10,6 +10,13 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Next: reliable everyday use
 
+- [ ] **P1 — Read-only multi-conversation terminal dashboard.** Refresh configured bindings and managed
+  collector observations from one selected state directory without model calls. Show pause state,
+  receiver readiness, observation age, unknown/stale producer health, pending/failed deliveries and
+  receipt details. Bound refresh work and keep errors visible. Validate terminal resize, exit and
+  receiver outage behavior. Native client badges, unregistered agents and cross-host discovery are
+  outside this initial scope. Dashboard implementation has not started.
+
 - [x] **Event-first session guidance.** Explain optional relay conversations, full-envelope forwarding,
   concise destination replies and separate configuration/process/delivery evidence. Updated local skill
   installed; this does not establish fresh-client behavioral validation.

@@ -27,9 +27,9 @@ Validated against Codex CLI **0.153.4**, using experimental App Server queue API
 - Actual ordinary TUI on macOS and Debian arm64, including user/event interleaving, unsent drafts, idle silence and restart/resume.
 - Unix remote TUI, a one-hour TUI soak and a one-hour receiver outage test.
 - Desktop same-conversation delivery, explicit reply round trip, and user-observed app restart and event visibility.
-- Runtime installation, upgrade and uninstall on macOS and Linux; 140 regression tests; hosted CI on Python 3.11/3.14.
+- Runtime installation, upgrade and uninstall on macOS and Linux; 141 local regression tests; hosted CI on Python 3.11/3.14 previously passed 140 tests.
 
-Desktop draft/approval contention, Windows/WSL, Desktop SSH projects, OS sleep/reboot and fresh Desktop skill discovery still need validation. Fresh ordinary TUI skill autocomplete passed; a complete natural-language setup workflow remains unverified. Protocol tests do not substitute for these cases. The project does not claim overall parity with Claude Channels; see the [comparison](docs/PRODUCT-COMPARISON.md).
+Desktop draft/approval contention, Windows/WSL, Desktop SSH projects, OS sleep/reboot and fresh Desktop skill discovery still need validation. Fresh ordinary TUI skill autocomplete and an earlier installed basic file-monitor create/status/pause/resume/remove workflow passed; the latest skill revision still needs fresh-client behavioral validation. Protocol tests do not substitute for these cases. The project does not claim overall parity with Claude Channels; see the [comparison](docs/PRODUCT-COMPARISON.md).
 
 ## Install
 
@@ -50,6 +50,74 @@ $codex-monitor Receive build-failure events in this conversation.
 ```
 
 The skill manages the installed runtime. Installation alone does not start a receiver or an event producer. See [installation, upgrades and removal](docs/INSTALLATION.md).
+
+## Usage examples
+
+These are example requests for the installed skill, not claims that every external integration is
+bundled. Use a real file path or an already configured producer. Each monitor belongs to an explicitly
+chosen conversation; several monitors can feed one conversation, and different conversations can
+have independent monitors.
+
+### Keep working while a build finishes
+
+```text
+$codex-monitor Watch /absolute/project/build-status.json in this conversation.
+Notify me when its contents change, and keep unchanged observations quiet.
+```
+
+The managed collector sends change metadata, not file contents. Ask the conversation to read the
+file when needed. Its first observation establishes a silent baseline.
+
+### React only when a condition changes
+
+```text
+$codex-monitor Watch /absolute/project/build-status.json. Notify this conversation
+when /build/status becomes "failed" for five seconds, and when it recovers.
+```
+
+JSON predicates and debounce run outside the model. The initial valid observation stays silent even
+if already matched; request a separate initial status check if needed. Invalid samples are errors,
+not successful matches. See [condition policies](docs/CONVERSATION-MONITORS.md).
+
+### Give a PM conversation updates from several workers
+
+```text
+$codex-monitor Receive events from my configured worker sources in this PM conversation.
+Act on blocked, failed and completed work. Preserve the worker identity and request ID.
+Keep ordinary progress chatter out of the event stream.
+```
+
+Workers need an adapter that emits authenticated events with stable IDs and filters routine updates.
+Attaching a source does not launch a worker or discover every Codex agent. Use the
+[request lifecycle](docs/REQUEST-LIFECYCLE.md) for explicit progress and terminal states; message
+delivery alone does not complete the request.
+
+### Use an optional relay conversation
+
+```text
+$codex-monitor Use this conversation as the receiver for my configured messaging source.
+Forward relevant requests, their original content and metadata to the PM conversation I specify.
+Let the PM provide the substantive response; send it back only within my authorized reply workflow.
+```
+
+Choose the relay's model in Codex if you want routing and PM reasoning to use different models.
+A relay is optional: the PM can receive events directly. Discord requires a separate Gateway
+producer and reply adapter; these are not bundled Discord features. Producer authentication, source
+scoping and explicit replies still apply. See [adapter contracts](docs/ADAPTERS.md).
+
+### Check or pause one conversation's monitoring
+
+```text
+$codex-monitor Show the monitors in this conversation, receiver state, collector errors
+and last delivery evidence. Distinguish unknown source health from a confirmed failure.
+```
+
+```text
+$codex-monitor Pause the build monitor in this conversation. Leave other monitors running.
+```
+
+Status commands do not create model turns; asking an assistant to interpret them uses an ordinary
+conversation turn. Pause affects future delivery and cannot retract input already accepted by Codex.
 
 ## Manage a file monitor for this conversation
 
@@ -134,6 +202,23 @@ conversation is optional, useful when deliberately separating routing from PM wo
 does not configure a source or select the conversation. A native monitoring badge is not provided.
 Ordinary replies can stay concise; `event DELIVERY_ID` retains the full submitted envelope for explicit
 forwarding and `inspect DELIVERY_ID` provides transport diagnostics.
+
+### Multiple conversations and a live status screen
+
+Today, `"$MONITOR" sessions` lists all bindings in the selected state directory without contacting
+the model. Use `"$MONITOR" sessions --json` for structured snapshots and conversation-scoped
+`monitor list/status` for managed collectors. This is a configured-connection inventory, not automatic
+discovery of every running agent, a cross-host fleet view, or proof that a client is currently open.
+
+A separate read-only terminal dashboard is the recommended next interface. It would refresh local
+status without adding messages to conversations or consuming model turns. The proposed columns are
+conversation/binding, delivery enabled or paused, receiver readiness, observed producer health and
+observation age, pending or failed deliveries, and latest receipt. Worker activity should appear only
+when explicitly reported by a supported integration. Unknown and stale observations must remain visible.
+
+**This dashboard is planned, not implemented.** A native CLI/Desktop monitoring badge is not provided
+by this project. See the [visibility backlog](docs/TODO.md). A live display of stored observations
+cannot establish external producer health until the producer reports it.
 
 ## Development
 

@@ -10,6 +10,11 @@ target thread to be loaded on their server.
 
 ## Confirmed
 
+- README now includes managed-file, stable-condition, multi-worker PM, optional relay and scoped
+  status/pause examples, with external adapter prerequisites. A read-only multi-conversation terminal
+  dashboard is recommended and tracked as planned work; current commands provide snapshots only.
+  This documentation update adds no runtime or real-client verification evidence.
+
 - Session usability update: the skill now routes event monitoring away from scheduled model polling,
   explains optional relay conversations, preserves stored envelopes for authorized forwarding, and
   keeps routine replies free of transport diagnostics. The updated owned local skill was installed
