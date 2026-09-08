@@ -29,7 +29,7 @@ Validated against Codex CLI **0.153.4**, using experimental App Server queue API
 - Desktop same-conversation delivery, explicit reply round trip, and user-observed app restart and event visibility.
 - Runtime installation, upgrade and uninstall on macOS and Linux; 75 regression tests; hosted CI on Python 3.11/3.14.
 
-Desktop draft/approval contention, Windows/WSL, Desktop SSH projects, OS sleep/reboot and fresh-client skill discovery still need validation. Protocol tests do not substitute for these cases. The project does not claim overall parity with Claude Channels; see the [comparison](docs/PRODUCT-COMPARISON.md).
+Desktop draft/approval contention, Windows/WSL, Desktop SSH projects, OS sleep/reboot and fresh Desktop skill discovery still need validation. Fresh ordinary TUI skill autocomplete passed; a complete natural-language setup workflow remains unverified. Protocol tests do not substitute for these cases. The project does not claim overall parity with Claude Channels; see the [comparison](docs/PRODUCT-COMPARISON.md).
 
 ## Install
 

@@ -680,6 +680,14 @@
       "result": "INVALID_EVIDENCE",
       "scope": "Fresh ordinary TUI skill discovery; initial success incorrectly matched echoed user input and was invalidated during review",
       "skill_discovered": false
+    },
+    {
+      "local_report": "skill-tui-discovery-autocomplete-2026-09-08.json",
+      "result": "PASS",
+      "scope": "fresh ordinary TUI native selectable skill autocomplete; discovery only",
+      "skill_discovered": true,
+      "native_response_verified": false,
+      "model_delivery_verified": false
     }
   ]
 }
