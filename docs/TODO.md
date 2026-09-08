@@ -4,13 +4,17 @@ Updated: 2026-09-08. The goal is reliable external-event participation in the us
 
 This file is the project backlog. Update it with the corresponding code change; record measured results in STATUS.md and the public evidence summary. Do not mark a platform or user flow done from protocol tests alone.
 
+## Target use case
+
+The next integration target is a Discord project PM/relay agent. See [operating levels and pilot gates](DISCORD-PM.md). The delivery foundation is verified; a Discord relay and unattended worker-status monitoring are not yet implemented. Prioritize managed producers and a complete single-project Discord round trip before claiming always-on operation.
+
 ## Next: reliable everyday use
 
 - [ ] **P1 — Manage event producers ([#2](https://github.com/Jaemani/codex-monitor/issues/2)).** Start, stop, restart and inspect a file/CI/webhook producer separately from receiver liveness. A configured binding must not imply an active watch. Verify producer crashes and recovery.
 - [ ] **P1 — Reduce event latency through supported APIs ([#1](https://github.com/Jaemani/codex-monitor/issues/1)).** Measure ingress → queue acceptance → consumer start → visible response separately. Assess official same-owner push routes for CLI and Desktop. See [technical latency comparison](LATENCY.md). Shared-local currently observes external changes at roughly 10-second intervals; do not claim real-time delivery or use private Desktop IPC.
 - [ ] **P1 — Verify skill onboarding in fresh clients ([#3](https://github.com/Jaemani/codex-monitor/issues/3)).** Discover `$codex-monitor` in a new ordinary TUI and Desktop session; select a real producer; start, inspect, pause, resume, reply and stop without changing the target conversation.
 - [ ] **P1 — Complete Desktop interaction cases.** Unsent draft, event during active response, approval waiting and cancellation recovery; retain actual user-visible observations.
-- [ ] **P1 — Select and ship one complete external adapter.** Authenticate the producer, filter relevant changes, preserve stable event IDs, and implement explicit source-scoped replies.
+- [ ] **P1 — Ship a complete Discord adapter for a supervised single-project pilot.** Authenticate the producer, filter relevant changes, preserve stable event IDs, and implement explicit source-scoped replies.
 
 ## Compatibility and resilience
 

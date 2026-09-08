@@ -100,3 +100,7 @@ Keep [TODO.md](TODO.md) current with code changes. Public evidence contains
 summaries; raw conversations, terminal logs, and credentials remain local.
 GitHub Actions run macOS/Linux Python 3.11/3.14 regression and packaging
 checks on pushes and pull requests. See the [CI workflow](https://github.com/Jaemani/codex-monitor/actions/workflows/ci.yml).
+
+## Next application: Discord project PM
+
+The proposed next target is a supervised single-project Discord relay, followed by continuous worker-state monitoring. [DISCORD-PM.md](DISCORD-PM.md) defines operating levels and acceptance gates. This is a roadmap update, not evidence that a Discord integration or managed collector has shipped.
