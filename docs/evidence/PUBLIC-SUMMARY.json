@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-08",
+  "date": "2026-09-09",
   "kind": "curated summary; original logs retained locally, not independently reproducible evidence",
   "records": [
     {
@@ -691,6 +691,92 @@
       "skill_discovered": true,
       "native_response_verified": false,
       "model_delivery_verified": false
+    },
+    {
+      "result": "PASS",
+      "scope": "installed wheel / real receiver / process-sampler isolation",
+      "evidence_kind": "process and fake App Server protocol evidence; no model or UI claim",
+      "checks": {
+        "healthy_monitor_baseline_progresses_beside_hung_sampler": true,
+        "healthy_monitor_change_progresses_beside_hung_sampler": true,
+        "receiver_sigkill_cleans_hung_sampler_children": true,
+        "receiver_restart_does_not_duplicate_healthy_event": true,
+        "pause_discards_hung_sampler_late_result": true,
+        "pause_discards_delayed_sampler_late_result": true,
+        "rapid_pause_resume_discards_stale_delayed_result": true,
+        "remove_discards_delayed_sampler_late_result": true,
+        "debounce_candidate_does_not_emit_early": true,
+        "debounce_reversion_cancels_candidate": true,
+        "stable_change_emits_after_debounce": true,
+        "restart_does_not_credit_pending_downtime": true,
+        "restart_candidate_emits_once_after_new_observations": true,
+        "unhealthy_sampler_does_not_credit_debounce": true,
+        "recovered_sampler_emits_outage_candidate_once": true,
+        "healthy_monitor_remains_live_after_pause_and_remove": true,
+        "receiver_remains_healthy": true
+      },
+      "wheel_sha256": "c7dc5234fd7608f4e41a4759bfb769bc270134be1c7aeddc12a10db804ad05f8",
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "local_report": "isolated-process-2026-09-09-fixture-fixed.json"
+    },
+    {
+      "result": "PASS",
+      "scope": "installed wheel / macOS LaunchAgent / managed file monitor",
+      "evidence_kind": "fake App Server queue and history evidence; no model or UI claim",
+      "checks": {
+        "init_and_explicit_monitor_create": true,
+        "launchagent_installed_started_and_ready": true,
+        "initial_sample_creates_silent_baseline": true,
+        "atomic_change_has_one_accepted_consumed_receipt": true,
+        "sigkill_restart_preserves_checkpoint_and_receipt": true,
+        "second_change_has_distinct_one_receipt": true,
+        "service_stop_unloads_owned_job": true,
+        "stop_preserves_registry_sqlite_checkpoint_and_receipts": true,
+        "uninstall_removes_owned_plist_and_job": true,
+        "uninstall_preserves_registry_sqlite_checkpoint_and_receipts": true
+      },
+      "elapsed_seconds": 8.84,
+      "wheel_sha256": "c7dc5234fd7608f4e41a4759bfb769bc270134be1c7aeddc12a10db804ad05f8",
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "local_report": "isolated-service-2026-09-09.json"
+    },
+    {
+      "result": "PASS",
+      "scope": "local isolated release archive / archive installer / bundled skill",
+      "checks": {
+        "archive_sidecar_matches": true,
+        "frozen_wheel_hash_matches_supplied": true,
+        "archive_manifest_hashes_verified": true,
+        "archive_wheel_runtime_payload_matches_frozen_wheel": true,
+        "archive_installer_install": true,
+        "installed_launcher_exists": true,
+        "archive_installer_status": true,
+        "installed_runtime_version": true,
+        "installed_runtime_init": true,
+        "installed_runtime_status": true,
+        "archive_installer_uninstall": true,
+        "uninstall_removes_skill": true,
+        "uninstall_preserves_monitor_state": true
+      },
+      "elapsed_seconds": 3.88,
+      "archive_sha256": "22a75c2258b0fad3c176c63b5a2fa0bcb350eef067b5c7208cc40b786394c36a",
+      "local_report": "isolated-archive-2026-09-09.json"
+    },
+    {
+      "local_report": "isolated-process-2026-09-09.json",
+      "result": "FAIL",
+      "scope": "fixture failure: fake App Server rejected newly introduced test conversation IDs; corrected same-wheel rerun passed",
+      "production_failure_established": false
+    },
+    {
+      "local_report": "isolated-macos-regression-2026-09-09",
+      "result": "PASS",
+      "scope": "macOS source regression",
+      "tests": 100,
+      "elapsed_seconds": 24.023,
+      "wheel_sha256": "c7dc5234fd7608f4e41a4759bfb769bc270134be1c7aeddc12a10db804ad05f8"
     }
   ]
 }

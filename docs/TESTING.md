@@ -205,3 +205,19 @@ The managed-collector macOS LaunchAgent canary passed ten checks in 8.604 second
 A fresh-skill TUI discovery probe initially timed out at the workspace trust prompt. Its first retry incorrectly matched a success marker in the echoed user prompt before an assistant response; review invalidated that PASS. Discovery checks must establish an actual skill listing or response, never match the input text alone. This does not invalidate the separate managed-event TUI canary, which checks native consumed input and the follow-up agent message.
 
 The corrected discovery check used native TUI autocomplete rather than a model success marker. Typing `$codex-mon` exposed the selectable Codex Monitor skill and its insertion hint. The owned TUI and temporary directory were cleaned. This is a discovery PASS, not evidence of natural-language workflow completion or Desktop discovery.
+
+## Process isolation and condition policy (2026-09-09)
+
+The candidate source suite passed 100 tests on macOS in 24.023 seconds. New coverage includes bounded/per-conversation sampler capacity, lifecycle epochs, finite deadlines, schema migration during concurrent startup, durable debounce, downstream failure replay, observation gaps and candidate status. These deterministic tests do not prove real-client interaction or kernel-level fault recovery.
+
+Use a clean installed wheel for the process canary:
+
+```bash
+python3 scripts/managed-monitor-isolation-canary.py --run \
+  --python /absolute/installed-venv/bin/python \
+  --report /tmp/codex-monitor-isolation.json
+```
+
+The fixture blocks an exact watched-file read in a real child process and delays another. It verifies healthy progress in another conversation, parent SIGKILL cleanup and stale-result rejection, then exercises durable debounce. Its App Server peer is fake; queue/history assertions are process-contract evidence only. A fixture whitelist mismatch initially rejected the new conversation IDs and caused a timeout; preserve that failed run separately from corrected results.
+
+For actual ordinary TUI behavior and a timed sampler soak, use `managed-monitor-canary.py --run --python ... --tui --soak-seconds 300`. The report must distinguish the real TUI section from fake-peer process assertions. Earlier one-hour transport tests do not establish a one-hour result for the new process sampler.

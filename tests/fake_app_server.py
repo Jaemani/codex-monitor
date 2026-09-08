@@ -22,7 +22,12 @@ def save():
 def unavailable(thread):
     if thread == "archived-thread":
         return {"code": -32600, "message": f"session {thread} is archived"}
-    if thread not in {"thread-user", "thread-other", "unloaded-desktop-thread"}:
+    if thread not in {
+        "thread-user", "thread-other", "unloaded-desktop-thread",
+        # Managed isolation canaries use separate logical threads for the
+        # hung, delayed, healthy, and debounced monitors.
+        "thread-late", "thread-healthy", "thread-policy",
+    }:
         # Older stores use an internal code for this permanent lookup result.
         return {"code": -32603, "message": f"failed to read thread: no rollout found for thread id {thread}"}
     return None

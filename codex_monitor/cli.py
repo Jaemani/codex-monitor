@@ -112,6 +112,7 @@ def parser():
     create = managed_commands.add_parser("create")
     create.add_argument("name"); create.add_argument("--file", required=True); create.add_argument("--thread")
     create.add_argument("--interval", type=float, default=2); create.add_argument("--endpoint", default="shared-local")
+    create.add_argument("--debounce", type=float, default=0, help="require unchanged observed samples for this many seconds before emitting a change")
     listing = managed_commands.add_parser("list"); listing.add_argument("--thread")
     for action in ("status", "pause", "resume", "remove"):
         command = managed_commands.add_parser(action)
@@ -204,7 +205,7 @@ def main(argv=None):
             thread = monitor_thread(args.thread)
             if args.monitor_action == "create":
                 path = os.path.abspath(os.path.expanduser(args.file))
-                value = monitor.managed_create(thread, args.name, path, args.interval, args.endpoint)
+                value = monitor.managed_create(thread, args.name, path, args.interval, args.endpoint, debounce_seconds=args.debounce)
             elif args.monitor_action == "list":
                 value = monitor.managed_status(thread)
             elif args.monitor_action == "status":

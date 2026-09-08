@@ -11,6 +11,7 @@ import re
 from contextlib import contextmanager
 
 from .errors import IngressError, Retryable, Uncertain, Permanent
+from .conditions import ConditionDebouncer
 from .lock import process_alive
 from .presentation import render_event
 
@@ -70,11 +71,17 @@ class Monitor:
                     created REAL NOT NULL, updated REAL NOT NULL);
                 CREATE INDEX IF NOT EXISTS managed_active ON managed_watches(thread,name,removed);
             """)
+            # Serialize schema inspection and migrations across receiver/CLI startup.
+            db.execute("BEGIN IMMEDIATE")
             managed_columns = {row["name"] for row in db.execute("PRAGMA table_info(managed_watches)")}
             if "last_sample_error" not in managed_columns:
                 db.execute("ALTER TABLE managed_watches ADD COLUMN last_sample_error TEXT")
             if "worker_seen" not in managed_columns:
                 db.execute("ALTER TABLE managed_watches ADD COLUMN worker_seen REAL")
+            if "lifecycle_epoch" not in managed_columns:
+                db.execute("ALTER TABLE managed_watches ADD COLUMN lifecycle_epoch INTEGER NOT NULL DEFAULT 0")
+            if "debounce_seconds" not in managed_columns:
+                db.execute("ALTER TABLE managed_watches ADD COLUMN debounce_seconds REAL NOT NULL DEFAULT 0")
         os.chmod(self.path, 0o600)
 
     @contextmanager
@@ -104,6 +111,10 @@ class Monitor:
         return root / "managed" / (watch_id + ".json")
 
     @staticmethod
+    def _managed_condition_checkpoint(root, watch_id):
+        return root / "managed" / (watch_id + ".condition.json")
+
+    @staticmethod
     def _managed_validate(thread, name, path, interval):
         if not isinstance(thread, str) or not NAME.fullmatch(thread):
             raise IngressError("thread must be a nonempty identifier")
@@ -114,10 +125,12 @@ class Monitor:
         if isinstance(interval, bool) or not isinstance(interval, (int, float)) or not math.isfinite(interval) or not .1 <= interval <= 86400:
             raise IngressError("managed watch interval must be between 0.1 and 86400 seconds")
 
-    def managed_create(self, thread, name, path, interval=2.0, endpoint="shared-local"):
+    def managed_create(self, thread, name, path, interval=2.0, endpoint="shared-local", *, debounce_seconds=0):
         if endpoint != "shared-local":
             raise IngressError("managed file monitors currently require --endpoint shared-local")
         self._managed_validate(thread, name, path, interval)
+        if isinstance(debounce_seconds, bool) or not isinstance(debounce_seconds, (int, float)) or not math.isfinite(debounce_seconds) or not 0 <= debounce_seconds <= 86400:
+            raise IngressError("debounce seconds must be between 0 and 86400")
         watch_id = uuid.uuid4().hex
         binding = "managed-" + watch_id
         now = self.clock()
@@ -132,9 +145,9 @@ class Monitor:
             db.execute("INSERT INTO bindings(name,thread,endpoint,sources) VALUES(?,?,?,?)",
                        (binding, thread, "shared-local", compact([MANAGED_SOURCE])))
             db.execute("""INSERT INTO managed_watches
-                (id,thread,name,path,interval,binding,created,updated)
-                VALUES(?,?,?,?,?,?,?,?)""",
-                       (watch_id, thread, name, path, float(interval), binding, now, now))
+                (id,thread,name,path,interval,binding,created,updated,debounce_seconds)
+                VALUES(?,?,?,?,?,?,?,?,?)""",
+                       (watch_id, thread, name, path, float(interval), binding, now, now, float(debounce_seconds)))
         self._managed_checkpoint(self.root, watch_id).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.wakeup.set()
         return self.managed_status(thread, name)
@@ -207,6 +220,13 @@ class Monitor:
 
     def _managed_public(self, row):
         checkpoint, checkpoint_error = self._managed_checkpoint_state(row["id"])
+        condition = None
+        condition_error = None
+        if row["debounce_seconds"]:
+            try:
+                condition = ConditionDebouncer(self._managed_condition_checkpoint(self.root, row["id"]), row["debounce_seconds"]).status()
+            except (OSError, ValueError) as exc:
+                condition_error = str(exc)[:500]
         last_delivery = None
         if row["last_delivery_id"]:
             with self.connect() as db:
@@ -228,10 +248,12 @@ class Monitor:
                 "stale" if row["worker_state"] == "running" else row["worker_state"])
         return {
             "id": row["id"], "thread": row["thread"], "name": row["name"], "file": row["path"],
-            "interval": row["interval"], "binding": row["binding"], "enabled": bool(row["enabled"]),
+            "interval": row["interval"], "debounce_seconds": row["debounce_seconds"],
+            "binding": row["binding"], "enabled": bool(row["enabled"]),
             "collector_status": collector_status, "last_sample": checkpoint.get("last") if checkpoint else None,
             "checkpoint_pending": bool(checkpoint and checkpoint.get("pending")),
-            "checkpoint_error": checkpoint_error, "last_error": row["last_error"],
+            "checkpoint_error": checkpoint_error, "condition": condition, "condition_error": condition_error,
+            "last_error": row["last_error"],
             "last_sample_error": row["last_sample_error"],
             "last_delivery": last_delivery, "receiver_running": receiver_running,
             "target_client": "unknown", "target_verification": "not_checked",
@@ -254,7 +276,7 @@ class Monitor:
             current = db.execute("SELECT * FROM managed_watches WHERE id=? AND removed=0", (row["id"],)).fetchone()
             if current is None:
                 raise IngressError("unknown managed watch", 404)
-            db.execute("UPDATE managed_watches SET enabled=?,worker_state=?,updated=? WHERE id=?",
+            db.execute("UPDATE managed_watches SET enabled=?,worker_state=?,updated=?,lifecycle_epoch=lifecycle_epoch+1 WHERE id=?",
                        (int(enabled), "starting" if enabled else "stopped", self.clock(), row["id"]))
             db.execute("UPDATE bindings SET enabled=? WHERE name=?", (int(enabled), row["binding"]))
         self.wakeup.set()
@@ -265,7 +287,7 @@ class Monitor:
         result = self._managed_public(row)
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            db.execute("UPDATE managed_watches SET enabled=0,removed=1,worker_state='stopped',updated=? WHERE id=?",
+            db.execute("UPDATE managed_watches SET enabled=0,removed=1,worker_state='stopped',updated=?,lifecycle_epoch=lifecycle_epoch+1 WHERE id=?",
                        (self.clock(), row["id"]))
             db.execute("UPDATE bindings SET enabled=0 WHERE name=?", (row["binding"],))
         self.wakeup.set()

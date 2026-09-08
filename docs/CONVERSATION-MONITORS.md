@@ -51,7 +51,18 @@ The first sample establishes a silent baseline. Unchanged samples produce no mod
 
 Pending event IDs and samples are checkpointed before intake. Retries preserve event IDs so acknowledgement loss does not require blind duplication. Local receipts and native queue delivery are separate from client consumption and completed work.
 
-Sampling accepts regular local files only, rejects special files without waiting for a FIFO writer, and bounds hashing to 8 MiB per file with a 0.25-second inter-read budget. The final file component is not followed as a symlink on platforms supporting that open flag. The supported interval is 0.1–86,400 seconds, default 2 seconds. Limits are 32 retained monitor definitions per conversation and 128 per state directory; paused definitions count until removed. Sampling is sequential. An individual OS file read cannot be forcibly interrupted, so these limits are not a throughput or network-filesystem latency guarantee.
+Sampling accepts regular local files only, rejects special files without waiting for a FIFO writer, and bounds hashing to 8 MiB per file with a 0.25-second inter-read budget. The final file component is not followed as a symlink on platforms supporting that open flag. The supported interval is 0.1–86,400 seconds, default 2 seconds. Limits are 32 retained monitor definitions per conversation and 128 per state directory; paused definitions count until removed. Sampling uses bounded child processes. Parent deadlines and per-conversation limits are described in [reliability limits](RELIABILITY-LIMITS.md). An uninterruptible kernel read may outlive a kill request, so this is not an unconditional throughput or host-failure guarantee.
+
+## Debounce repeated changes
+
+```bash
+codex-monitor monitor create build --thread "$THREAD_ID" \
+  --file /absolute/project/build-status.json --interval 1 --debounce 5
+```
+
+`--debounce` defaults to zero and accepts 0–86,400 seconds. With a positive value, the monitor waits until observed samples remain equal for that duration before emitting a changed state. Returning to the last emitted sample cancels a pending candidate. The initial baseline remains silent. This is a stable-sample filter, not an arbitrary predicate or a guarantee that every intermediate file write was observed.
+
+`monitor status` reports the condition candidate separately from the last emitted sample and delivery receipt. Condition timing uses a monotonic clock; saved readings are not UTC timestamps. Restart preserves the candidate but begins its stability window again after the next observation. Pause/resume and failed observations also invalidate prior timing, so downtime is not credited as healthy observation. A candidate becomes committed only after the durable watcher handles it; an already pending event is recovered before evaluating a newer candidate.
 
 ## Compatibility with existing commands
 

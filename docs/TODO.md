@@ -1,6 +1,6 @@
 # Project TODO
 
-Updated: 2026-09-08. The goal is reliable external-event participation in the user's ongoing Codex conversation, with ordinary CLI TUI as the primary interface and Desktop also supported.
+Updated: 2026-09-09. The goal is reliable external-event participation in the user's ongoing Codex conversation, with ordinary CLI TUI as the primary interface and Desktop also supported.
 
 This file is the project backlog. Update it with the corresponding code change; record measured results in STATUS.md and the public evidence summary. Do not mark a platform or user flow done from protocol tests alone.
 
@@ -13,8 +13,8 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 - [x] **Conversation-scoped local file monitors.** Create/list/status/pause/resume/remove use the exact conversation. Identical names in two conversations, persistent checkpoints, receiver-owned sampling, installed process isolation and actual ordinary TUI event/follow-up checks passed. The managed Desktop event also arrived in the same conversation after the preceding assistant turn ended; pixel and approval cases remain unverified.
 
 
-- [ ] **P1 — Manage event producers ([#2](https://github.com/Jaemani/codex-monitor/issues/2)).** Managed local files now expose observed collector state and checkpoint recovery under the receiver. Remaining: broader CI/webhook producers, individual blocked-read isolation and longer managed-collector soak. A configured binding must not imply an active watch.
-- [ ] **P1 — Conditional monitor policies (level 4).** Add per-monitor debounce and sustained-condition thresholds with durable pending state. Verify restart during a pending condition, recovery before threshold, rapid oscillation, pause/resume and independent conversations. Keep evaluation outside the model.
+- [ ] **P1 — Manage event producers ([#2](https://github.com/Jaemani/codex-monitor/issues/2)).** Managed local files now expose observed collector state and checkpoint recovery under the receiver. Bounded process isolation passed installed failure/recovery checks. Remaining: broader CI/webhook producers, longer endurance coverage and OS sleep/reboot. A configured binding must not imply an active watch.
+- [ ] **P1 — Conditional monitor policies (level 4).** Durable per-monitor stable-sample debounce passed installed failure/recovery checks. General condition predicates and escalation policies remain future work. Verify restart during a pending condition, recovery before threshold, rapid oscillation, pause/resume and independent conversations. Keep evaluation outside the model.
 - [ ] **P2 — Correlated request lifecycle (level 5).** Persist request identity, dispatch, acknowledgement, completion, failure and expiry; require explicit source-scoped replies. Verify duplicate/out-of-order updates, restart, cancellation and conversation isolation before adding a messenger adapter.
 - [ ] **P1 — Reduce event latency through supported APIs ([#1](https://github.com/Jaemani/codex-monitor/issues/1)).** Measure ingress → queue acceptance → consumer start → visible response separately. Assess official same-owner push routes for CLI and Desktop. See [technical latency comparison](LATENCY.md). Shared-local currently observes external changes at roughly 10-second intervals; do not claim real-time delivery or use private Desktop IPC.
 - [ ] **P1 — Verify skill onboarding in fresh clients ([#3](https://github.com/Jaemani/codex-monitor/issues/3)).** Fresh ordinary TUI native skill autocomplete passed. Remaining: fresh Desktop discovery and complete natural-language operation; select a real producer; start, inspect, pause, resume, reply and stop without changing the target conversation.
