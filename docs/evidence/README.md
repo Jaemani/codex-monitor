@@ -14,3 +14,5 @@ Key observations:
 - Claude comparison is based on official documentation, not a matched live failure/latency experiment.
 
 See [testing procedures](../TESTING.md), [compatibility](../COMPATIBILITY.md), and [project TODO](../TODO.md) for scope and remaining work. New test runs should stay private until deliberately summarized for publication.
+
+The 2026-09-09 process-sampler/debounce wheel passed 100 tests and 17 installed failure/recovery checks on macOS and Linux, the macOS LaunchAgent lifecycle and archive installer lifecycle. Its implementation commit passed all four hosted CI jobs. A separate real macOS TUI event/follow-up check passed; the sampler phase completed 300.155 seconds with 30 events and no duplicates. The original combined run remains INCOMPLETE because its TUI phase lacked a test dependency. See the curated JSON summary for hashes and scope.

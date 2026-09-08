@@ -90,3 +90,5 @@ First-party references:
 - https://learn.chatgpt.com/docs/app-server#connect-the-cli-terminal-ui
 - https://learn.chatgpt.com/docs/remote-connections#connect-to-an-ssh-host
 - Queue and thread schemas from installed CLI command `codex app-server generate-json-schema --experimental`
+
+The 2026-09-09 process-sampler/debounce wheel passed 100 tests and 17 installed isolation/condition checks on macOS and Debian 12 arm64/Python 3.11. These results establish sampler recovery and condition behavior with a fake App Server peer; they do not extend Desktop screen, Windows/WSL or Linux TUI coverage.

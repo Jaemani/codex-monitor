@@ -221,3 +221,7 @@ python3 scripts/managed-monitor-isolation-canary.py --run \
 The fixture blocks an exact watched-file read in a real child process and delays another. It verifies healthy progress in another conversation, parent SIGKILL cleanup and stale-result rejection, then exercises durable debounce. Its App Server peer is fake; queue/history assertions are process-contract evidence only. A fixture whitelist mismatch initially rejected the new conversation IDs and caused a timeout; preserve that failed run separately from corrected results.
 
 For actual ordinary TUI behavior and a timed sampler soak, use `managed-monitor-canary.py --run --python ... --tui --soak-seconds 300`. The report must distinguish the real TUI section from fake-peer process assertions. Earlier one-hour transport tests do not establish a one-hour result for the new process sampler.
+
+The final 300.155-second sampler phase completed with 30 events, one receiver restart and no duplicate hashes. The combined run is INCOMPLETE because the TUI phase lacked the optional `pyte` dependency. Keep this distinction even after a separate TUI rerun; do not rewrite the original combined report as a UI PASS.
+
+The separate final ordinary macOS TUI run passed in 29.954 seconds with the same wheel: managed event display, native consumption and a subsequent user response in native history. It used Luna at xhigh with the test driver dependency installed. This is not a completed business-workflow claim, and no new Desktop pixel result is established.

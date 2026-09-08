@@ -564,7 +564,8 @@ class Canary:
             )
             tui_argv = [
                 "codex", "-C", str(work), "--no-alt-screen", "-s", "read-only", "-a", "never",
-                "-c", "model_reasoning_effort=\"low\"", "-c", "tui.animations=false", instruction,
+                "-c", f"model_reasoning_effort=\"{self.args.reasoning_effort}\"",
+                "-c", "tui.animations=false", instruction,
             ]
             if self.args.model:
                 tui_argv[1:1] = ["--model", self.args.model]
@@ -763,6 +764,12 @@ def main() -> int:
                         help="optional real elapsed managed-collector soak duration")
     parser.add_argument("--tui", action="store_true", help="also run the separate opt-in ordinary Codex TUI canary")
     parser.add_argument("--model", help="optional model override for the owned ordinary TUI")
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"),
+        default="low",
+        help="reasoning effort for the owned ordinary TUI (default: low)",
+    )
     args = parser.parse_args()
     if not args.python.is_absolute() or not args.python.is_file() or not os.access(args.python, os.X_OK):
         parser.error("--python must be an absolute executable installed-runtime Python")

@@ -27,7 +27,7 @@ Validated against Codex CLI **0.153.4**, using experimental App Server queue API
 - Actual ordinary TUI on macOS and Debian arm64, including user/event interleaving, unsent drafts, idle silence and restart/resume.
 - Unix remote TUI, a one-hour TUI soak and a one-hour receiver outage test.
 - Desktop same-conversation delivery, explicit reply round trip, and user-observed app restart and event visibility.
-- Runtime installation, upgrade and uninstall on macOS and Linux; 75 regression tests; hosted CI on Python 3.11/3.14.
+- Runtime installation, upgrade and uninstall on macOS and Linux; 100 regression tests; hosted CI on Python 3.11/3.14.
 
 Desktop draft/approval contention, Windows/WSL, Desktop SSH projects, OS sleep/reboot and fresh Desktop skill discovery still need validation. Fresh ordinary TUI skill autocomplete passed; a complete natural-language setup workflow remains unverified. Protocol tests do not substitute for these cases. The project does not claim overall parity with Claude Channels; see the [comparison](docs/PRODUCT-COMPARISON.md).
 
@@ -66,7 +66,7 @@ MONITOR="$HOME/.local/share/codex-monitor/bin/codex-monitor"
 From another terminal, use `monitor list`, `monitor status build`, `monitor pause build`,
 `monitor resume build` or `monitor remove build`, with the same `--thread` and state.
 The receiver owns these collectors. Creating a definition alone does not start the receiver.
-See [conversation-scoped monitors](docs/CONVERSATION-MONITORS.md) for lifecycle, isolation and limits.
+Use `--debounce 5` to require a changed sample to remain stable for five seconds before delivery. See [conversation-scoped monitors](docs/CONVERSATION-MONITORS.md) for lifecycle and [structural limits](docs/RELIABILITY-LIMITS.md) for isolation, recovery and native-client constraints.
 
 ## Attach an existing conversation
 

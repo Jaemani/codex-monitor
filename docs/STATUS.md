@@ -1,6 +1,6 @@
 # Status and remaining verification
 
-Status date: 2026-09-08. The default delivery path targets Codex CLI 0.153.4
+Status date: 2026-09-09. The default delivery path targets Codex CLI 0.153.4
 through its official `shared-local` queue. An independent stdio writer places
 input in the saved conversation store at the same `CODEX_HOME`/`sqlite_home`;
 the CLI or Desktop native consumer owns and processes the conversation. The
@@ -121,6 +121,10 @@ Fresh ordinary TUI skill discovery subsequently passed through the native autoco
 
 The current candidate moves watched-file reads into short-lived child processes with parent-death detection, per-receiver and per-conversation capacity limits, parent deadlines and lifecycle-epoch rejection of stale results. The receiver alone owns checkpoints and event intake. Managed monitors can use `--debounce` for durable stable-sample filtering; restart, pause/resume and failed observations restart the observed stability window.
 
-The macOS source suite passed 100 tests in 24.023 seconds. The final installed isolation/condition canary passed 17 checks. The macOS LaunchAgent canary passed ten checks in 8.84 seconds, and archive install/status/uninstall plus state preservation passed. Linux and real TUI/300-second sampler checks remain in progress. Earlier 75-test and 60-second evidence above belongs to the preceding runtime.
+The macOS source suite passed 100 tests in 24.023 seconds. The final installed isolation/condition canary passed 17 checks. The macOS LaunchAgent canary passed ten checks in 8.84 seconds, and archive install/status/uninstall plus state preservation passed. Debian 12 arm64/Python 3.11 passed all 100 installed-wheel tests in 23.649 seconds and the 17 isolation/condition checks in 25.175 seconds. The installed sampler completed 300.155 seconds with 30 events, one receiver restart and no duplicate hashes. Its combined TUI phase was skipped because the optional test driver dependency `pyte` was missing, so that combined report is INCOMPLETE. A separate real macOS TUI run then passed in 29.954 seconds using the same wheel: its event rendered and was consumed, and the subsequent user response appeared in native history. The original combined INCOMPLETE report and successful timed sampler phase remain preserved. Earlier 75-test and 60-second evidence above belongs to the preceding runtime.
 
 The isolation canary initially timed out waiting for healthy change delivery. Review found that its new conversation IDs were rejected by the fake App Server fixture; that failure is not proof of a production sampler defect. The fixture was corrected and the same installed wheel passed all 17 checks. Independently, the sampler exit/response lifecycle was hardened so the child explicitly exits after its bounded result write and the parent never waits for a partial live-worker response. Failure evidence remains local. See [structural reliability limits](RELIABILITY-LIMITS.md) for kernel, storage and native-client limits.
+
+Implementation commit `75700ba` passed all four hosted macOS/Linux Python 3.11/3.14 regression and packaging jobs ([run](https://github.com/Jaemani/codex-monitor/actions/runs/34242698063)).
+
+The validated wheel was installed as an upgrade at the local default runtime path, and the bundled skill was refreshed. Existing monitor state remains outside the runtime prefix; no permanent receiver or new user monitor was started by the upgrade.

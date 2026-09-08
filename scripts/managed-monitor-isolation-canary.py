@@ -12,7 +12,7 @@ modules and the report is process/protocol evidence only: the fake App Server
 peer does not invoke a model or provide UI evidence.
 
 Run this against the Python executable from an isolated installation, for
-example ``python3 scripts/managed-monitor-isolation-canary.py --python
+example ``python3 scripts/managed-monitor-isolation-canary.py --run --python
 /tmp/monitor-venv/bin/python --report /tmp/isolation.json``.  The canary
 intentionally fails against an implementation that samples synchronously in
 the receiver process.

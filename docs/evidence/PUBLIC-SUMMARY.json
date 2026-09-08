@@ -777,6 +777,101 @@
       "tests": 100,
       "elapsed_seconds": 24.023,
       "wheel_sha256": "c7dc5234fd7608f4e41a4759bfb769bc270134be1c7aeddc12a10db804ad05f8"
+    },
+    {
+      "local_report": "isolated-linux-2026-09-09.json",
+      "result": "PASS",
+      "scope": "isolated final wheel installation, 100-test regression, and managed process-sampler canary",
+      "environment": {
+        "container": "python:3.11-bookworm",
+        "os": "Linux-6.8.0-117-generic-aarch64-with-glibc2.36",
+        "architecture": "aarch64",
+        "python": "3.11.16",
+        "wheel_sha256": "c7dc5234fd7608f4e41a4759bfb769bc270134be1c7aeddc12a10db804ad05f8",
+        "credentials_mounted": false,
+        "source_transport": "streamed tar over stdin"
+      },
+      "tests": {
+        "count": 100,
+        "duration_seconds": 23.649,
+        "result": "PASS",
+        "pip_check": "PASS"
+      },
+      "managed_isolation_canary": {
+        "result": "PASS",
+        "duration_seconds": 25.175,
+        "evidence_kind": "process and fake App Server protocol evidence; no model or UI claim",
+        "checks": {
+          "healthy_monitor_baseline_progresses_beside_hung_sampler": true,
+          "healthy_monitor_change_progresses_beside_hung_sampler": true,
+          "receiver_sigkill_cleans_hung_sampler_children": true,
+          "receiver_restart_does_not_duplicate_healthy_event": true,
+          "pause_discards_hung_sampler_late_result": true,
+          "pause_discards_delayed_sampler_late_result": true,
+          "rapid_pause_resume_discards_stale_delayed_result": true,
+          "remove_discards_delayed_sampler_late_result": true,
+          "debounce_candidate_does_not_emit_early": true,
+          "debounce_reversion_cancels_candidate": true,
+          "stable_change_emits_after_debounce": true,
+          "restart_does_not_credit_pending_downtime": true,
+          "restart_candidate_emits_once_after_new_observations": true,
+          "unhealthy_sampler_does_not_credit_debounce": true,
+          "recovered_sampler_emits_outage_candidate_once": true,
+          "healthy_monitor_remains_live_after_pause_and_remove": true,
+          "receiver_remains_healthy": true
+        },
+        "remaining_sampler_pids": [],
+        "client_ui_verified": false,
+        "model_delivery_verified": false
+      }
+    },
+    {
+      "local_report": "isolated-hosted-ci-2026-09-09",
+      "result": "PASS",
+      "commit": "75700ba643a6e19260929914926ad3e9db491120",
+      "url": "https://github.com/Jaemani/codex-monitor/actions/runs/34242698063",
+      "scope": "macOS/Linux Python 3.11/3.14 regression and packaging; no client UI claim"
+    },
+    {
+      "local_report": "isolated-tui-soak-2026-09-09.json",
+      "result": "INCOMPLETE",
+      "scope": "300-second installed process-sampler soak completed; combined TUI phase skipped due missing optional pyte dependency",
+      "soak": {
+        "requested_seconds": 300,
+        "actual_seconds": 300.155,
+        "events": 30,
+        "restarts": 1,
+        "unchanged_idle_samples": 8,
+        "duplicate_hashes": [],
+        "model_delivery_verified": false
+      },
+      "tui": {
+        "result": "SKIPPED",
+        "client_ui_verified": false,
+        "model_delivery_verified": false,
+        "reason": "optional PTY dependency pyte is not installed"
+      },
+      "wheel_sha256": "c7dc5234fd7608f4e41a4759bfb769bc270134be1c7aeddc12a10db804ad05f8"
+    },
+    {
+      "local_report": "isolated-tui-final-2026-09-09.json",
+      "result": "PASS",
+      "scope": "actual ordinary macOS TUI rendered/consumed managed file event and native user follow-up response",
+      "elapsed_seconds": 29.954,
+      "wheel_sha256": "c7dc5234fd7608f4e41a4759bfb769bc270134be1c7aeddc12a10db804ad05f8",
+      "tui": {
+        "result": "PASS",
+        "client_ui_verified": true,
+        "model_delivery_verified": false,
+        "event_consumed": true,
+        "followup_response_seen": true
+      }
+    },
+    {
+      "local_report": "isolated-default-upgrade-2026-09-09.json",
+      "result": "PASS",
+      "scope": "default local runtime and bundled skill upgraded; existing monitor state preserved; no permanent receiver started",
+      "wheel_sha256": "c7dc5234fd7608f4e41a4759bfb769bc270134be1c7aeddc12a10db804ad05f8"
     }
   ]
 }
