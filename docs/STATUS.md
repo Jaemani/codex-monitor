@@ -234,3 +234,32 @@ its owner marker and `SKILL.md` hash; candidate runtime or skill changes need
 their own rerun. Earlier harness failures and aborted attempts remain
 preserved in the same evidence directory. No command approval prompt appeared
 and no command approval was answered.
+
+Predicate implementation commit `7fdcdfc` was pushed, and the validated wheel
+and updated bundled skill were installed as the default local upgrade. Existing
+state was preserved; the installer did not start a permanent receiver. All four hosted macOS/Linux Python 3.11/3.14 regression and packaging jobs
+passed ([run](https://github.com/Jaemani/codex-monitor/actions/runs/34252934328)).
+
+## Bounded CLI latency observations (2026-09-09)
+
+The six-sample ordinary Unix remote TUI run passed in 105.276 seconds. Each
+event rendered and was inspected as consumed using its exact client ID. Two
+idle samples took 0.793–1.150 seconds, two post-receiver-restart samples took
+0.585–0.633 seconds, and two samples during a 1,000-word response took
+30.005–33.051 seconds. Most busy delay occurred after native acceptance.
+See [latency details](LATENCY.md) for observation boundaries and small-sample
+limits. Immediate processing during an active user turn is not guaranteed.
+
+Earlier failed harness attempts remain local. The final driver uses official
+`inProgress` turn state instead of inferring activity from a visible composer
+or footer. Five mocked regression checks cover report completion and cleanup
+failures, ensuring a running or skipped required phase cannot be reported as
+an overall PASS. No new Desktop validation is claimed.
+
+The final source suite including the five report-lifecycle regressions passed
+139 tests in 28.038 seconds. The runtime wheel is unchanged from the preceding
+134-test installed validation; these new tests exercise verification scripts.
+
+A sixth report-lifecycle regression subsequently passed with the focused
+suite: terminal capture and thread archival failures still close all owned
+resources, verify temporary-directory removal, and finalize the report as FAIL.

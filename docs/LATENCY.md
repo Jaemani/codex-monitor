@@ -55,6 +55,57 @@ shared-local behavior remains unchanged. The official
 [App Server documentation](https://learn.chatgpt.com/docs/app-server)
 classifies the transport as experimental and unsupported for production.
 
+## Bounded latency canary
+
+The opt-in `scripts/latency-canary.py` run samples the direct Unix-owner path
+six times by default, cycling through idle, busy and post-receiver-restart
+conditions. It keeps separate producer, checkpoint, acceptance, native-history
+and PTY-rendering timestamps, correlates each sample by its exact delivery and
+client IDs, and reports observed p50/p90/p95 values when a category has at
+least two samples:
+
+```bash
+python3 scripts/latency-canary.py --run \
+  --python /absolute/installed-venv/bin/python \
+  --samples 6 --model gpt-5.6-luna --reasoning-effort xhigh \
+  --report /tmp/codex-monitor-latency.json
+```
+
+The busy category requires the exact submitted user marker in an `inProgress`
+turn returned by the official owner App Server. Idle checks also require no
+active native turn; the composer can remain visible during streaming and is
+not sufficient evidence of inactivity. The busy workload requests a 1,000-word
+text response without tools. The restart category writes after the receiver
+has restarted, so it measures a post-restart warm path. Quantiles are
+descriptive for the bounded observations; with small per-category counts, p95
+is unstable and no interval is a product guarantee.
+
+## Six-sample direct-owner result (2026-09-09)
+
+The final run passed all six samples in 105.276 seconds with the predicate
+runtime and Luna at xhigh. Each event was accepted, correlated with one exact
+native client ID, inspected as consumed, and rendered in the ordinary TUI.
+The test-owned conversation was archived and its processes were stopped.
+
+| Scenario | Samples | Min–max observed seconds | Observed p50 | Observed p95 |
+|---|---:|---:|---:|---:|
+| Idle | 2 | 0.793–1.150 | 0.971 | 1.132 |
+| Generating a 1,000-word response | 2 | 30.005–33.051 | 31.528 | 32.899 |
+| After receiver restart | 2 | 0.585–0.633 | 0.609 | 0.631 |
+
+These are file-change-to-rendering observations. The busy samples entered local
+storage within 0.590 seconds, then waited roughly 29.626–32.455 seconds between
+observed native acceptance and consumption. Direct delivery improves the owner
+notification path but does not promise immediate processing during an active
+turn. The monitor preserves the user's turn rather than forcing interruption.
+
+Two observations per scenario are too few to estimate a dependable tail. The
+interpolated p95 values describe this run only. This is neither a matched Claude
+benchmark nor new Desktop evidence. Earlier failed attempts are preserved:
+screen-based idle/busy detection missed streaming turns when the composer
+remained visible or the submitted marker scrolled away. The final run uses
+official native turn state and exact input correlation instead.
+
 ## Improvement acceptance criteria
 
 1. Record producer timestamp, HTTP receipt, native queue acceptance, owner consumption and visible response separately.

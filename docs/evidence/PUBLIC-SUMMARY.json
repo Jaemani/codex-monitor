@@ -1169,6 +1169,227 @@
       "trust_prompt_seen": true,
       "client_ui_verified": true,
       "business_completion_verified": false
+    },
+    {
+      "local_report": "predicate-default-upgrade-2026-09-09",
+      "result": "PASS",
+      "scope": "validated runtime and bundled skill upgraded; existing state preserved; no permanent receiver started",
+      "wheel_sha256": "26dff6e334728c872fd6307e10a3567d955488d6e64d8241976dcfbdcc682b4a"
+    },
+    {
+      "local_report": "predicate-hosted-ci-2026-09-09",
+      "result": "PASS",
+      "commit": "7fdcdfcb7abd872a2e31b277a061731f512ec277",
+      "url": "https://github.com/Jaemani/codex-monitor/actions/runs/34252934328",
+      "scope": "all four macOS/Linux Python3.11/3.14 regression and packaging jobs; no UI claim"
+    },
+    {
+      "local_report": "latency-direct-2026-09-09-native-state.json",
+      "result": "PASS",
+      "scope": "six ordinary Unix remote TUI latency samples with native active-turn checks, exact client IDs and read-only consumed inspection",
+      "elapsed_seconds": 105.276,
+      "wheel_sha256": "26dff6e334728c872fd6307e10a3567d955488d6e64d8241976dcfbdcc682b4a",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "xhigh",
+      "busy_workload": "1000-word text generation without tools",
+      "samples": [
+        {
+          "category": "idle",
+          "durations_seconds": {
+            "change_to_local_collector_checkpoint": 0.351944,
+            "local_collector_checkpoint_to_http_native_acceptance": 0.016523,
+            "http_native_acceptance_to_native_history_consumption": 0.416115,
+            "native_history_consumption_to_visible_tui_rendering": 0.008107,
+            "change_to_visible_tui_rendering": 0.79269
+          }
+        },
+        {
+          "category": "busy",
+          "durations_seconds": {
+            "change_to_local_collector_checkpoint": 0.586198,
+            "local_collector_checkpoint_to_http_native_acceptance": 0.003685,
+            "http_native_acceptance_to_native_history_consumption": 32.455154,
+            "native_history_consumption_to_visible_tui_rendering": 0.006128,
+            "change_to_visible_tui_rendering": 33.051166
+          }
+        },
+        {
+          "category": "restart",
+          "durations_seconds": {
+            "change_to_local_collector_checkpoint": 0.35998,
+            "local_collector_checkpoint_to_http_native_acceptance": 0.003279,
+            "http_native_acceptance_to_native_history_consumption": 0.207993,
+            "native_history_consumption_to_visible_tui_rendering": 0.013717,
+            "change_to_visible_tui_rendering": 0.584969
+          }
+        },
+        {
+          "category": "idle",
+          "durations_seconds": {
+            "change_to_local_collector_checkpoint": 0.76144,
+            "local_collector_checkpoint_to_http_native_acceptance": 0.00337,
+            "http_native_acceptance_to_native_history_consumption": 0.2717,
+            "native_history_consumption_to_visible_tui_rendering": 0.113418,
+            "change_to_visible_tui_rendering": 1.149928
+          }
+        },
+        {
+          "category": "busy",
+          "durations_seconds": {
+            "change_to_local_collector_checkpoint": 0.362878,
+            "local_collector_checkpoint_to_http_native_acceptance": 0.002871,
+            "http_native_acceptance_to_native_history_consumption": 29.625859,
+            "native_history_consumption_to_visible_tui_rendering": 0.013489,
+            "change_to_visible_tui_rendering": 30.005096
+          }
+        },
+        {
+          "category": "restart",
+          "durations_seconds": {
+            "change_to_local_collector_checkpoint": 0.372291,
+            "local_collector_checkpoint_to_http_native_acceptance": 0.003565,
+            "http_native_acceptance_to_native_history_consumption": 0.245591,
+            "native_history_consumption_to_visible_tui_rendering": 0.011595,
+            "change_to_visible_tui_rendering": 0.633042
+          }
+        }
+      ],
+      "observed_quantiles": {
+        "idle": {
+          "sample_count": 2,
+          "observed": {
+            "change_to_local_collector_checkpoint": {
+              "p50_observed_seconds": 0.556692,
+              "min_observed_seconds": 0.351944,
+              "max_observed_seconds": 0.76144,
+              "p90_observed_seconds": 0.72049,
+              "p95_observed_seconds": 0.740965
+            },
+            "local_collector_checkpoint_to_http_native_acceptance": {
+              "p50_observed_seconds": 0.009947,
+              "min_observed_seconds": 0.00337,
+              "max_observed_seconds": 0.016523,
+              "p90_observed_seconds": 0.015208,
+              "p95_observed_seconds": 0.015865
+            },
+            "http_native_acceptance_to_native_history_consumption": {
+              "p50_observed_seconds": 0.343908,
+              "min_observed_seconds": 0.2717,
+              "max_observed_seconds": 0.416115,
+              "p90_observed_seconds": 0.401674,
+              "p95_observed_seconds": 0.408894
+            },
+            "native_history_consumption_to_visible_tui_rendering": {
+              "p50_observed_seconds": 0.060762,
+              "min_observed_seconds": 0.008107,
+              "max_observed_seconds": 0.113418,
+              "p90_observed_seconds": 0.102887,
+              "p95_observed_seconds": 0.108152
+            },
+            "change_to_visible_tui_rendering": {
+              "p50_observed_seconds": 0.971309,
+              "min_observed_seconds": 0.79269,
+              "max_observed_seconds": 1.149928,
+              "p90_observed_seconds": 1.114204,
+              "p95_observed_seconds": 1.132066
+            }
+          },
+          "small_sample_caveat": "Quantiles are omitted where fewer than two observations exist; even p95 with this bounded sample count is descriptive only."
+        },
+        "busy": {
+          "sample_count": 2,
+          "observed": {
+            "change_to_local_collector_checkpoint": {
+              "p50_observed_seconds": 0.474538,
+              "min_observed_seconds": 0.362878,
+              "max_observed_seconds": 0.586198,
+              "p90_observed_seconds": 0.563866,
+              "p95_observed_seconds": 0.575032
+            },
+            "local_collector_checkpoint_to_http_native_acceptance": {
+              "p50_observed_seconds": 0.003278,
+              "min_observed_seconds": 0.002871,
+              "max_observed_seconds": 0.003685,
+              "p90_observed_seconds": 0.003604,
+              "p95_observed_seconds": 0.003644
+            },
+            "http_native_acceptance_to_native_history_consumption": {
+              "p50_observed_seconds": 31.040506,
+              "min_observed_seconds": 29.625859,
+              "max_observed_seconds": 32.455154,
+              "p90_observed_seconds": 32.172224,
+              "p95_observed_seconds": 32.313689
+            },
+            "native_history_consumption_to_visible_tui_rendering": {
+              "p50_observed_seconds": 0.009808,
+              "min_observed_seconds": 0.006128,
+              "max_observed_seconds": 0.013489,
+              "p90_observed_seconds": 0.012753,
+              "p95_observed_seconds": 0.013121
+            },
+            "change_to_visible_tui_rendering": {
+              "p50_observed_seconds": 31.528131,
+              "min_observed_seconds": 30.005096,
+              "max_observed_seconds": 33.051166,
+              "p90_observed_seconds": 32.746559,
+              "p95_observed_seconds": 32.898862
+            }
+          },
+          "small_sample_caveat": "Quantiles are omitted where fewer than two observations exist; even p95 with this bounded sample count is descriptive only."
+        },
+        "restart": {
+          "sample_count": 2,
+          "observed": {
+            "change_to_local_collector_checkpoint": {
+              "p50_observed_seconds": 0.366136,
+              "min_observed_seconds": 0.35998,
+              "max_observed_seconds": 0.372291,
+              "p90_observed_seconds": 0.37106,
+              "p95_observed_seconds": 0.371675
+            },
+            "local_collector_checkpoint_to_http_native_acceptance": {
+              "p50_observed_seconds": 0.003422,
+              "min_observed_seconds": 0.003279,
+              "max_observed_seconds": 0.003565,
+              "p90_observed_seconds": 0.003536,
+              "p95_observed_seconds": 0.003551
+            },
+            "http_native_acceptance_to_native_history_consumption": {
+              "p50_observed_seconds": 0.226792,
+              "min_observed_seconds": 0.207993,
+              "max_observed_seconds": 0.245591,
+              "p90_observed_seconds": 0.241831,
+              "p95_observed_seconds": 0.243711
+            },
+            "native_history_consumption_to_visible_tui_rendering": {
+              "p50_observed_seconds": 0.012656,
+              "min_observed_seconds": 0.011595,
+              "max_observed_seconds": 0.013717,
+              "p90_observed_seconds": 0.013505,
+              "p95_observed_seconds": 0.013611
+            },
+            "change_to_visible_tui_rendering": {
+              "p50_observed_seconds": 0.609005,
+              "min_observed_seconds": 0.584969,
+              "max_observed_seconds": 0.633042,
+              "p90_observed_seconds": 0.628235,
+              "p95_observed_seconds": 0.630638
+            }
+          },
+          "small_sample_caveat": "Quantiles are omitted where fewer than two observations exist; even p95 with this bounded sample count is descriptive only."
+        }
+      },
+      "latency_guarantee": false,
+      "owned_thread_archived": true,
+      "client_ui_verified": true,
+      "desktop_verified": false
+    },
+    {
+      "local_report": "latency-direct-2026-09-09.json",
+      "result": "FAIL",
+      "scope": "four completed samples followed by inability to confirm the fifth busy scenario using screen text; replaced by native-state driver",
+      "completed_samples": 4,
+      "note": "Original failure and earlier agent attempts retained; not counted as a complete latency run"
     }
   ]
 }
