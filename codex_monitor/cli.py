@@ -78,6 +78,33 @@ def request_original(monitor, delivery_id, thread):
     return event, binding
 
 
+def require_receiver_capability(root, config, capability):
+    """Fail closed when a live receiver does not advertise a feature."""
+    if not process_alive(root / "serve.lock"):
+        return
+    try:
+        token = (root / "admin.token").read_text().strip()
+        port = config["port"]
+        if type(port) is not int or not 1 <= port <= 65535:
+            raise ValueError("invalid receiver port")
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/v1/status",
+            headers={"Authorization": "Bearer " + token},
+        )
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *args, **kwargs):
+                return None
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=2) as response:
+            status = json.load(response)
+        capabilities = status.get("capabilities") if isinstance(status, dict) else None
+        if not isinstance(capabilities, dict) or capabilities.get(capability) is not True:
+            raise ValueError(f"active receiver does not support {capability}; restart it before this operation")
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError("cannot verify active receiver capabilities; restart it before this operation") from exc
+
+
 def parser():
     p = argparse.ArgumentParser(description="Wake the same interactive Codex conversation only for real events.")
     try:
@@ -126,6 +153,9 @@ def parser():
     create.add_argument("name"); create.add_argument("--file", required=True); create.add_argument("--thread")
     create.add_argument("--interval", type=float, default=2); create.add_argument("--endpoint", default="shared-local")
     create.add_argument("--debounce", type=float, default=0, help="require unchanged observed samples for this many seconds before emitting a change")
+    create.add_argument("--json-pointer", help="RFC 6901 pointer for a JSON condition")
+    create.add_argument("--operator", choices=["eq", "ne", "gt", "gte", "lt", "lte"])
+    create.add_argument("--value", help="finite JSON value for a JSON condition")
     listing = managed_commands.add_parser("list"); listing.add_argument("--thread")
     for action in ("status", "pause", "resume", "remove"):
         command = managed_commands.add_parser(action)
@@ -232,6 +262,8 @@ def main(argv=None):
         monitor = Monitor(root, pool, **config.get("limits", {}))
         if args.command == "request":
             thread = monitor_thread(args.thread)
+            if args.request_action in ("track", "update"):
+                require_receiver_capability(root, config, "request_lifecycle")
             store = RequestStore(root, clock=monitor.clock)
             if args.request_action == "track":
                 event, binding = request_original(monitor, args.delivery_id, thread)
@@ -258,7 +290,21 @@ def main(argv=None):
             thread = monitor_thread(args.thread)
             if args.monitor_action == "create":
                 path = os.path.abspath(os.path.expanduser(args.file))
-                value = monitor.managed_create(thread, args.name, path, args.interval, args.endpoint, debounce_seconds=args.debounce)
+                provided = (args.json_pointer is not None, args.operator is not None, args.value is not None)
+                if any(provided) and not all(provided):
+                    raise ValueError("--json-pointer, --operator and --value must be provided together")
+                condition = None
+                if all(provided):
+                    try:
+                        expected = json.loads(args.value)
+                    except (TypeError, ValueError, json.JSONDecodeError, RecursionError) as exc:
+                        raise ValueError("--value must be finite JSON") from exc
+                    condition = {"pointer": args.json_pointer, "operator": args.operator, "value": expected}
+                    require_receiver_capability(root, config, "managed_json_predicates")
+                value = monitor.managed_create(
+                    thread, args.name, path, args.interval, args.endpoint,
+                    debounce_seconds=args.debounce, condition=condition,
+                )
             elif args.monitor_action == "list":
                 value = monitor.managed_status(thread)
             elif args.monitor_action == "status":

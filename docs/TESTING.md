@@ -27,6 +27,43 @@ python3 scripts/managed-monitor-canary.py --run \
 
 The TUI option requires Codex and the optional `pyte` dependency. Unavailable TUI dependencies yield an incomplete result, never a UI PASS. Process checks without `--tui` do not verify a real client. The new Desktop managed event subsequently arrived as external input in the same conversation after the preceding assistant turn ended. Its receipt matched the previously queued test event. This proves conversation arrival, not pixel visibility or completed business work; no new source polling was needed.
 
+## Natural-language installed-skill workflow: PASS
+
+The audited canary `scripts/skill-workflow-canary.py` used the installed
+skill helper and installed runtime through an ordinary Codex CLI TUI in an
+owned pyte-backed PTY. It preserved the authenticated global `CODEX_HOME`,
+while the workspace, monitor state, watched file, receiver and test thread
+were disposable. The TUI used `workspace-write` and `on-request`; trust was
+limited to the disposable workspace, and command approvals were never
+answered automatically.
+
+The canary discovered the exact thread through App Server RPC, then submitted
+five natural-language `$codex-monitor` turns: create the managed monitor,
+inspect status, pause, resume and remove. Independent installed CLI/HTTP
+checks verified the exact binding and receiver. Native history checks used the
+delivery's stable client ID, while `inspect` supplied read-only local
+`accepted` versus native `consumed` evidence. The active and resumed changes
+were consumed exactly once; paused and removed changes created no new receipt
+or history entry. The successful run took 323.225 seconds.
+
+```bash
+.venv/bin/python scripts/skill-workflow-canary.py --run \
+  --report /tmp/codex-monitor-skill-workflow-canary.json \
+  --monitor-bin /absolute/installed-runtime/bin/codex-monitor \
+  --skill-helper /absolute/installed-skill/scripts/monitor.py \
+  --timeout 180
+```
+
+The final report and all earlier reports/captures are preserved in
+[`docs/evidence/skill-workflow-2026-09-09/`](evidence/skill-workflow-2026-09-09/).
+Earlier attempts exposed harness issues involving PTY pumping, macOS
+`/tmp` path spelling, receiver credentials and persisted port selection; they
+are retained with brief reasons in `RUNS.md`. The PASS is scoped to the
+installed basic managed-file skill workflow. It does not verify model task
+success, Desktop skill discovery, predicate policies, request lifecycles or
+the final candidate source/runtime. The native evidence proves queue/history
+consumption and the TUI capture, not business-work completion.
+
 ## Test boundaries
 
 The public verification surface is:
@@ -228,6 +265,34 @@ The separate final ordinary macOS TUI run passed in 29.954 seconds with the same
 
 ## Request lifecycle and managed remote CLI (2026-09-09)
 
+### JSON predicate extension
+
+The final predicate runtime passed 134 source tests on macOS and 134 installed
+tests on Debian 12 arm64/Python 3.11. Installed predicate process checks cover
+silent baselines, sustained conditions, unrelated writes, recovery, invalid
+samples, restart/pause timing reset, conversation scope and value redaction.
+The stability soak ran for 300.001 seconds with 30 unrelated writes and no
+additional matched events. This is a five-minute predicate result, not a new
+one-hour result.
+
+```bash
+python3 scripts/managed-predicate-canary.py --run \
+  --python /absolute/installed-venv/bin/python --soak-seconds 300 \
+  --tui --remote --model gpt-5.6-luna --reasoning-effort xhigh \
+  --report /tmp/managed-predicate.json
+```
+
+The separate stricter ordinary Unix remote TUI run passed in 55.088 seconds.
+Matched and recovered events rendered with redacted values, their exact
+client IDs appeared once each in native history, and a later user turn
+received a response. It rejects command approvals and identifies only its
+disposable workspace trust prompt. Earlier broad prompt matching and
+state-text-only assertions were replaced; preserved older runs are not the
+strict final TUI evidence. Overall report completion now waits for all
+requested phases and cleanup.
+
+### Request and endpoint results
+
 The request/explicit-endpoint candidate passed 124 macOS source tests and 124
 Linux installed-wheel tests. Request process/HTTP coverage passed 32 checks on
 Linux. The macOS request canary passed 37 checks including an actual ordinary
@@ -250,3 +315,22 @@ The second command uses a test-owned Unix App Server and ordinary `codex
 the configured endpoint and exact loaded thread, native event consumption,
 rendered content and a follow-up response. Latency timestamps are sampled
 observation times, not precise server-side execution-start timestamps.
+
+For a bounded latency distribution on an owned Unix App Server and ordinary
+remote TUI, use the separate opt-in canary after reviewing its model and
+approval settings:
+
+```bash
+python3 scripts/latency-canary.py --run \
+  --python /absolute/installed-venv/bin/python \
+  --samples 6 --model gpt-5.6-luna --reasoning-effort xhigh \
+  --report /tmp/codex-monitor-latency.json
+```
+
+It records producer/file change, local checkpoint intake, HTTP/native
+acceptance, exact native history consumption and visible PTY rendering for
+idle, busy and post-restart samples. The report includes observed p50/p90/p95
+values where the category has enough observations, plus a small-sample caveat.
+These are signed observer intervals and bounded observations, not latency
+guarantees or service-level objectives. The canary rejects command approval
+prompts and only accepts the exact disposable workspace trust dialog.

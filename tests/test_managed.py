@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import Mock, patch
 
@@ -187,6 +188,48 @@ class ManagedMonitorTest(unittest.TestCase):
         self.assertLessEqual(len(supervisor._workers), 1)
         error = self.monitor.managed_status("thread-a", "second")["last_sample_error"]
         self.assertIn("capacity exhausted", error)
+        supervisor.close()
+
+    def test_pending_event_replays_once_before_worker_start_failure(self):
+        path = Path(self.temp.name) / "pending"
+        path.write_text("one")
+        watch = self.monitor.managed_create("thread-a", "pending", str(path), .1)
+        supervisor, now = self._supervisor()
+        row = self.monitor.managed_runtime_row(watch["id"])
+        worker = SimpleNamespace(watch_id=watch["id"], lifecycle_epoch=row["lifecycle_epoch"])
+        baseline = {"path": str(path), "state": "present", "sha256": "one"}
+        changed = {"path": str(path), "state": "present", "sha256": "two"}
+        supervisor._apply_result(worker, row, baseline, now[0])
+
+        original_ingest = self.monitor.ingest
+        fail_once = [True]
+
+        def fail_delivery(binding, envelope):
+            if fail_once[0]:
+                fail_once[0] = False
+                raise OSError("temporary ingest outage")
+            return original_ingest(binding, envelope)
+
+        self.monitor.ingest = fail_delivery
+        now[0] = .1
+        supervisor._apply_result(worker, self.monitor.managed_runtime_row(watch["id"]), changed, now[0])
+        self.assertTrue(self.monitor.managed_status("thread-a", "pending")["checkpoint_pending"])
+
+        with patch.object(supervisor, "_start_worker", side_effect=RuntimeError("spawn unavailable")) as start:
+            now[0] = 2.1
+            supervisor._schedule(self.monitor.managed_runtime_rows(), now[0])
+            supervisor._schedule(self.monitor.managed_runtime_rows(), now[0] + .2)
+
+        status = self.monitor.managed_status("thread-a", "pending")
+        self.assertEqual(start.call_count, 2)
+        self.assertFalse(status["checkpoint_pending"])
+        self.assertIsNotNone(status["last_delivery"])
+        with self.monitor.connect() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM events").fetchone()[0], 1)
+        self.assertEqual(
+            self.monitor.event(status["last_delivery"]["delivery_id"])["envelope"]["data"]["current"]["sha256"],
+            "two",
+        )
         supervisor.close()
 
     def test_thread_capacity_keeps_other_conversation_schedulable(self):

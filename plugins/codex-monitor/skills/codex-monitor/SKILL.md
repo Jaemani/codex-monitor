@@ -45,6 +45,10 @@ For an existing webhook or agent producer, use the separate source/attach workfl
 [operations.md](references/operations.md). Do not pretend the managed file collector supervises an
 arbitrary external process. The user continues typing in the same task; no native badge is promised.
 
+For sustained changes, JSON field conditions or a CLI already using an explicit owner endpoint,
+read [conditions.md](references/conditions.md). For tracking an external work request through progress,
+completion or expiry, read [requests.md](references/requests.md).
+
 ## Manage and diagnose
 
 For a managed monitor, use `monitor status`, `monitor pause`, `monitor resume`, or `monitor remove`

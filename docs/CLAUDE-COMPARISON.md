@@ -2,6 +2,15 @@
 
 Research date: **2026-09-08**. All external links below are first-party Anthropic documentation accessed on that date. Claude Code channels and agent teams are preview/experimental features, so their contracts may change.
 
+Codex implementation update (2026-09-09): conversation-scoped file collectors,
+bounded sampler processes, durable debounce and explicit correlated request
+state are now implemented. Request lifecycle passed macOS/Linux installed
+checks and an actual ordinary TUI flow. Managed delivery through an owned Unix
+App Server and `codex --remote` also passed, with one sampled 1.032-second
+change-to-visible interval. This does not establish matched-workload superiority,
+Desktop interaction parity or a universal latency guarantee. See
+[monitoring levels](MONITOR-LEVELS.md) and [latency evidence](LATENCY.md).
+
 ## Decision
 
 `codex-monitor` should keep a named binding attached to one existing Codex conversation and present that binding as an **externally monitored conversation**. It should not imitate Claude's channel-specific envelope or create a hidden worker conversation. The current `shared-local` path already has the important continuity property: it stores input for the bound thread ID and lets the CLI or Desktop client that owns that thread consume it.

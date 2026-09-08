@@ -25,6 +25,7 @@ from typing import Any, Callable
 
 from .conditions import ConditionDebouncer
 from .monitor import MANAGED_SOURCE
+from .predicates import PredicateError, evaluate, load_condition, parse_document
 from .watch import ChangeWatcher
 
 MAX_FILE_BYTES = 8 * 1024 * 1024
@@ -41,8 +42,8 @@ TRANSIENT_SAMPLE_ERRORS = {
 }
 
 
-def safe_file_sample(path, max_bytes=MAX_FILE_BYTES, max_seconds=MAX_READ_SECONDS):
-    """Hash one regular file without following symlinks or opening FIFOs."""
+def _safe_read(path, max_bytes, max_seconds, *, include_content=False):
+    """Read and hash one regular file without following symlinks or FIFOs."""
     path = Path(path)
     display_path = str(path)
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -50,35 +51,62 @@ def safe_file_sample(path, max_bytes=MAX_FILE_BYTES, max_seconds=MAX_READ_SECOND
     try:
         descriptor = os.open(path, flags)
     except FileNotFoundError:
-        return {"path": display_path, "state": "missing"}
+        return {"path": display_path, "state": "missing"}, None
     except OSError as exc:
-        return {"path": display_path, "state": "unreadable", "error": type(exc).__name__}
+        return {"path": display_path, "state": "unreadable", "error": type(exc).__name__}, None
     try:
         before = os.fstat(descriptor)
         if not stat.S_ISREG(before.st_mode):
-            return {"path": display_path, "state": "unreadable", "error": "not_regular_file"}
+            return {"path": display_path, "state": "unreadable", "error": "not_regular_file"}, None
         if before.st_size > max_bytes:
-            return {"path": display_path, "state": "unreadable", "error": "file_too_large"}
+            return {"path": display_path, "state": "unreadable", "error": "file_too_large"}, None
         digest = hashlib.sha256()
+        content = bytearray() if include_content else None
         remaining = before.st_size
         deadline = time.monotonic() + max_seconds
         while remaining:
             if time.monotonic() >= deadline:
-                return {"path": display_path, "state": "unreadable", "error": "read_timeout"}
+                return {"path": display_path, "state": "unreadable", "error": "read_timeout"}, None
             block = os.read(descriptor, min(READ_CHUNK, remaining))
             if not block:
-                return {"path": display_path, "state": "unreadable", "error": "short_read"}
+                return {"path": display_path, "state": "unreadable", "error": "short_read"}, None
             digest.update(block)
+            if content is not None:
+                content.extend(block)
             remaining -= len(block)
         after = os.fstat(descriptor)
         identity = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns)
         if identity(before) != identity(after):
-            return {"path": display_path, "state": "unreadable", "error": "changed_during_read"}
-        return {"path": display_path, "state": "present", "sha256": digest.hexdigest()}
+            return {"path": display_path, "state": "unreadable", "error": "changed_during_read"}, None
+        return {"path": display_path, "state": "present", "sha256": digest.hexdigest()}, content
     except OSError as exc:
-        return {"path": display_path, "state": "unreadable", "error": type(exc).__name__}
+        return {"path": display_path, "state": "unreadable", "error": type(exc).__name__}, None
     finally:
         os.close(descriptor)
+
+
+def safe_file_sample(path, max_bytes=MAX_FILE_BYTES, max_seconds=MAX_READ_SECONDS):
+    """Hash one regular file without following symlinks or opening FIFOs."""
+    result, _ = _safe_read(path, max_bytes, max_seconds)
+    return result
+
+
+def safe_json_sample(path, max_bytes, max_seconds, condition):
+    """Evaluate a bounded JSON predicate without returning document content."""
+    result, content = _safe_read(path, max_bytes, max_seconds, include_content=True)
+    if result["state"] != "present":
+        return result
+    try:
+        document = parse_document(bytes(content))
+        predicate = evaluate(document, condition)
+    except PredicateError as exc:
+        if str(exc) == "invalid JSON document":
+            return {"path": result["path"], "state": "unreadable", "error": "invalid_json"}
+        return {
+            "path": result["path"], "state": "present", "sha256": result["sha256"],
+            "predicate": {"state": "invalid", "error": "invalid_condition"},
+        }
+    return {**result, "predicate": predicate}
 
 
 def _parent_lifetime_guard(connection, finished):
@@ -90,7 +118,7 @@ def _parent_lifetime_guard(connection, finished):
             os._exit(0)
 
 
-def _sample_worker(connection, lifetime, path, max_bytes, max_seconds, sampler):
+def _sample_worker(connection, lifetime, path, max_bytes, max_seconds, sampler, condition=None):
     """Run a sampler without any monitor or checkpoint access."""
     finished = threading.Event()
     guard = threading.Thread(
@@ -100,7 +128,10 @@ def _sample_worker(connection, lifetime, path, max_bytes, max_seconds, sampler):
     guard.start()
     try:
         try:
-            result = sampler(path, max_bytes, max_seconds)
+            if condition is None:
+                result = sampler(path, max_bytes, max_seconds)
+            else:
+                result = safe_json_sample(path, max_bytes, max_seconds, condition)
         except BaseException as exc:
             result = {
                 "path": str(path), "state": "unreadable",
@@ -267,20 +298,7 @@ class ManagedSupervisor:
         self._watchers[watch_id] = watcher
         return watcher
 
-    def _observe_sample(self, row, sample):
-        watcher = self._watcher(row)
-        if not row.get("debounce_seconds", 0):
-            return watcher.check(sample)
-        checkpoint, error = self.monitor._managed_checkpoint_state(row["id"])
-        if error:
-            raise ValueError(error)
-        # An already durable event must be replayed before a newer sample can
-        # cancel or replace a condition candidate.
-        if checkpoint and checkpoint.get("pending"):
-            watcher.check(checkpoint["pending"]["data"]["current"])
-            checkpoint, error = self.monitor._managed_checkpoint_state(row["id"])
-            if error:
-                raise ValueError(error)
+    def _condition_policy(self, row):
         policy = self._policies.get(row["id"])
         if policy is None:
             policy = ConditionDebouncer(
@@ -288,6 +306,36 @@ class ManagedSupervisor:
                 row["debounce_seconds"], clock=self.monotonic,
             )
             self._policies[row["id"]] = policy
+        return policy
+
+    def _replay_pending(self, row, watcher):
+        """Retry one durable watcher event before considering a fresh sample."""
+        checkpoint, error = self.monitor._managed_checkpoint_state(row["id"])
+        if error:
+            raise ValueError(error)
+        if not checkpoint or not checkpoint.get("pending"):
+            return
+        pending = checkpoint["pending"]["data"]["current"]
+        watcher.check(pending)
+        if row.get("debounce_seconds", 0) or row.get("condition_json"):
+            self._condition_policy(row).commit(pending)
+
+    def _observe_sample(self, row, sample):
+        watcher = self._watcher(row)
+        predicate_mode = bool(row.get("condition_json"))
+        if predicate_mode:
+            predicate = sample.get("predicate")
+            if not isinstance(predicate, dict) or predicate.get("state") not in {"matched", "not_matched"}:
+                raise ValueError("json condition did not produce a valid predicate state")
+            # Debounce only the predicate state. Unrelated changes to the
+            # document must not restart a condition that remains matched.
+            sample = {"condition": predicate["state"]}
+        if not predicate_mode and not row.get("debounce_seconds", 0):
+            return watcher.check(sample)
+        checkpoint, error = self.monitor._managed_checkpoint_state(row["id"])
+        if error:
+            raise ValueError(error)
+        policy = self._condition_policy(row)
         selected = policy.select(
             sample, checkpoint["last"] if checkpoint else None,
             pause_epoch=self._epoch(row),
@@ -301,9 +349,10 @@ class ManagedSupervisor:
     def _start_worker(self, row):
         result_parent, result_child = self.context.Pipe(False)
         lifetime_parent, lifetime_child = self.context.Pipe(True)
+        condition = load_condition(row["condition_json"]) if row.get("condition_json") else None
         process = self.context.Process(
             target=_sample_worker,
-            args=(result_child, lifetime_child, row["path"], MAX_FILE_BYTES, MAX_READ_SECONDS, self.sampler),
+            args=(result_child, lifetime_child, row["path"], MAX_FILE_BYTES, MAX_READ_SECONDS, self.sampler, condition),
             name="codex-monitor-file-sample",
         )
         process.daemon = True
@@ -392,20 +441,52 @@ class ManagedSupervisor:
             not row.get("removed") and self._epoch(row) == worker.lifecycle_epoch
         )
 
+    def _row_is_schedulable(self, row):
+        current = self.monitor.managed_runtime_row(row["id"])
+        if not current or not current.get("enabled") or current.get("removed"):
+            return None
+        if self._epoch(current) != self._epoch(row):
+            return None
+        return current
+
     def _sample_error(self, row, message):
         self._policies.pop(row["id"], None)
         try:
-            self.monitor.managed_set_worker(row["id"], "running", message, sample_error=message)
+            self.monitor.managed_set_worker(
+                row["id"], "running", message,
+                self._last_delivery.pop(row["id"], None), sample_error=message,
+            )
         except Exception:
             pass
 
     def _apply_result(self, worker, row, sample, now):
         if not self._row_is_current(worker, row):
             return
+        watcher = self._watcher(row)
+        try:
+            self._replay_pending(row, watcher)
+        except Exception as exc:
+            self.monitor.managed_set_worker(
+                row["id"], "running", str(exc)[:500],
+                self._last_delivery.pop(row["id"], None), sample_error=str(exc)[:500],
+            )
+            self._next[row["id"]] = now + row["interval"]
+            return
         if not isinstance(sample, dict) or sample.get("path") != row["path"]:
             self._sample_error(row, "file sample: worker_result")
             self._next[row["id"]] = now + row["interval"]
             return
+        if row.get("condition_json"):
+            predicate = sample.get("predicate")
+            if sample.get("state") != "present":
+                self._sample_error(row, "json condition: " + str(sample.get("error", "unreadable")))
+                self._next[row["id"]] = now + row["interval"]
+                return
+            if not isinstance(predicate, dict) or predicate.get("state") == "invalid":
+                error = predicate.get("error", "invalid_condition") if isinstance(predicate, dict) else "invalid_condition"
+                self._sample_error(row, "json condition: " + str(error))
+                self._next[row["id"]] = now + row["interval"]
+                return
         sample_error = None
         if sample.get("state") == "unreadable":
             sample_error = "file sample: " + str(sample.get("error", "unreadable"))
@@ -424,7 +505,8 @@ class ManagedSupervisor:
             )
         except Exception as exc:
             self.monitor.managed_set_worker(
-                worker.watch_id, "running", str(exc)[:500], sample_error=sample_error,
+                worker.watch_id, "running", str(exc)[:500],
+                self._last_delivery.pop(worker.watch_id, None), sample_error=sample_error,
             )
         self._next[row["id"]] = now + row["interval"]
 
@@ -452,14 +534,20 @@ class ManagedSupervisor:
                     self._apply_result(worker, row, sample, now)
                 else:
                     worker.reported = True
-                    self._sample_error(row, "file sample: worker_exited")
-                    self._next[worker.watch_id] = now + row["interval"]
+                    self._apply_result(
+                        worker, row,
+                        {"path": row["path"], "state": "unreadable", "error": "worker_exited"},
+                        now,
+                    )
                 self._retire_if_dead(worker)
                 continue
             if real_now >= worker.deadline:
                 worker.reported = True
-                self._sample_error(row, "file sample: worker_timeout")
-                self._next[worker.watch_id] = now + row["interval"]
+                self._apply_result(
+                    worker, row,
+                    {"path": row["path"], "state": "unreadable", "error": "worker_timeout"},
+                    now,
+                )
                 self._terminate_process(worker)
                 self._retire_if_dead(worker)
 
@@ -484,6 +572,21 @@ class ManagedSupervisor:
                     pass
                 continue
             if now < self._next.get(watch_id, 0) or watch_id in self._workers:
+                continue
+            current = self._row_is_schedulable(row)
+            if current is None:
+                continue
+            row = current
+            watcher = self._watcher(row)
+            try:
+                # A pending watcher event is independent of sampler health.
+                # Replay it once before capacity admission or worker startup;
+                # the existing interval provides bounded retry backoff.
+                self._replay_pending(row, watcher)
+            except Exception as exc:
+                message = "file sample pending_replay: " + str(exc)[:500]
+                self._sample_error(row, message)
+                self._next[watch_id] = now + max(row["interval"], self.poll_interval)
                 continue
             thread_workers = sum(
                 worker.thread == row["thread"] for worker in self._workers.values()

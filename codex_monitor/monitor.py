@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 from .errors import IngressError, Retryable, Uncertain, Permanent
 from .conditions import ConditionDebouncer
 from .lock import process_alive
+from .predicates import PredicateError, normalize_condition, public_condition
 from .presentation import render_event
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$")
@@ -102,7 +103,7 @@ class Monitor:
                     enabled INTEGER NOT NULL DEFAULT 1, removed INTEGER NOT NULL DEFAULT 0,
                     worker_state TEXT NOT NULL DEFAULT 'stopped', last_error TEXT,
                     last_sample_error TEXT, last_delivery_id TEXT, worker_seen REAL,
-                    created REAL NOT NULL, updated REAL NOT NULL);
+                    created REAL NOT NULL, updated REAL NOT NULL, condition_json TEXT);
                 CREATE INDEX IF NOT EXISTS managed_active ON managed_watches(thread,name,removed);
             """)
             # Serialize schema inspection and migrations across receiver/CLI startup.
@@ -116,6 +117,8 @@ class Monitor:
                 db.execute("ALTER TABLE managed_watches ADD COLUMN lifecycle_epoch INTEGER NOT NULL DEFAULT 0")
             if "debounce_seconds" not in managed_columns:
                 db.execute("ALTER TABLE managed_watches ADD COLUMN debounce_seconds REAL NOT NULL DEFAULT 0")
+            if "condition_json" not in managed_columns:
+                db.execute("ALTER TABLE managed_watches ADD COLUMN condition_json TEXT")
         os.chmod(self.path, 0o600)
 
     @contextmanager
@@ -159,11 +162,21 @@ class Monitor:
         if isinstance(interval, bool) or not isinstance(interval, (int, float)) or not math.isfinite(interval) or not .1 <= interval <= 86400:
             raise IngressError("managed watch interval must be between 0.1 and 86400 seconds")
 
-    def managed_create(self, thread, name, path, interval=2.0, endpoint="shared-local", *, debounce_seconds=0):
+    def managed_create(
+        self, thread, name, path, interval=2.0, endpoint="shared-local", *,
+        debounce_seconds=0, condition=None,
+    ):
         endpoint = validate_endpoint(endpoint)
         self._managed_validate(thread, name, path, interval)
         if isinstance(debounce_seconds, bool) or not isinstance(debounce_seconds, (int, float)) or not math.isfinite(debounce_seconds) or not 0 <= debounce_seconds <= 86400:
             raise IngressError("debounce seconds must be between 0 and 86400")
+        if condition is None:
+            condition_json = None
+        else:
+            try:
+                _, condition_json = normalize_condition(condition)
+            except PredicateError as exc:
+                raise IngressError(str(exc)) from exc
         watch_id = uuid.uuid4().hex
         binding = "managed-" + watch_id
         now = self.clock()
@@ -178,9 +191,10 @@ class Monitor:
             db.execute("INSERT INTO bindings(name,thread,endpoint,sources) VALUES(?,?,?,?)",
                        (binding, thread, endpoint, compact([MANAGED_SOURCE])))
             db.execute("""INSERT INTO managed_watches
-                (id,thread,name,path,interval,binding,created,updated,debounce_seconds)
-                VALUES(?,?,?,?,?,?,?,?,?)""",
-                       (watch_id, thread, name, path, float(interval), binding, now, now, float(debounce_seconds)))
+                (id,thread,name,path,interval,binding,created,updated,debounce_seconds,condition_json)
+                VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                       (watch_id, thread, name, path, float(interval), binding, now, now,
+                        float(debounce_seconds), condition_json))
         self._managed_checkpoint(self.root, watch_id).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.wakeup.set()
         return self.managed_status(thread, name)
@@ -256,9 +270,15 @@ class Monitor:
         with self.connect() as db:
             binding = db.execute("SELECT endpoint FROM bindings WHERE name=?", (row["binding"],)).fetchone()
         endpoint = binding["endpoint"] if binding is not None else None
-        condition = None
+        predicate = None
         condition_error = None
-        if row["debounce_seconds"]:
+        if row.get("condition_json"):
+            try:
+                predicate = public_condition(row["condition_json"])
+            except PredicateError as exc:
+                condition_error = str(exc)[:500]
+        condition = None
+        if row["debounce_seconds"] or row.get("condition_json"):
             try:
                 condition = ConditionDebouncer(self._managed_condition_checkpoint(self.root, row["id"]), row["debounce_seconds"]).status()
             except (OSError, ValueError) as exc:
@@ -286,6 +306,7 @@ class Monitor:
             "id": row["id"], "thread": row["thread"], "name": row["name"], "file": row["path"],
             "interval": row["interval"], "debounce_seconds": row["debounce_seconds"],
             "binding": row["binding"], "endpoint": endpoint, "enabled": bool(row["enabled"]),
+            "predicate": predicate,
             "collector_status": collector_status, "last_sample": checkpoint.get("last") if checkpoint else None,
             "checkpoint_pending": bool(checkpoint and checkpoint.get("pending")),
             "checkpoint_error": checkpoint_error, "condition": condition, "condition_error": condition_error,

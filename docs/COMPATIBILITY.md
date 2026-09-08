@@ -1,5 +1,11 @@
 # Client connectivity and validation scope
 
+The 2026-09-09 JSON predicate extension passed installed macOS/Linux process
+checks and an actual ordinary Unix remote TUI matched/recovery/follow-up flow.
+Live receivers advertise capabilities; new predicate creation and request
+mutations refuse an older active receiver. This does not make older binaries
+safe against newer state, and adds no Desktop pixel or Windows evidence.
+
 Commands using `.venv/bin` assume the development environment described in the [README](../README.md#development). For a runtime installation, use the executable path printed by the installer.
 
 Status as of **2026-09-08**. The goal is to continue the same conversation from both CLI and Desktop. The default path is Codex's official `shared-local` queue. Earlier guidance incorrectly required a connection to the same Desktop server. Local Desktop has a native consumer for external queue changes. Its responses have been verified, and the user observed event visibility and Desktop exit/reopen behavior. Automated pixel checks and Desktop draft and permission-prompt tests remain incomplete.

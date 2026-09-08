@@ -177,3 +177,60 @@ started by the installer.
 
 A follow-up HTTP hardening removes store-wide activity counters from
 source-authenticated request responses; six focused API checks passed.
+
+## JSON conditions and receiver compatibility (2026-09-09)
+
+Managed JSON files now support typed equality and numeric comparisons through
+bounded JSON pointers. Only stable changes between matched and not-matched
+states produce events. Initial observations are silent; invalid observations
+reset the stability window. Unrelated document changes do not reset a sustained
+condition. Expected and selected values are omitted from status and events.
+
+The current source suite passed 134 tests, including rejection of old active
+receivers before predicate creation or request mutation, and durable event replay
+when sampler startup repeatedly fails. The installed predicate soak passed 300.001 seconds with 30 unrelated JSON
+writes and no additional events. A separate ordinary Unix remote TUI run
+passed in 55.088 seconds: matched and recovered events rendered, each exact
+client ID occurred once in native history, and a subsequent user turn received
+a native response. The stricter rerun replaced broad trust-prompt detection
+and state-text-only correlation in the earlier harness; the earlier reports
+remain preserved. No new Desktop or business-task completion claim is made.
+
+The replacement installed wheel passed 134 tests on Debian 12 arm64/Python
+3.11 in 26.347 seconds, 32 request process checks in 6.070 seconds and 16
+predicate process checks in 22.193 seconds. Docker used an init/reaper.
+
+An artifact equality check rejected an outdated frozen wheel: four runtime
+modules differed from the newer archive. Latest tests against that old wheel
+also failed with two errors and one failure. Those reports remain preserved.
+The replacement wheel was compared against all 18 source runtime modules.
+Its archive then passed checksum, runtime equality, isolated install, request
+and predicate CLI, skill removal and state preservation in 3.939 seconds.
+The same wheel passed ten macOS LaunchAgent managed-file lifecycle checks in
+8.941 seconds; this service test uses a fake App Server and adds no UI claim.
+
+## Natural-language installed-skill workflow (2026-09-09)
+
+An audited canary passed an ordinary macOS Codex CLI TUI workflow using the
+installed `codex-monitor` skill. The test ran `gpt-5.6-luna` at `xhigh` in an
+owned PTY with `workspace-write` and `on-request`, discovered one exact owned
+thread, and sent natural-language `$codex-monitor` turns for create, status,
+pause, resume and remove. It used a disposable watched file, monitor state,
+receiver and test conversation.
+
+The active file change and the change detected after resume each produced one
+local `accepted` receipt and one read-only native `consumed` result keyed by a
+stable client ID. A change while paused and a change after removal produced no
+new receipt or native history item. The receiver and collector were checked
+through authenticated HTTP and installed CLI status. The successful run took
+323.225 seconds; its report and pyte capture are preserved under
+[`docs/evidence/skill-workflow-2026-09-09/`](evidence/skill-workflow-2026-09-09/).
+
+This result covers the installed basic managed-file workflow only. It does not
+claim model task success, Desktop discovery, predicate policies, request
+lifecycle behavior, or the final candidate source state. The run used the
+installed `codex-monitor 0.1.0` launcher and the installed skill identified by
+its owner marker and `SKILL.md` hash; candidate runtime or skill changes need
+their own rerun. Earlier harness failures and aborted attempts remain
+preserved in the same evidence directory. No command approval prompt appeared
+and no command approval was answered.

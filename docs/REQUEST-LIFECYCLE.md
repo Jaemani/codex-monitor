@@ -34,6 +34,11 @@ Read the current revision before a transition. Reusing an update ID with the sam
 
 The existing exact-thread rules apply: host-provided CODEX_THREAD_ID and an explicit --thread must agree. A CLI status query does not wake the model. Terminal transitions cannot be undone by a delayed progress report.
 
+When a receiver is running, `track` and `update` require it to advertise request
+lifecycle support before changing stored requests. A missing capability or
+failed probe produces a restart error. Offline mutations remain local and are
+allowed; notification dispatch waits for a compatible receiver to start.
+
 ## Source integration
 
 Source-authenticated HTTP operations use the source attached to the original receipt. They cannot retarget another source's request or select a different conversation through event text. Administrator credentials are not treated as source credentials.

@@ -102,7 +102,7 @@ class Server:
         if any(name == MANAGED_SOURCE for name in sources):
             raise ValueError("reserved managed source cannot be exposed through HTTP credentials")
         if any(not v for v in sources.values()) or not admin_token:
-            raise ValueError("admin token is required; external source tokens may be empty")
+            raise ValueError("admin and registered source tokens must be nonempty; the source registry may be empty")
         if len(set([*sources.values(), admin_token])) != len(sources) + 1:
             raise ValueError("each source and admin need distinct tokens")
         self.monitor = monitor
@@ -306,7 +306,13 @@ class Server:
                         if not hmac.compare_digest(self.token().encode(), owner.admin.encode()):
                             raise IngressError("admin credentials required", 401)
                         if path == "/v1/status":
-                            self.reply(200, {**owner.monitor.status(), "worker_error": owner.worker_error})
+                            self.reply(200, {
+                                **owner.monitor.status(), "worker_error": owner.worker_error,
+                                "capabilities": {
+                                    "request_lifecycle": True,
+                                    "managed_json_predicates": True,
+                                },
+                            })
                         elif path == "/v1/sessions":
                             self.reply(200, overview(owner.monitor))
                         elif path.startswith("/v1/deliveries/"):

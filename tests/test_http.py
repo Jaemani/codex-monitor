@@ -56,6 +56,8 @@ class HTTPTest(unittest.TestCase):
         code, status = self.request(None, token="test-admin-secret", path="/v1/status")
         self.assertEqual(code, 200)
         self.assertEqual(status["events"], {})
+        self.assertTrue(status["capabilities"]["managed_json_predicates"])
+        self.assertTrue(status["capabilities"]["request_lifecycle"])
 
     def test_seeded_random_webhook_burst_crosses_real_http_boundary(self):
         ids = list(range(30)) * 2

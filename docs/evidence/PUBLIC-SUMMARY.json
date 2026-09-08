@@ -1052,6 +1052,123 @@
       "result": "PASS",
       "scope": "default runtime and bundled skill upgraded; state preserved; no permanent receiver started",
       "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
+    },
+    {
+      "local_report": "skill-workflow-2026-09-09/codex-monitor-skill-workflow-canary-11.json",
+      "result": "PASS",
+      "scope": "actual ordinary CLI TUI natural-language skill create/status/pause/resume/remove; baseline installed request runtime and skill",
+      "elapsed_seconds": 323.225,
+      "native_consumption_verified": true,
+      "command_approvals_automated": false,
+      "predicate_skill_workflow_verified": false,
+      "desktop_verified": false,
+      "earlier_attempts": "Ten earlier failed or aborted harness attempts preserved and audited; see local RUNS.md",
+      "runtime_release": "0.1.0-20260909005537-0aefccdf",
+      "skill_sha256": "d6ef7cc063ea956021618564fa9f1482b7d24e1ecdea571869231f876b379b4a"
+    },
+    {
+      "local_report": "predicate-linux-2026-09-09-stale-wheel.json",
+      "result": "FAIL",
+      "scope": "latest tests against an outdated installed predicate wheel; rejected as final validation",
+      "wheel_sha256": "7b3c1833f18778a7fea0d33879f030e3cea116a263457eaac3a5bb787252e5d7",
+      "detail": "130 tests ran; missing capability API/CLI guard and strict JSON validation caused two errors and one failure"
+    },
+    {
+      "local_report": "predicate-archive-2026-09-09-stale-wheel.json",
+      "result": "FAIL",
+      "scope": "archive equality guard rejected a stale frozen wheel",
+      "detail": "Archive checksums passed; four runtime modules differed from the frozen wheel"
+    },
+    {
+      "local_report": "predicate-archive-2026-09-09.json",
+      "scope": "isolated archive install/status/uninstall and state preservation",
+      "wheel_sha256": "26dff6e334728c872fd6307e10a3567d955488d6e64d8241976dcfbdcc682b4a",
+      "checks": {
+        "sidecar_hash": true,
+        "manifest_hashes": true,
+        "runtime_payload_matches_frozen_wheel": true,
+        "install": true,
+        "request_cli": true,
+        "predicate_cli": true,
+        "predicate_value_redacted": true,
+        "skill_removed": true,
+        "state_preserved": true
+      },
+      "result": "PASS",
+      "archive_sha256": "6fb71511e8e2d07909f66bf1631a542cfedb0a8a3dc40425c09e6ddc0da7b3f9",
+      "elapsed_seconds": 3.939
+    },
+    {
+      "local_report": "predicate-service-2026-09-09.json",
+      "result": "PASS",
+      "scope": "installed wheel / macOS LaunchAgent / managed file monitor",
+      "evidence_kind": "fake App Server queue and history evidence; no model or UI claim",
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "checks": {
+        "init_and_explicit_monitor_create": true,
+        "launchagent_installed_started_and_ready": true,
+        "initial_sample_creates_silent_baseline": true,
+        "atomic_change_has_one_accepted_consumed_receipt": true,
+        "sigkill_restart_preserves_checkpoint_and_receipt": true,
+        "second_change_has_distinct_one_receipt": true,
+        "service_stop_unloads_owned_job": true,
+        "stop_preserves_registry_sqlite_checkpoint_and_receipts": true,
+        "uninstall_removes_owned_plist_and_job": true,
+        "uninstall_preserves_registry_sqlite_checkpoint_and_receipts": true
+      },
+      "wheel_sha256": "26dff6e334728c872fd6307e10a3567d955488d6e64d8241976dcfbdcc682b4a",
+      "elapsed_seconds": 8.941
+    },
+    {
+      "local_report": "predicate-linux-2026-09-09.json",
+      "result": "PASS",
+      "scope": "Linux installed wheel regression and request/predicate process canaries; no UI or model claim",
+      "wheel_sha256": "26dff6e334728c872fd6307e10a3567d955488d6e64d8241976dcfbdcc682b4a",
+      "regression_tests": 134,
+      "regression_elapsed_seconds": 26.347,
+      "request_checks": 32,
+      "request_elapsed_seconds": 6.07,
+      "predicate_checks": 16,
+      "predicate_elapsed_seconds": 22.193,
+      "container_init": true
+    },
+    {
+      "local_report": "predicate-2026-09-09-final-settled.json:process-soak",
+      "result": "PASS",
+      "scope": "installed predicate process checks and unchanged-condition soak only; earlier TUI assertions under review",
+      "wheel_sha256": "26dff6e334728c872fd6307e10a3567d955488d6e64d8241976dcfbdcc682b4a",
+      "process_checks": 16,
+      "soak_seconds": 300.001,
+      "unrelated_writes": 30,
+      "additional_events": 0,
+      "ui_claim": false
+    },
+    {
+      "local_report": "predicate-2026-09-09-final-tui-safe.json",
+      "result": "PASS",
+      "scope": "ordinary Unix remote TUI matched/recovery/follow-up with exact client-ID correlation and strict owned-workspace trust handling",
+      "elapsed_seconds": 55.358,
+      "wheel_sha256": "26dff6e334728c872fd6307e10a3567d955488d6e64d8241976dcfbdcc682b4a",
+      "matched_native_count": 1,
+      "recovered_native_count": 1,
+      "followup_response_seen": true,
+      "client_ui_verified": true,
+      "business_completion_verified": false
+    },
+    {
+      "local_report": "predicate-2026-09-09-final-tui-safe2.json",
+      "result": "PASS",
+      "scope": "final ordinary Unix remote TUI matched/recovery/follow-up; strict exact client-ID and explicit trust/approval audit",
+      "elapsed_seconds": 55.088,
+      "wheel_sha256": "26dff6e334728c872fd6307e10a3567d955488d6e64d8241976dcfbdcc682b4a",
+      "matched_native_count": 1,
+      "recovered_native_count": 1,
+      "followup_response_seen": true,
+      "command_approval_seen": false,
+      "trust_prompt_seen": true,
+      "client_ui_verified": true,
+      "business_completion_verified": false
     }
   ]
 }

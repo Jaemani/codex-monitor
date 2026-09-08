@@ -129,6 +129,18 @@ Add `--with-skill` to upgrade the bundled skill too. The skill ownership manifes
 
 A failed build, wheel install, dependency check, or CLI validation removes the candidate and leaves `current` on the prior working release.
 
+Stop every foreground receiver and receiver managed by another service manager
+before upgrading, including receivers using other state directories. The
+installer cannot discover all such processes. Restart each receiver with the
+new executable and its original state path after the upgrade. A running old
+process does not change code when the launcher changes.
+
+Retained release directories are not a supported rollback interface. Older
+versions can ignore newer state fields, including JSON predicates, and turn a
+conditional monitor into an ordinary file-change monitor. Do not switch
+`current` manually against newer state. Recovery to an older runtime requires
+a compatible state backup and an explicit migration plan.
+
 ### Upgrade with a macOS launchd receiver
 
 The launchd plist records the virtual environment's lexical Python path. Changing `current` alone would leave the service running the old release. Therefore upgrade refuses whenever a `com.codex.monitor.*` LaunchAgent still references any release under the managed prefix, even if that job is stopped.

@@ -64,7 +64,45 @@ codex-monitor monitor create build --thread "$THREAD_ID" \
 
 `monitor status` reports the condition candidate separately from the last emitted sample and delivery receipt. Condition timing uses a monotonic clock; saved readings are not UTC timestamps. Restart preserves the candidate but begins its stability window again after the next observation. Pause/resume and failed observations also invalidate prior timing, so downtime is not credited as healthy observation. A candidate becomes committed only after the durable watcher handles it; an already pending event is recovered before evaluating a newer candidate.
 
-## Compatibility with existing commands
+## JSON conditions
+
+For a file such as `{"build":{"status":"ok"},"updated":17}`, select a
+condition explicitly:
+
+```bash
+codex-monitor monitor create build-failure --thread "$THREAD_ID" \
+  --file /absolute/project/build-status.json --interval 1 \
+  --json-pointer /build/status --operator eq --value '"failed"' --debounce 5
+```
+
+All three predicate arguments are required together. The pointer uses RFC 6901:
+`/` separates keys, `~1` represents a slash in a key and `~0` a tilde. An empty
+pointer selects the whole document. Array indexes use ASCII decimal digits.
+Operators are `eq`, `ne`, `gt`, `gte`, `lt` and `lte`. Equality preserves JSON
+types, so `true` differs from `1`; ordering accepts finite numbers only.
+
+The first valid observation is a silent baseline, even if already matched.
+Subsequent stable transitions to matched or not matched emit one event. Unrelated
+field changes do not reset the stability window. Missing fields, malformed JSON,
+non-finite values and failed reads invalidate observation rather than making
+`ne` true. Recovery starts a fresh observed stability window. A saved pending
+event remains recoverable even if newer file content becomes invalid.
+
+Evaluation runs in the bounded sampler process. Only derived condition state is
+checkpointed or emitted; status exposes the pointer and operator, not selected
+or expected values. The expected value is retained in the private local monitor
+configuration so the receiver can evaluate it after restart. Pointer limits are
+1,024 UTF-8 bytes and 32 segments; expected JSON is capped at 4 KiB. The file
+read size and worker deadline limits also apply.
+
+If a receiver is running, predicate creation checks its advertised capability
+before storing the watch. An older or unresponsive receiver must be restarted
+with a compatible runtime; it must not silently treat a predicate as a hash
+watch. With no receiver running, offline creation remains available. Running
+older pre-predicate binaries against a state directory containing predicates
+is unsupported; preserve a matching backup before downgrading.
+
+## Existing commands and owner endpoints
 
 An existing CLI TUI connected with `codex --remote` can use the same explicit
 App Server endpoint for its managed monitor:
@@ -75,8 +113,9 @@ codex-monitor monitor create build --thread "$THREAD_ID" \
   --endpoint "$ENDPOINT" --file /absolute/project/build-status.json
 ```
 
-The configured endpoint is shown in monitor status. Creation validates its
-syntax without making a connection, so an offline definition can be stored.
+The configured endpoint is shown in monitor status. Endpoint validation is
+purely local, so an offline definition can be stored. Predicate creation also
+checks a running receiver's capability as described above.
 Delivery requires that exact conversation to be loaded on the selected server.
 The monitor never loads or resumes it. A remote endpoint changes delivery only;
 the watched file remains local to the receiver host.
