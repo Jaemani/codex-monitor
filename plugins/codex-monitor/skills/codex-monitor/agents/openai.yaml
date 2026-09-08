@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Monitor"
+  short_description: "Manage one ongoing conversation with external events"
+  default_prompt: "Use $codex-monitor to set up monitoring for this conversation and show its status."

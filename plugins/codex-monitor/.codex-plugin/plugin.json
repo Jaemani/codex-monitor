@@ -1,0 +1,18 @@
+{
+  "name": "codex-monitor",
+  "version": "0.1.0",
+  "description": "Manage external-event monitoring for one ongoing Codex conversation",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Monitor",
+    "shortDescription": "Monitor and manage one ongoing conversation.",
+    "longDescription": "Attach an existing conversation, inspect monitoring state, pause delivery, and explicitly reply to external sources. Requires the separately installed codex-monitor runtime.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Use codex-monitor to manage monitoring for this conversation."
+  }
+}

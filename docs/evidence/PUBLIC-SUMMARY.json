@@ -1,0 +1,541 @@
+{
+  "date": "2026-09-08",
+  "kind": "curated summary; original logs retained locally, not independently reproducible evidence",
+  "records": [
+    {
+      "local_report": "desktop-launchd-2026-09-08.json",
+      "result": "PASS",
+      "scope": "actual macOS launchd + installed receiver + HTTP",
+      "elapsed_seconds": 16.46,
+      "checks": {
+        "installed_receiver_http_ready": true,
+        "authenticated_http_receipt": true,
+        "installed_service_delivers_to_native_queue": true,
+        "start_is_idempotent": true,
+        "launchd_recovers_killed_receiver": true,
+        "crash_preserves_dedup": true,
+        "explicit_restart_recovers_http": true,
+        "stop_unloads_job": true,
+        "reinstall_preserves_credentials_and_config": true,
+        "uninstall_removes_only_owned_service": true,
+        "uninstall_preserves_receipt": true
+      }
+    },
+    {
+      "local_report": "desktop-live-2026-09-08.json",
+      "result": "DESKTOP_RESPONSE_RECORDED",
+      "surface": "desktop",
+      "client_ui_verified": false
+    },
+    {
+      "local_report": "desktop-restart-2026-09-08.json",
+      "result": "DESKTOP_EVENT_CONSUMED",
+      "surface": "desktop",
+      "client_ui_verified": true
+    },
+    {
+      "local_report": "desktop-session-ux-2026-09-08.json",
+      "result": "PASS",
+      "explicit_reply_retrieved_and_acknowledged": true,
+      "native_ui_pixels_verified": false
+    },
+    {
+      "local_report": "inspect-wheel-2026-09-08.json",
+      "result": "PASS",
+      "scope": "read-only delivery inspection plus full installed-wheel regression"
+    },
+    {
+      "local_report": "launchd-2026-09-08.json",
+      "result": "PASS",
+      "scope": "actual macOS launchd + installed receiver + HTTP",
+      "elapsed_seconds": 16.25,
+      "checks": {
+        "installed_receiver_http_ready": true,
+        "authenticated_http_receipt": true,
+        "start_is_idempotent": true,
+        "launchd_recovers_killed_receiver": true,
+        "crash_preserves_dedup": true,
+        "explicit_restart_recovers_http": true,
+        "stop_unloads_job": true,
+        "reinstall_preserves_credentials_and_config": true,
+        "uninstall_removes_only_owned_service": true,
+        "uninstall_preserves_receipt": true
+      }
+    },
+    {
+      "local_report": "launchd-final-2026-09-08.json",
+      "result": "PASS",
+      "scope": "actual macOS launchd + installed receiver + HTTP",
+      "elapsed_seconds": 15.66,
+      "checks": {
+        "installed_receiver_http_ready": true,
+        "authenticated_http_receipt": true,
+        "start_is_idempotent": true,
+        "launchd_recovers_killed_receiver": true,
+        "crash_preserves_dedup": true,
+        "explicit_restart_recovers_http": true,
+        "stop_unloads_job": true,
+        "reinstall_preserves_credentials_and_config": true,
+        "uninstall_removes_only_owned_service": true,
+        "uninstall_preserves_receipt": true
+      }
+    },
+    {
+      "local_report": "launchd-initial-failure-2026-09-08.json",
+      "result": "FAIL",
+      "scope": "actual macOS launchd + installed receiver + HTTP",
+      "elapsed_seconds": 19.99,
+      "checks": {
+        "installed_receiver_http_ready": true,
+        "authenticated_http_receipt": true,
+        "start_is_idempotent": true,
+        "launchd_recovers_killed_receiver": true,
+        "crash_preserves_dedup": true
+      }
+    },
+    {
+      "local_report": "launchd-session-ux-2026-09-08.json",
+      "result": "PASS",
+      "scope": "actual macOS launchd + installed receiver + HTTP",
+      "elapsed_seconds": 17.39,
+      "checks": {
+        "installed_receiver_http_ready": true,
+        "authenticated_http_receipt": true,
+        "start_is_idempotent": true,
+        "launchd_recovers_killed_receiver": true,
+        "crash_preserves_dedup": true,
+        "explicit_restart_recovers_http": true,
+        "stop_unloads_job": true,
+        "reinstall_preserves_credentials_and_config": true,
+        "uninstall_removes_only_owned_service": true,
+        "uninstall_preserves_receipt": true
+      }
+    },
+    {
+      "local_report": "lifecycle-2026-09-08.json",
+      "result": "PASS",
+      "scope": "installed receiver / real HTTP / unavailable endpoint",
+      "version": "0.1.0",
+      "python": "3.14.6",
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "outage_seconds_observed": 120.01,
+      "health_samples": 23,
+      "graceful_restarts": 1,
+      "elapsed_seconds": 176.59,
+      "checks": {
+        "reinit_preserves_credentials": true,
+        "private_permissions": true,
+        "second_receiver_rejected": true,
+        "sigkill_releases_process": true,
+        "sigkill_preserves_receipt_and_dedup": true,
+        "outage_visible_without_false_acceptance": true,
+        "outage_health_and_ack_isolation": true,
+        "outage_durable_no_blind_retry": true,
+        "stopped_receiver_reported": true,
+        "operator_resolution_survives_restart": true,
+        "resolved_event_still_deduplicated": true,
+        "credentials_preserved_across_restarts": true
+      }
+    },
+    {
+      "local_report": "lifecycle-final-2026-09-08.json",
+      "result": "PASS",
+      "scope": "installed receiver / real HTTP / unavailable endpoint",
+      "version": "0.1.0",
+      "python": "3.14.6",
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "outage_seconds_observed": 30.01,
+      "health_samples": 6,
+      "graceful_restarts": 1,
+      "elapsed_seconds": 86.97,
+      "checks": {
+        "reinit_preserves_credentials": true,
+        "private_permissions": true,
+        "second_receiver_rejected": true,
+        "sigkill_releases_process": true,
+        "sigkill_preserves_receipt_and_dedup": true,
+        "outage_visible_without_false_acceptance": true,
+        "outage_health_and_ack_isolation": true,
+        "outage_durable_no_blind_retry": true,
+        "stopped_receiver_reported": true,
+        "operator_resolution_survives_restart": true,
+        "resolved_event_still_deduplicated": true,
+        "credentials_preserved_across_restarts": true
+      }
+    },
+    {
+      "local_report": "lifecycle-hour-2026-09-08.json",
+      "status": "STOPPED_WITHOUT_REPORT",
+      "result": "INCOMPLETE",
+      "scope": "installed wheel receiver lifecycle with unavailable App Server endpoint",
+      "python": "3.14.6",
+      "client_ui_verified": false,
+      "model_delivery_verified": false
+    },
+    {
+      "local_report": "lifecycle-hour-launchd-2026-09-08.child.json",
+      "result": "PASS",
+      "scope": "installed receiver / real HTTP / unavailable endpoint",
+      "version": "0.1.0",
+      "python": "3.14.6",
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "outage_seconds_observed": 3600.15,
+      "health_samples": 665,
+      "graceful_restarts": 55,
+      "elapsed_seconds": 3658.8,
+      "checks": {
+        "reinit_preserves_credentials": true,
+        "private_permissions": true,
+        "second_receiver_rejected": true,
+        "sigkill_releases_process": true,
+        "sigkill_preserves_receipt_and_dedup": true,
+        "outage_visible_without_false_acceptance": true,
+        "outage_health_and_ack_isolation": true,
+        "outage_durable_no_blind_retry": true,
+        "stopped_receiver_reported": true,
+        "operator_resolution_survives_restart": true,
+        "resolved_event_still_deduplicated": true,
+        "credentials_preserved_across_restarts": true
+      }
+    },
+    {
+      "local_report": "lifecycle-hour-launchd-2026-09-08.json",
+      "result": "PASS",
+      "scope": "installed receiver / real HTTP / unavailable endpoint",
+      "version": "0.1.0",
+      "python": "3.14.6",
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "outage_seconds_observed": 3600.15,
+      "health_samples": 665,
+      "graceful_restarts": 55,
+      "elapsed_seconds": 3658.8,
+      "checks": {
+        "reinit_preserves_credentials": true,
+        "private_permissions": true,
+        "second_receiver_rejected": true,
+        "sigkill_releases_process": true,
+        "sigkill_preserves_receipt_and_dedup": true,
+        "outage_visible_without_false_acceptance": true,
+        "outage_health_and_ack_isolation": true,
+        "outage_durable_no_blind_retry": true,
+        "stopped_receiver_reported": true,
+        "operator_resolution_survives_restart": true,
+        "resolved_event_still_deduplicated": true,
+        "credentials_preserved_across_restarts": true
+      }
+    },
+    {
+      "local_report": "lifecycle-linux-final-2026-09-08.json",
+      "result": "PASS",
+      "scope": "installed receiver / real HTTP / unavailable endpoint",
+      "version": "0.1.0",
+      "python": "3.11.16",
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "outage_seconds_observed": 30.01,
+      "health_samples": 6,
+      "graceful_restarts": 1,
+      "elapsed_seconds": 47.82,
+      "checks": {
+        "reinit_preserves_credentials": true,
+        "private_permissions": true,
+        "second_receiver_rejected": true,
+        "sigkill_releases_process": true,
+        "sigkill_preserves_receipt_and_dedup": true,
+        "outage_visible_without_false_acceptance": true,
+        "outage_health_and_ack_isolation": true,
+        "outage_durable_no_blind_retry": true,
+        "stopped_receiver_reported": true,
+        "operator_resolution_survives_restart": true,
+        "resolved_event_still_deduplicated": true,
+        "credentials_preserved_across_restarts": true
+      }
+    },
+    {
+      "local_report": "lifecycle-runner-smoke-2026-09-08.child.json",
+      "result": "PASS",
+      "scope": "installed receiver / real HTTP / unavailable endpoint",
+      "version": "0.1.0",
+      "python": "3.14.6",
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "outage_seconds_observed": 30.0,
+      "health_samples": 6,
+      "graceful_restarts": 1,
+      "elapsed_seconds": 86.77,
+      "checks": {
+        "reinit_preserves_credentials": true,
+        "private_permissions": true,
+        "second_receiver_rejected": true,
+        "sigkill_releases_process": true,
+        "sigkill_preserves_receipt_and_dedup": true,
+        "outage_visible_without_false_acceptance": true,
+        "outage_health_and_ack_isolation": true,
+        "outage_durable_no_blind_retry": true,
+        "stopped_receiver_reported": true,
+        "operator_resolution_survives_restart": true,
+        "resolved_event_still_deduplicated": true,
+        "credentials_preserved_across_restarts": true
+      }
+    },
+    {
+      "local_report": "lifecycle-runner-smoke-2026-09-08.json",
+      "result": "PASS",
+      "scope": "installed receiver / real HTTP / unavailable endpoint",
+      "version": "0.1.0",
+      "python": "3.14.6",
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "outage_seconds_observed": 30.0,
+      "health_samples": 6,
+      "graceful_restarts": 1,
+      "elapsed_seconds": 86.77,
+      "checks": {
+        "reinit_preserves_credentials": true,
+        "private_permissions": true,
+        "second_receiver_rejected": true,
+        "sigkill_releases_process": true,
+        "sigkill_preserves_receipt_and_dedup": true,
+        "outage_visible_without_false_acceptance": true,
+        "outage_health_and_ack_isolation": true,
+        "outage_durable_no_blind_retry": true,
+        "stopped_receiver_reported": true,
+        "operator_resolution_survives_restart": true,
+        "resolved_event_still_deduplicated": true,
+        "credentials_preserved_across_restarts": true
+      }
+    },
+    {
+      "local_report": "linux-wheel-2026-09-08.json",
+      "result": "PASS",
+      "scope": "clean wheel install, receiver lifecycle, real loopback HTTP, and transport regression",
+      "client_ui_verified": false,
+      "model_delivery_verified": false
+    },
+    {
+      "local_report": "native-unix-2026-09-08.json",
+      "result": "PASS",
+      "scope": "Temporary isolated CODEX_HOME and Unix socket; protocol-only probe, no model call or user thread.",
+      "checks": {
+        "default_compression_reproduced_http_eof": true,
+        "native_rejection_identified": true,
+        "compression_disabled_initialize_succeeded": true,
+        "connection_remained_open": true,
+        "upgrade_warning_after_fix": false
+      }
+    },
+    {
+      "local_report": "real-canary-2026-09-08.json",
+      "version": "codex-cli 0.153.4",
+      "result": "PASS",
+      "checks": {
+        "idle_no_turn": true,
+        "event_wakes_same_thread": true,
+        "monitor_connection_recovered": true,
+        "user_before_during_after": true,
+        "duplicate_once": true,
+        "history_reconciliation": true,
+        "source_checkout_unchanged": true
+      }
+    },
+    {
+      "local_report": "release-install-2026-09-08.json",
+      "result": "PASS",
+      "scope": "actual extracted project release, isolated runtime and skill; no native skill discovery",
+      "elapsed_seconds": 6.68,
+      "checks": {
+        "manifest_verified": true,
+        "install": true,
+        "status": true,
+        "upgrade": true,
+        "version": true,
+        "failed_upgrade_preserves_current": true,
+        "skill_helper_resolves_runtime": true,
+        "uninstall_preserves_state": true
+      }
+    },
+    {
+      "local_report": "release-install-linux-2026-09-08.json",
+      "result": "PASS",
+      "scope": "actual extracted release install/status/upgrade/uninstall, isolated skill root",
+      "checks": {
+        "install": true,
+        "status": true,
+        "upgrade": true,
+        "uninstall": true
+      }
+    },
+    {
+      "local_report": "session-ux-wheel-2026-09-08.json",
+      "result": "PASS"
+    },
+    {
+      "local_report": "shared-local-canary-2026-09-08.json",
+      "version": "codex-cli 0.153.4",
+      "client_ui_verified": false,
+      "result": "PASS",
+      "checks": {
+        "idle_no_turn": true,
+        "event_wakes_same_thread": true,
+        "writer_never_loaded_a_thread": true,
+        "monitor_connection_recovered": true,
+        "user_before_during_after": true,
+        "duplicate_once": true,
+        "history_reconciliation": true,
+        "source_checkout_unchanged": true
+      }
+    },
+    {
+      "local_report": "stress-2026-09-08.json",
+      "result": "PASS",
+      "seeds": 20,
+      "unique_events": 2000,
+      "ingress_attempts": 6000
+    },
+    {
+      "local_report": "tui-2026-09-08.json",
+      "result": "PASS",
+      "surface": "cli",
+      "elapsed_seconds": 51.828,
+      "checks": {
+        "external_event_queued_during_observed_active_user_turn": true,
+        "unsent_draft_preserved_across_external_event": true,
+        "user_event_user_visible_in_real_tui": true,
+        "idle_observation_does_not_create_turn": true,
+        "cli_restart_consumes_offline_event_in_same_thread": true,
+        "duplicate_history_once": true,
+        "exact_agent_ack_history_once": true,
+        "writer_loaded_no_threads": true,
+        "completed_turns_not_interrupted": true
+      }
+    },
+    {
+      "local_report": "tui-control-2026-09-08.json",
+      "result": "FAIL",
+      "surface": "cli",
+      "elapsed_seconds": 109.217,
+      "checks": {
+        "event_does_not_auto_approve_waiting_command": true,
+        "sandboxed_file_absent_without_approval": true
+      }
+    },
+    {
+      "local_report": "tui-control-followup-2026-09-08.json",
+      "result": "PASS",
+      "surface": "cli",
+      "elapsed_seconds": 26.109,
+      "checks": {
+        "event_does_not_auto_approve_waiting_command": true,
+        "sandboxed_file_absent_without_approval": true,
+        "user_cancellation_remains_respected_while_event_waits": true,
+        "ctrl_c_interrupts_waiting_turn": true,
+        "queued_event_recovers_once_after_user_followup": true,
+        "user_followup_completes_once": true,
+        "duplicate_history_once": true,
+        "writer_loaded_no_threads": true
+      }
+    },
+    {
+      "local_report": "tui-linux-2026-09-08.json",
+      "result": "PASS",
+      "surface": "cli",
+      "elapsed_seconds": 33.481,
+      "checks": {
+        "external_event_queued_during_observed_active_user_turn": true,
+        "unsent_draft_preserved_across_external_event": true,
+        "user_event_user_visible_in_real_tui": true,
+        "idle_observation_does_not_create_turn": true,
+        "cli_restart_consumes_offline_event_in_same_thread": true,
+        "writer_loaded_no_threads": true,
+        "duplicate_history_once": true,
+        "exact_agent_ack_history_once": true,
+        "completed_turns_not_interrupted": true
+      }
+    },
+    {
+      "local_report": "tui-remote-2026-09-08.failure-20260907T184221Z.json",
+      "result": "FAIL",
+      "surface": "cli-remote",
+      "elapsed_seconds": 8.067,
+      "checks": {}
+    },
+    {
+      "local_report": "tui-remote-2026-09-08.json",
+      "result": "PASS",
+      "surface": "cli-remote",
+      "elapsed_seconds": 36.984,
+      "checks": {
+        "external_event_queued_during_observed_active_user_turn": true,
+        "unsent_draft_preserved_across_external_event": true,
+        "user_event_user_visible_in_real_tui": true,
+        "idle_observation_does_not_create_turn": true,
+        "cli_restart_consumes_offline_event_in_same_thread": true,
+        "remote_owner_has_exact_tui_thread": true,
+        "duplicate_history_once": true,
+        "exact_agent_ack_history_once": true,
+        "completed_turns_not_interrupted": true
+      }
+    },
+    {
+      "local_report": "tui-session-ux-2026-09-08.json",
+      "result": "PASS",
+      "surface": "cli",
+      "elapsed_seconds": 38.676,
+      "checks": {
+        "external_event_queued_during_observed_active_user_turn": true,
+        "unsent_draft_preserved_across_external_event": true,
+        "user_event_user_visible_in_real_tui": true,
+        "idle_observation_does_not_create_turn": true,
+        "cli_restart_consumes_offline_event_in_same_thread": true,
+        "writer_loaded_no_threads": true,
+        "duplicate_history_once": true,
+        "exact_agent_ack_history_once": true,
+        "completed_turns_not_interrupted": true
+      }
+    },
+    {
+      "local_report": "tui-soak-3600-2026-09-08.json",
+      "result": "PASS",
+      "surface": "cli",
+      "elapsed_seconds": 3652.759,
+      "checks": {
+        "external_event_queued_during_observed_active_user_turn": true,
+        "unsent_draft_preserved_across_external_event": true,
+        "user_event_user_visible_in_real_tui": true,
+        "idle_observation_does_not_create_turn": true,
+        "cli_restart_consumes_offline_event_in_same_thread": true,
+        "wall_clock_soak_completed": true,
+        "soak_idle_history_stable_between_events": true,
+        "soak_restarts_preserve_same_thread_and_history": true,
+        "duplicate_history_once": true,
+        "exact_agent_ack_history_once": true,
+        "writer_loaded_no_threads": true,
+        "completed_turns_not_interrupted": true
+      }
+    },
+    {
+      "local_report": "tui-soak-smoke-2026-09-08.json",
+      "result": "PASS",
+      "surface": "cli",
+      "elapsed_seconds": 111.132,
+      "checks": {
+        "external_event_queued_during_observed_active_user_turn": true,
+        "unsent_draft_preserved_across_external_event": true,
+        "user_event_user_visible_in_real_tui": true,
+        "idle_observation_does_not_create_turn": true,
+        "cli_restart_consumes_offline_event_in_same_thread": true,
+        "wall_clock_soak_completed": true,
+        "soak_idle_history_stable_between_events": true,
+        "soak_restarts_preserve_same_thread_and_history": true,
+        "duplicate_history_once": true,
+        "exact_agent_ack_history_once": true,
+        "writer_loaded_no_threads": true,
+        "completed_turns_not_interrupted": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codex-monitor"
+version = "0.1.0"
+description = "Event-driven delivery into an existing interactive Codex conversation"
+requires-python = ">=3.11"
+dependencies = ["websockets>=15,<17"]
+
+[project.optional-dependencies]
+test = ["pyte>=0.8,<0.9"]
+
+[project.scripts]
+codex-monitor = "codex_monitor.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["codex_monitor*"]
