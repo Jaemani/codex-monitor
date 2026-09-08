@@ -201,3 +201,5 @@ webhook reverse proxy, and model-quality behavior during long real tasks remain
 unverified. Fake or protocol-only results do not replace those checks.
 
 The managed-collector macOS LaunchAgent canary passed ten checks in 8.604 seconds: installation/readiness, silent baseline, changed-file receipts, SIGKILL recovery without duplicates, checkpoint preservation, stop and uninstall cleanup. This used the real installed service and a fake App Server peer; it is not Desktop or model-delivery evidence.
+
+A fresh-skill TUI discovery probe initially timed out at the workspace trust prompt. Its first retry incorrectly matched a success marker in the echoed user prompt before an assistant response; review invalidated that PASS. Discovery checks must establish an actual skill listing or response, never match the input text alone. This does not invalidate the separate managed-event TUI canary, which checks native consumed input and the follow-up agent message.

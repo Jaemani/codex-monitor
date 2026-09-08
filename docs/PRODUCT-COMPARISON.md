@@ -16,8 +16,8 @@ The core flow is implemented and verified: one selected conversation can continu
 | CLI and Desktop support | Verified macOS/Linux TUI combinations and the current Desktop app | Other Windows, WSL, IDE, and SSH combinations remain unverified |
 | Native UI integration | External `sessions` status and readable queued event messages | Less integrated than Claude's native channel indicator and reply tools |
 | Event latency | Current Codex `shared-local` consumer checks external queue changes about every 10 seconds | No latency parity with Claude MCP push; immediate response is not guaranteed |
-| Conversation management | `$codex-monitor` skill plus `attach`, `sessions`, `pause`, and `reply` | Easier management; installing the skill does not start the runtime or a producer |
-| Continuous producer management | Receiver service exists; `watch-file` still needs its own process supervision | Usability gap; an enabled binding does not imply that a producer is running |
+| Conversation management | `$codex-monitor` skill, scoped `monitor` commands, plus external `attach`, `sessions`, `pause`, and `reply` | Easier management; installing the skill does not start the runtime or a producer |
+| Continuous producer management | Receiver supervises conversation-scoped managed file collectors with checkpoints and observed health; external/legacy producers remain separate | Local file lifecycle and real TUI checks passed; broader producer supervision and Desktop interaction remain gaps |
 | Replies to external sources | Originating source pulls explicit replies and acknowledges them | Two-way delivery exists, without a messenger-native reply UI |
 | Remote approval | External events cannot grant permissions | Intentionally absent; not feature-equivalent to Claude permission relay |
 | Agent-team orchestration | Source, trace, and hop-based messaging only | Does not replace Claude team panels, task coordination, or mailboxes |
@@ -34,7 +34,7 @@ The independent audit observed Claude Code 2.1.220 and performed only read-only 
 
 ## Next priorities
 
-1. Manage receiver and producer status together so a natural-language start request can lead to a supervised, durable watch.
+1. Extend the verified managed local file collector to broader producers and failure isolation; verify complete natural-language onboarding in fresh clients.
 2. Validate skill installation, discovery, start, and stop in a clean new-user environment.
 3. Build selected external-system adapters that combine signature verification, relevant-event filtering, and reply retrieval.
 4. Test Windows/WSL and the remaining Desktop draft and approval concurrency cases.

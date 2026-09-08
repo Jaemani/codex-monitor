@@ -637,6 +637,49 @@
       "result": "ACCEPTED_AWAITING_NATIVE_CONSUMPTION",
       "scope": "managed file event accepted; latest native inspection queued during active Desktop task",
       "client_ui_verified": false
+    },
+    {
+      "result": "PASS",
+      "scope": "local release archive / archive installer / bundled skill",
+      "published": false,
+      "checks": {
+        "archive_sidecar_matches": true,
+        "frozen_wheel_hash_matches_supplied": true,
+        "archive_manifest_hashes_verified": true,
+        "archive_wheel_runtime_payload_matches_frozen_wheel": true,
+        "frozen_installed_runtime_matches_frozen_wheel": true,
+        "archive_installer_install": true,
+        "installed_launcher_exists": true,
+        "archive_installer_status": true,
+        "installed_runtime_version": true,
+        "installed_runtime_init": true,
+        "installed_runtime_status": true,
+        "archive_installer_uninstall": true,
+        "uninstall_preserves_monitor_state": true
+      },
+      "archive_sha256": "ff41742a2e773d575465f0f81dfe5a9d56fb44161aec1cf9d6e9d5b227600a07",
+      "manifest_files": 9,
+      "elapsed_seconds": 3.801,
+      "runtime": {
+        "version": "codex-monitor 0.1.0",
+        "archive_wheel_sha256": "46fbb6f07a802f0c814766d8a6661af8f4dd4c8fe75f614b4c2af29a9d4f470e",
+        "frozen_wheel_sha256": "0941ad3f44d31679d0540c288205723c115825bf22e6e6fd0a94de033a3249f1",
+        "runtime_payload_files": 14
+      },
+      "local_report": "managed-archive-2026-09-08.json"
+    },
+    {
+      "local_report": "managed-hosted-ci-2026-09-08",
+      "result": "PASS",
+      "commit": "f8df8efdef426d75a958e26e49f97cd4a5cd2274",
+      "url": "https://github.com/Jaemani/codex-monitor/actions/runs/34233805563",
+      "scope": "macOS/Linux Python 3.11/3.14 regression and packaging; no client UI claim"
+    },
+    {
+      "local_report": "skill-tui-discovery-retry-2026-09-08.json",
+      "result": "INVALID_EVIDENCE",
+      "scope": "Fresh ordinary TUI skill discovery; initial success incorrectly matched echoed user input and was invalidated during review",
+      "skill_discovered": false
     }
   ]
 }

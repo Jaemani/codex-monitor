@@ -89,7 +89,7 @@ the evidence and exact scopes.
 Code tests, native consumer responses, screen visibility, and long-running
 stability are separate evidence classes. Passing a fake or protocol check does
 not close a screen or soak item. No overall compatibility or superiority over
-Claude has been established; native UI, producer persistence, and Windows/WSL
+Claude has been established; native UI, broader producer supervision, and Windows/WSL
 remain gaps.
 
 ## Public repository
@@ -112,3 +112,5 @@ The new managed Desktop event was accepted by the official queue but was still q
 General condition policies, correlated request lifecycles and workload isolation remain future work. File sampling is sequential and its inter-read budget cannot interrupt an individual blocked OS read.
 
 The managed-collector macOS LaunchAgent canary passed ten checks in 8.604 seconds: installation/readiness, silent baseline, changed-file receipts, SIGKILL recovery without duplicates, checkpoint preservation, stop and uninstall cleanup. This used the real installed service and a fake App Server peer; it is not Desktop or model-delivery evidence.
+
+Managed implementation commit `f8df8ef` passed all four hosted macOS/Linux Python 3.11/3.14 regression and packaging jobs ([run](https://github.com/Jaemani/codex-monitor/actions/runs/34233805563)). The rebuilt local archive passed nine manifest hashes, equality of all 14 runtime payload files with the tested wheel, and isolated installer/skill install-status-uninstall with state preservation. The default local runtime and skill are installed; no permanent receiver was started. The archive remains unpublished.
