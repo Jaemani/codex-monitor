@@ -17,31 +17,43 @@ state path. Further arguments are forwarded to the installed CLI without a shell
 If the runtime is missing, read [installation.md](references/installation.md).
 
 For “this conversation,” use the exact thread ID from host context or `CODEX_THREAD_ID`. If unavailable,
-ask for the existing conversation ID; never pick the most recent thread. Inspect `sessions --json`
-before changing an existing setup. A session name is fixed to its thread; never silently retarget it.
+ask for the existing conversation ID; never pick the most recent thread. Inspect `monitor list --thread THREAD_ID`
+before changing managed monitors. A monitor name is scoped to its conversation; identical names in other conversations must remain untouched.
 
-## Set up a watch
+## Set up a managed file monitor
 
-Identify the event producer: a file, CI/webhook adapter, or an existing agent source. If the user only
-says “monitor this conversation,” inspect the setup, then ask what events to watch. An enabled binding
-without a producer is not an active watch. Initialize only a new state and register only missing sources:
+Identify an explicit file to observe. If none is named or inferable from the authorized task, inspect
+existing monitors and ask what should be watched. Initialize only a new state. For a local file:
 
 ```text
 init
-source build
-attach work --thread THREAD_ID --source build
 doctor --endpoint shared-local --thread THREAD_ID
+monitor create NAME --thread THREAD_ID --file /absolute/status.json
+monitor status NAME --thread THREAD_ID
 ```
 
-Reuse a running receiver. On macOS use the installed runtime's `service install`, then verify both
-service registration and authenticated HTTP readiness. On other systems use an available authorized
-supervisor or describe the lifetime of a foreground `serve`. Do not call a tool-owned background process
-a durable service. Read [operations.md](references/operations.md) for producer and service details.
+The monitor uses an internal source and binding; do not register an external source token for it.
+Creating a definition does not start the receiver or prove that the target client is open. Reuse the
+running receiver, or use the installed runtime's `service install` on macOS and verify authenticated
+HTTP readiness. On another host use an authorized OS supervisor or describe the foreground lifetime
+of `serve`. The receiver owns managed collectors and restores their persisted checkpoints on restart.
 
-Report the session name, target conversation, actual receiver/producer state, and where status is visible.
-Do not promise a native background badge or hidden event input. The user keeps typing in the same task.
+Report the exact conversation, monitor name, desired state, receiver state, observed collector state
+and sample/delivery errors. A running collector does not prove model activity or successful work.
+
+For an existing webhook or agent producer, use the separate source/attach workflow in
+[operations.md](references/operations.md). Do not pretend the managed file collector supervises an
+arbitrary external process. The user continues typing in the same task; no native badge is promised.
 
 ## Manage and diagnose
+
+For a managed monitor, use `monitor status`, `monitor pause`, `monitor resume`, or `monitor remove`
+with its name and the exact current `--thread`. `monitor list` is scoped the same way. Removal preserves
+old receipts and checkpoints; recreating a name starts a separate generation. Pause/removal cannot
+retract already accepted native input or an in-flight submission. These operations do not target
+another conversation or stop the shared receiver.
+
+Legacy external bindings use separate commands:
 
 - `sessions [NAME]`: external status, no model call. Receiver running and binding enabled do not prove
   producer health, client presence, or model activity.
@@ -53,6 +65,9 @@ Preserve user drafts, interruptions and approvals. Ctrl+C may leave native input
 user follow-up finishes. Do not force delivery with thread/start/resume, turn/start, or interrupt.
 
 ## Explicit reply
+
+Managed file events have no external sender to reply to; respond locally in the conversation.
+Use the reply outbox only for an external source with a configured reply consumer.
 
 When the user requested a response or their existing task authorizes it, choose the original receipt:
 

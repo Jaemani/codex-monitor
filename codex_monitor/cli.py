@@ -17,6 +17,8 @@ from .errors import IngressError
 from .http import Server
 from .lock import ProcessLock, process_alive
 from .monitor import Monitor, NAME
+from .monitor import MANAGED_SOURCE
+from .managed import ManagedSupervisor
 from .session import SessionPool, Rpc, AppServerSession, SharedLocalSession, server_token
 from .service import ServiceManager
 from .watch import ChangeWatcher, atomic_json, file_sample
@@ -49,6 +51,18 @@ def send(url, binding, envelope, token):
             try: detail = json.load(exc).get("error", "request rejected")
             except (ValueError, AttributeError): detail = "request rejected (redirects are not followed)"
         raise IngressError(detail, exc.code) from exc
+
+
+def monitor_thread(value):
+    environment = os.environ.get("CODEX_THREAD_ID")
+    if value and environment and value != environment:
+        raise ValueError("--thread does not match CODEX_THREAD_ID")
+    thread = value or environment
+    if not thread:
+        raise ValueError("monitor commands require --thread or CODEX_THREAD_ID; no implicit latest thread is used")
+    if not NAME.fullmatch(thread):
+        raise ValueError("invalid thread identifier")
+    return thread
 
 
 def parser():
@@ -93,6 +107,15 @@ def parser():
     watch = commands.add_parser("watch-file")
     watch.add_argument("file"); watch.add_argument("--to", required=True); watch.add_argument("--source", required=True)
     watch.add_argument("--interval", type=float, default=2); watch.add_argument("--url")
+    managed = commands.add_parser("monitor", help="manage a file monitor for one explicit conversation")
+    managed_commands = managed.add_subparsers(dest="monitor_action", required=True)
+    create = managed_commands.add_parser("create")
+    create.add_argument("name"); create.add_argument("--file", required=True); create.add_argument("--thread")
+    create.add_argument("--interval", type=float, default=2); create.add_argument("--endpoint", default="shared-local")
+    listing = managed_commands.add_parser("list"); listing.add_argument("--thread")
+    for action in ("status", "pause", "resume", "remove"):
+        command = managed_commands.add_parser(action)
+        command.add_argument("name"); command.add_argument("--thread")
     doctor = commands.add_parser("doctor")
     doctor.add_argument("--endpoint", default="shared-local"); doctor.add_argument("--thread")
     doctor.add_argument("--surface", choices=["cli", "desktop"], default="cli")
@@ -119,7 +142,7 @@ def main(argv=None):
             root.mkdir(parents=True, exist_ok=True, mode=0o700)
             secret(root / "admin.token")
             atomic_json(config_path, {"version": 1, "port": args.port, "sources": {}, "limits": {}})
-            output({"state": str(root), "next": "codex-monitor source NAME; then bind an existing interactive thread"})
+            output({"state": str(root), "next": "register a source and bind a thread, or create a managed monitor with an explicit --thread"})
             return 0
         if args.command == "doctor":
             rpc = None
@@ -164,6 +187,8 @@ def main(argv=None):
         if args.command == "source":
             if not NAME.fullmatch(args.name) or "/" in args.name:
                 raise ValueError("invalid source name")
+            if args.name == MANAGED_SOURCE:
+                raise ValueError("reserved managed source cannot be registered externally")
             with ProcessLock(root / "config.lock"):
                 config = json.loads(config_path.read_text())
                 if args.name in config["sources"]:
@@ -175,7 +200,28 @@ def main(argv=None):
             output({"source": args.name, "token_file": str(token_path), "note": "restart serve to load the new source"})
             return 0
         monitor = Monitor(root, pool, **config.get("limits", {}))
-        if args.command in ("bind", "attach"):
+        if args.command == "monitor":
+            thread = monitor_thread(args.thread)
+            if args.monitor_action == "create":
+                path = os.path.abspath(os.path.expanduser(args.file))
+                value = monitor.managed_create(thread, args.name, path, args.interval, args.endpoint)
+            elif args.monitor_action == "list":
+                value = monitor.managed_status(thread)
+            elif args.monitor_action == "status":
+                value = monitor.managed_status(thread, args.name)
+            elif args.monitor_action == "pause":
+                value = monitor.managed_set_enabled(thread, args.name, False)
+                value["operation_note"] = "Pause atomically disables new managed intake and dispatch; an in-flight dispatch may finish, and already accepted native input is unchanged."
+            elif args.monitor_action == "resume":
+                value = monitor.managed_set_enabled(thread, args.name, True)
+                value["resume_policy"] = "Preserve the checkpoint, retry any pending event first, then report changes since the last baseline."
+            else:
+                value = monitor.managed_remove(thread, args.name)
+            value["receiver_running"] = process_alive(root / "serve.lock")
+            output(value)
+        elif args.command in ("bind", "attach"):
+            if MANAGED_SOURCE in args.source:
+                raise ValueError("reserved managed source cannot be registered externally")
             if any(source not in config["sources"] for source in args.source):
                 raise ValueError("register each source before binding")
             output(monitor.bind(args.name, args.thread, args.endpoint, args.source))
@@ -186,6 +232,8 @@ def main(argv=None):
             output(value) if args.json else print(display(value))
         elif args.command == "reply":
             parent = monitor.event(args.delivery_id)
+            if parent["source"] == MANAGED_SOURCE:
+                raise ValueError("managed file monitor has no external reply recipient; respond in the conversation")
             message = sys.stdin.read(16385) if args.message == "-" else args.message
             output(ReplyStore(root).add(parent, args.id, message))
         elif args.command == "event":
@@ -224,20 +272,27 @@ def main(argv=None):
                 monitor.resolve(args.id, args.action, args.reason)
             output(monitor.event(args.id))
         elif args.command == "serve":
+            if MANAGED_SOURCE in config["sources"]:
+                raise ValueError("reserved managed source cannot be configured for HTTP credentials")
             tokens = {name: Path(value["token_file"]).read_text().strip() for name, value in config["sources"].items()}
             stopped = threading.Event()
             for sig in (signal.SIGINT, signal.SIGTERM):
                 signal.signal(sig, lambda *_: stopped.set())
             with ProcessLock(root / "serve.lock"):
+                managed_supervisor = ManagedSupervisor(monitor)
                 server = Server(monitor, tokens, (root / "admin.token").read_text().strip(), port=config["port"]).start()
+                managed_supervisor.start()
                 output({"listening": server.url, "state": str(root)})
                 try:
                     stopped.wait()
                 finally:
+                    managed_supervisor.close()
                     server.close()
         elif args.command in ("send", "watch-file"):
             if not NAME.fullmatch(args.to) or "/" in args.to:
                 raise ValueError("invalid target binding")
+            if args.source == MANAGED_SOURCE:
+                raise ValueError("reserved managed source cannot be used by external producers")
             token_env = getattr(args, "token_env", None)
             token = os.environ[token_env] if token_env else Path(config["sources"][args.source]["token_file"]).read_text().strip()
             url = args.url or f"http://127.0.0.1:{config['port']}"

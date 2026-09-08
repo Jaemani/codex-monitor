@@ -13,6 +13,20 @@ acknowledgement without a model call, and no-model-call behavior for
 and completed the explicit reply → source lookup → acknowledgement round trip.
 That result does not include automated pixel inspection.
 
+## Managed conversation monitors
+
+The managed-feature wheel passed 75 tests on macOS (21.801 seconds) and Debian 12 arm64/Python 3.11 (20.661 seconds). Both platforms passed 16 installed receiver/collector process checks using a fake App Server peer. Cases include exact scope, identical names in two conversations, silent baselines, change routing, pause/resume/remove isolation, SIGKILL checkpoint recovery and FIFO rejection.
+
+The actual ordinary macOS TUI rendered and consumed a managed file event and completed a subsequent user response in the same conversation. A separate 60.054-second collector soak observed six events, one receiver restart, eight unchanged samples and no duplicates. This is short-soak evidence for the new collector, not a new one-hour result. No business workflow completion is claimed.
+
+```bash
+python3 scripts/managed-monitor-canary.py --run \
+  --python /absolute/installed-venv/bin/python \
+  --soak-seconds 60 --tui --report /tmp/managed-monitor.json
+```
+
+The TUI option requires Codex and the optional `pyte` dependency. Unavailable TUI dependencies yield an incomplete result, never a UI PASS. Process checks without `--tui` do not verify a real client. The new Desktop managed event is accepted but remains queued at the latest inspection; its native consumption is pending.
+
 ## Test boundaries
 
 The public verification surface is:
@@ -185,3 +199,5 @@ Desktop pixel automation, Desktop draft and approval-waiting cases, SSH
 remote Desktop projects, Windows/WSL, macOS reboot/sleep, an external public
 webhook reverse proxy, and model-quality behavior during long real tasks remain
 unverified. Fake or protocol-only results do not replace those checks.
+
+The managed-collector macOS LaunchAgent canary passed ten checks in 8.604 seconds: installation/readiness, silent baseline, changed-file receipts, SIGKILL recovery without duplicates, checkpoint preservation, stop and uninstall cleanup. This used the real installed service and a fake App Server peer; it is not Desktop or model-delivery evidence.

@@ -7,6 +7,7 @@ import threading
 import time
 
 from .errors import IngressError
+from .monitor import MANAGED_SOURCE
 from .replies import ReplyStore
 from .sessions import overview
 
@@ -95,8 +96,10 @@ class Server:
             raise ValueError("max_connections must be a positive integer")
         if host not in ("127.0.0.1", "localhost"):
             raise ValueError("bind loopback and use an authenticated TLS reverse proxy for remote webhooks")
-        if not sources or any(not v for v in sources.values()) or not admin_token:
-            raise ValueError("source and admin tokens are required")
+        if any(name == MANAGED_SOURCE for name in sources):
+            raise ValueError("reserved managed source cannot be exposed through HTTP credentials")
+        if any(not v for v in sources.values()) or not admin_token:
+            raise ValueError("admin token is required; external source tokens may be empty")
         if len(set([*sources.values(), admin_token])) != len(sources) + 1:
             raise ValueError("each source and admin need distinct tokens")
         self.monitor = monitor

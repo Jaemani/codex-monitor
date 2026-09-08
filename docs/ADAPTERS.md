@@ -2,7 +2,7 @@
 
 Commands using `.venv/bin` assume the development environment described in the [README](../README.md#development). For a runtime installation, use the executable path printed by the installer.
 
-Every input uses one authenticated JSON event envelope. A source adapter interprets ALM, GitHub, CI, file, or agent-specific input. The monitor does not duplicate project role rules or source transport implementations.
+External input uses one authenticated JSON event envelope. Receiver-owned managed collectors use an internal reserved source that external requests cannot impersonate. A source adapter interprets ALM, GitHub, CI, file, or agent-specific input. The monitor does not duplicate project role rules or source transport implementations.
 
 ## Event contract
 
@@ -30,7 +30,11 @@ A reply keeps the trace, increments `hops` by one, and uses a new event ID. A se
 
 Limits are 8 hops, 16 events per trace by default, and 120 events per binding per minute. Creating unlimited new traces would bypass a per-trace limit, so projects must also enforce their own work and cost budgets.
 
-## File watching
+## Managed file watching
+
+Prefer `codex-monitor monitor create NAME --thread "$THREAD_ID" --file /absolute/path` for a receiver-owned, conversation-scoped collector. No source registration is needed; `serve` restores its checkpoint after restart. See [conversation monitors](CONVERSATION-MONITORS.md).
+
+## Legacy foreground file watching
 
 ```bash
 .venv/bin/codex-monitor source health

@@ -10,10 +10,12 @@ source bearer token. Prefer `data.message` for readable content. Keep stable IDs
 events, and filter unchanged/non-actionable state. The receiver does not verify arbitrary vendor
 signatures. 202 means durable inbox receipt, not model completion.
 
-For a file use `watch-file /absolute/status.json --to work --source health`. This is a separate foreground
-producer: the first and unchanged samples are silent. A receiver service does not supervise that producer.
-Use an available authorized supervisor for a persistent producer, or report the temporary process and
-how to stop it. File contents are not sent, only change metadata.
+For a local file, prefer `monitor create NAME --thread THREAD_ID --file /absolute/status.json`.
+The receiver owns this managed collector; initial and unchanged samples are silent. Use scoped
+`monitor status/pause/resume/remove` commands. The legacy `watch-file` command remains a separate
+foreground producer and is not adopted by the managed registry. File contents are not sent, only
+change metadata. Managed collectors currently use shared-local; remote collector placement is not
+implemented.
 
 Agent traffic can use `send --to NAME --source SOURCE --id STABLE_ID --trace TRACE --hops N --type
 agent.message --data -` with finite JSON on stdin. Preserve trace/hops and identity. `agent.ack` never

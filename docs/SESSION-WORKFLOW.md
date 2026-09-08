@@ -6,6 +6,8 @@ receiver is running and the session is enabled, an allowed source can deliver
 events to that conversation. Session state is checked through the CLI/API;
 the normal Codex UI does not show a separate background-job indicator.
 
+For a local file, prefer [conversation-scoped managed monitors](CONVERSATION-MONITORS.md): the receiver owns sampling and checkpoint recovery, and each conversation has its own names and controls. The source/attach workflow below is for external producers.
+
 ## Attach and inspect
 
 Run these commands from an initialized state directory. `THREAD_ID` is the

@@ -95,6 +95,10 @@ Records are not deleted automatically. Deleting old records also removes
 deduplication evidence, so define a retention policy and monitor state volume.
 Stop `serve` before making a consistent backup of the database and WAL.
 
+## Managed collectors
+
+`monitor create` stores a conversation-scoped file watch; `serve` owns its sampling and checkpoint recovery. No external source token is needed. Use `monitor status NAME` to distinguish configured state, receiver liveness, observed sampling, errors and receipts. Pause or remove one monitor without stopping other conversations. External producers and legacy `watch-file` processes remain independently operated. See [conversation monitors](CONVERSATION-MONITORS.md) for scope, limits and recovery semantics.
+
 ## Long-running service
 
 The default `shared-local` path needs only `serve`. Keep `host` separately

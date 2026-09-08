@@ -10,7 +10,7 @@ Key observations:
 - Actual TUI one-hour soak: 3,600.025 seconds, 12 events, 3 client restart/resume cycles.
 - Receiver outage: 3,600.15 seconds, 665 health samples, 55 graceful restarts. An earlier incomplete run remains recorded.
 - Desktop: same-conversation native delivery and explicit reply round trip; user-observed app restart and visible event input. Desktop draft and approval contention remain unverified.
-- Latest local regression: 66 tests PASS. Final release archive installation, upgrade and uninstall: macOS and Debian arm64 PASS.
+- Managed-feature regression: 75 tests PASS on macOS and Linux; 16 installed process checks each; actual macOS TUI event and user follow-up PASS; 60-second managed-collector soak PASS. New managed Desktop consumption remains pending. Final release archive installation, upgrade and uninstall: macOS and Debian arm64 PASS.
 - Claude comparison is based on official documentation, not a matched live failure/latency experiment.
 
 See [testing procedures](../TESTING.md), [compatibility](../COMPATIBILITY.md), and [project TODO](../TODO.md) for scope and remaining work. New test runs should stay private until deliberately summarized for publication.

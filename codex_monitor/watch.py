@@ -19,9 +19,14 @@ def atomic_json(path, value):
 
 
 class ChangeWatcher:
-    def __init__(self, path, source, event_type, emit):
+    def __init__(self, path, source, event_type, emit, event_builder=None):
         self.path = Path(path)
-        self.source, self.event_type, self.emit = source, event_type, emit
+        self.source, self.event_type, self.emit, self.event_builder = source, event_type, emit, event_builder
+
+    def _event(self, previous, current):
+        event = {"id": str(uuid.uuid4()), "source": self.source, "type": self.event_type,
+                 "data": {"previous": previous, "current": current}}
+        return self.event_builder(event) if self.event_builder else event
 
     def check(self, sample):
         state = json.loads(self.path.read_text()) if self.path.exists() else None
@@ -35,8 +40,7 @@ class ChangeWatcher:
             atomic_json(self.path, state)
         if sample == state["last"]:
             return False
-        state["pending"] = {"id": str(uuid.uuid4()), "source": self.source, "type": self.event_type,
-                            "data": {"previous": state["last"], "current": sample}}
+        state["pending"] = self._event(state["last"], sample)
         atomic_json(self.path, state)
         self.emit(state["pending"])
         state.update(last=sample, pending=None)

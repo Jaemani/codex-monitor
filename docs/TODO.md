@@ -4,17 +4,20 @@ Updated: 2026-09-08. The goal is reliable external-event participation in the us
 
 This file is the project backlog. Update it with the corresponding code change; record measured results in STATUS.md and the public evidence summary. Do not mark a platform or user flow done from protocol tests alone.
 
-## Target use case
+## Technical progression
 
-The next integration target is a Discord project PM/relay agent. See [operating levels and pilot gates](DISCORD-PM.md). The delivery foundation is verified; a Discord relay and unattended worker-status monitoring are not yet implemented. Prioritize managed producers and a complete single-project Discord round trip before claiming always-on operation.
+Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local file collectors now run per conversation with checkpoint recovery. Next come broader failure isolation, condition policies and request tracking. Discord is a later integration example, not the core milestone.
 
 ## Next: reliable everyday use
 
-- [ ] **P1 — Manage event producers ([#2](https://github.com/Jaemani/codex-monitor/issues/2)).** Start, stop, restart and inspect a file/CI/webhook producer separately from receiver liveness. A configured binding must not imply an active watch. Verify producer crashes and recovery.
+- [x] **Conversation-scoped local file monitors.** Create/list/status/pause/resume/remove use the exact conversation. Identical names in two conversations, persistent checkpoints, receiver-owned sampling, installed process isolation and actual ordinary TUI event/follow-up checks passed. Managed-event Desktop consumption remains pending.
+
+
+- [ ] **P1 — Manage event producers ([#2](https://github.com/Jaemani/codex-monitor/issues/2)).** Managed local files now expose observed collector state and checkpoint recovery under the receiver. Remaining: broader CI/webhook producers, individual blocked-read isolation and longer managed-collector soak. A configured binding must not imply an active watch.
 - [ ] **P1 — Reduce event latency through supported APIs ([#1](https://github.com/Jaemani/codex-monitor/issues/1)).** Measure ingress → queue acceptance → consumer start → visible response separately. Assess official same-owner push routes for CLI and Desktop. See [technical latency comparison](LATENCY.md). Shared-local currently observes external changes at roughly 10-second intervals; do not claim real-time delivery or use private Desktop IPC.
 - [ ] **P1 — Verify skill onboarding in fresh clients ([#3](https://github.com/Jaemani/codex-monitor/issues/3)).** Discover `$codex-monitor` in a new ordinary TUI and Desktop session; select a real producer; start, inspect, pause, resume, reply and stop without changing the target conversation.
 - [ ] **P1 — Complete Desktop interaction cases.** Unsent draft, event during active response, approval waiting and cancellation recovery; retain actual user-visible observations.
-- [ ] **P1 — Ship a complete Discord adapter for a supervised single-project pilot.** Authenticate the producer, filter relevant changes, preserve stable event IDs, and implement explicit source-scoped replies.
+- [ ] **P2 — Add an external adapter after conversation-scoped collector lifecycle is verified.** Authenticate the producer, filter relevant changes, preserve stable event IDs, and implement explicit source-scoped replies.
 
 ## Compatibility and resilience
 
@@ -42,6 +45,6 @@ The next integration target is a Discord project PM/relay agent. See [operating 
 - [x] Receiver lifecycle, crash/restart and one-hour unavailable-endpoint validation.
 - [x] Human-readable events, attach/sessions/pause/unpause/reply and honest unknown producer/target status.
 - [x] Runtime installer and skill/plugin assets; isolated macOS/Linux archive lifecycle tests.
-- [x] 66 local regression tests and official skill/plugin format validators.
+- [x] 75 macOS/Linux regression tests and official skill/plugin format validators.
 
 Raw transcripts remain local. See [public evidence](evidence/README.md) and [compatibility](COMPATIBILITY.md).

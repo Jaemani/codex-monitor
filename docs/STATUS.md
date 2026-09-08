@@ -101,6 +101,14 @@ summaries; raw conversations, terminal logs, and credentials remain local.
 GitHub Actions run macOS/Linux Python 3.11/3.14 regression and packaging
 checks on pushes and pull requests. See the [CI workflow](https://github.com/Jaemani/codex-monitor/actions/workflows/ci.yml).
 
-## Next application: Discord project PM
+## Current implementation milestone
 
-The proposed next target is a supervised single-project Discord relay, followed by continuous worker-state monitoring. [DISCORD-PM.md](DISCORD-PM.md) defines operating levels and acceptance gates. This is a roadmap update, not evidence that a Discord integration or managed collector has shipped.
+Conversation-scoped managed file collectors now support create/list/status/pause/resume/remove, identical names in different conversations, durable checkpoints and receiver-owned sampling. [MONITOR-LEVELS.md](MONITOR-LEVELS.md) defines the progression; [CONVERSATION-MONITORS.md](CONVERSATION-MONITORS.md) documents the interface. Discord remains an application example.
+
+The frozen managed-feature wheel passed 75 regression tests on macOS and Debian 12 arm64/Python 3.11, plus 16 installed receiver/collector process checks on both platforms. An actual ordinary macOS TUI rendered and consumed a managed file event, then completed a user follow-up response in the same conversation. A 60.054-second managed-collector soak passed with six events, one receiver restart and no duplicates. This does not extend the earlier one-hour transport/TUI result to the new collector.
+
+The new managed Desktop event was accepted by the official queue but was still queued at the latest read-only inspection during this active task. New managed-collector Desktop consumption is pending; earlier Desktop baseline evidence remains separate. No forced turn or duplicate test event was used.
+
+General condition policies, correlated request lifecycles and workload isolation remain future work. File sampling is sequential and its inter-read budget cannot interrupt an individual blocked OS read.
+
+The managed-collector macOS LaunchAgent canary passed ten checks in 8.604 seconds: installation/readiness, silent baseline, changed-file receipts, SIGKILL recovery without duplicates, checkpoint preservation, stop and uninstall cleanup. This used the real installed service and a fake App Server peer; it is not Desktop or model-delivery evidence.

@@ -1,5 +1,6 @@
 """Durable event inbox. Codex owns conversation scheduling and user approvals."""
 import json
+import math
 import os
 from pathlib import Path
 import sqlite3
@@ -10,9 +11,14 @@ import re
 from contextlib import contextmanager
 
 from .errors import IngressError, Retryable, Uncertain, Permanent
+from .lock import process_alive
 from .presentation import render_event
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,199}$")
+MANAGED_SOURCE = "managed/file"
+MAX_MANAGED_WATCHES = 128
+MAX_MANAGED_WATCHES_PER_THREAD = 32
+MANAGED_LIVENESS_WINDOW = 2.0
 
 
 def compact(value):
@@ -55,7 +61,20 @@ class Monitor:
                 CREATE INDEX IF NOT EXISTS event_dispatch ON events(state,next_at,seq);
                 CREATE INDEX IF NOT EXISTS event_binding_order ON events(binding,state,seq);
                 CREATE INDEX IF NOT EXISTS event_binding_rate ON events(binding,created);
+                CREATE TABLE IF NOT EXISTS managed_watches (
+                    id TEXT PRIMARY KEY, thread TEXT NOT NULL, name TEXT NOT NULL,
+                    path TEXT NOT NULL, interval REAL NOT NULL, binding TEXT UNIQUE NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1, removed INTEGER NOT NULL DEFAULT 0,
+                    worker_state TEXT NOT NULL DEFAULT 'stopped', last_error TEXT,
+                    last_sample_error TEXT, last_delivery_id TEXT, worker_seen REAL,
+                    created REAL NOT NULL, updated REAL NOT NULL);
+                CREATE INDEX IF NOT EXISTS managed_active ON managed_watches(thread,name,removed);
             """)
+            managed_columns = {row["name"] for row in db.execute("PRAGMA table_info(managed_watches)")}
+            if "last_sample_error" not in managed_columns:
+                db.execute("ALTER TABLE managed_watches ADD COLUMN last_sample_error TEXT")
+            if "worker_seen" not in managed_columns:
+                db.execute("ALTER TABLE managed_watches ADD COLUMN worker_seen REAL")
         os.chmod(self.path, 0o600)
 
     @contextmanager
@@ -71,12 +90,188 @@ class Monitor:
             db.close()
 
     def bind(self, name, thread, endpoint, sources):
+        if MANAGED_SOURCE in sources:
+            raise IngressError("reserved managed source cannot be registered externally", 403)
         if not all(isinstance(x, str) and NAME.fullmatch(x) for x in [name, thread, *sources]) or not sources or "/" in name:
             raise IngressError("binding, thread and sources must be nonempty identifiers")
         with self.connect() as db:
             db.execute("INSERT INTO bindings(name,thread,endpoint,sources) VALUES(?,?,?,?)",
                        (name, thread, endpoint, compact(sources)))
         return {"name": name, "thread": thread, "endpoint": endpoint, "sources": sources}
+
+    @staticmethod
+    def _managed_checkpoint(root, watch_id):
+        return root / "managed" / (watch_id + ".json")
+
+    @staticmethod
+    def _managed_validate(thread, name, path, interval):
+        if not isinstance(thread, str) or not NAME.fullmatch(thread):
+            raise IngressError("thread must be a nonempty identifier")
+        if not isinstance(name, str) or not NAME.fullmatch(name) or "/" in name:
+            raise IngressError("watch name must be a nonempty identifier without '/'")
+        if not isinstance(path, str) or not os.path.isabs(path):
+            raise IngressError("managed file path must be absolute")
+        if isinstance(interval, bool) or not isinstance(interval, (int, float)) or not math.isfinite(interval) or not .1 <= interval <= 86400:
+            raise IngressError("managed watch interval must be between 0.1 and 86400 seconds")
+
+    def managed_create(self, thread, name, path, interval=2.0, endpoint="shared-local"):
+        if endpoint != "shared-local":
+            raise IngressError("managed file monitors currently require --endpoint shared-local")
+        self._managed_validate(thread, name, path, interval)
+        watch_id = uuid.uuid4().hex
+        binding = "managed-" + watch_id
+        now = self.clock()
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute("SELECT 1 FROM managed_watches WHERE thread=? AND name=? AND removed=0", (thread, name)).fetchone():
+                raise IngressError("a managed watch with this name already exists for the thread", 409)
+            if db.execute("SELECT count(*) FROM managed_watches WHERE removed=0").fetchone()[0] >= MAX_MANAGED_WATCHES:
+                raise IngressError("managed watch capacity reached", 429)
+            if db.execute("SELECT count(*) FROM managed_watches WHERE thread=? AND removed=0", (thread,)).fetchone()[0] >= MAX_MANAGED_WATCHES_PER_THREAD:
+                raise IngressError("managed watch capacity for this thread reached", 429)
+            db.execute("INSERT INTO bindings(name,thread,endpoint,sources) VALUES(?,?,?,?)",
+                       (binding, thread, "shared-local", compact([MANAGED_SOURCE])))
+            db.execute("""INSERT INTO managed_watches
+                (id,thread,name,path,interval,binding,created,updated)
+                VALUES(?,?,?,?,?,?,?,?)""",
+                       (watch_id, thread, name, path, float(interval), binding, now, now))
+        self._managed_checkpoint(self.root, watch_id).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.wakeup.set()
+        return self.managed_status(thread, name)
+
+    def _managed_row(self, thread, name, *, include_removed=False):
+        query = "SELECT * FROM managed_watches WHERE thread=? AND name=?"
+        params = [thread, name]
+        if not include_removed:
+            query += " AND removed=0"
+        query += " ORDER BY created DESC LIMIT 1"
+        with self.connect() as db:
+            row = db.execute(query, params).fetchone()
+        if row is None:
+            raise IngressError("unknown managed watch", 404)
+        return dict(row)
+
+    def managed_runtime_rows(self, limit=MAX_MANAGED_WATCHES):
+        with self.connect() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT * FROM managed_watches WHERE removed=0 ORDER BY created LIMIT ?", (limit,))]
+
+    def managed_runtime_row(self, watch_id):
+        with self.connect() as db:
+            row = db.execute("SELECT * FROM managed_watches WHERE id=?", (watch_id,)).fetchone()
+        return dict(row) if row else None
+
+    def managed_set_worker(self, watch_id, state, error=None, last_delivery_id=None, sample_error=None):
+        with self.connect() as db:
+            now = self.clock()
+            if state == "running":
+                if last_delivery_id is not None:
+                    # A delivery that completed just before pause/remove is
+                    # still recorded, while the disabled generation stays
+                    # stopped and cannot be revived by a late sampler write.
+                    db.execute("UPDATE managed_watches SET last_delivery_id=?,updated=? WHERE id=?",
+                               (last_delivery_id, now, watch_id))
+                db.execute("""UPDATE managed_watches SET worker_state=?,last_error=?,last_sample_error=?,
+                             worker_seen=?,updated=? WHERE id=? AND removed=0 AND enabled=1""",
+                           (state, error, sample_error, now, now, watch_id))
+                return
+            if state == "stopped" and error is None and last_delivery_id is None:
+                db.execute("UPDATE managed_watches SET worker_state=?,worker_seen=NULL,updated=? WHERE id=?",
+                           (state, now, watch_id))
+                return
+            if last_delivery_id is None:
+                db.execute("""UPDATE managed_watches SET worker_state=?,last_error=?,last_sample_error=?,
+                             worker_seen=?,updated=? WHERE id=?""",
+                           (state, error, sample_error, now if state == "running" else None, now, watch_id))
+            else:
+                db.execute("""UPDATE managed_watches SET worker_state=?,last_error=?,last_sample_error=?,
+                             last_delivery_id=?,worker_seen=?,updated=? WHERE id=?""",
+                           (state, error, sample_error, last_delivery_id, now if state == "running" else None, now, watch_id))
+
+    def managed_heartbeat(self, watch_id):
+        with self.connect() as db:
+            db.execute("""UPDATE managed_watches SET worker_state='running',worker_seen=?,updated=?
+                         WHERE id=? AND removed=0 AND enabled=1""", (self.clock(), self.clock(), watch_id))
+
+    def _managed_checkpoint_state(self, watch_id):
+        path = self._managed_checkpoint(self.root, watch_id)
+        if not path.exists():
+            return None, None
+        try:
+            state = json.loads(path.read_text())
+            if not isinstance(state, dict) or "last" not in state or "pending" not in state:
+                raise ValueError("checkpoint must contain last and pending")
+            return state, None
+        except (OSError, ValueError, TypeError) as exc:
+            return None, str(exc)[:500]
+
+    def _managed_public(self, row):
+        checkpoint, checkpoint_error = self._managed_checkpoint_state(row["id"])
+        last_delivery = None
+        if row["last_delivery_id"]:
+            with self.connect() as db:
+                event = db.execute("SELECT id,state,updated,submission_id FROM events WHERE id=?",
+                                   (row["last_delivery_id"],)).fetchone()
+            if event:
+                last_delivery = {**dict(event), "delivery_id": event["id"],
+                                 "target_client": "unknown", "target_verification": "not_checked"}
+            else:
+                last_delivery = {"delivery_id": row["last_delivery_id"], "state": "unknown",
+                                  "target_client": "unknown", "target_verification": "not_checked"}
+        receiver_running = process_alive(self.root / "serve.lock")
+        worker_fresh = (row["worker_state"] == "running" and row["worker_seen"] is not None and
+                        self.clock() - row["worker_seen"] <= MANAGED_LIVENESS_WINDOW)
+        if not row["enabled"] or row["removed"]:
+            collector_status = "stopped"
+        else:
+            collector_status = "running" if receiver_running and worker_fresh else (
+                "stale" if row["worker_state"] == "running" else row["worker_state"])
+        return {
+            "id": row["id"], "thread": row["thread"], "name": row["name"], "file": row["path"],
+            "interval": row["interval"], "binding": row["binding"], "enabled": bool(row["enabled"]),
+            "collector_status": collector_status, "last_sample": checkpoint.get("last") if checkpoint else None,
+            "checkpoint_pending": bool(checkpoint and checkpoint.get("pending")),
+            "checkpoint_error": checkpoint_error, "last_error": row["last_error"],
+            "last_sample_error": row["last_sample_error"],
+            "last_delivery": last_delivery, "receiver_running": receiver_running,
+            "target_client": "unknown", "target_verification": "not_checked",
+        }
+
+    def managed_status(self, thread, name=None):
+        if not isinstance(thread, str) or not NAME.fullmatch(thread):
+            raise IngressError("thread must be a nonempty identifier")
+        if name is None:
+            with self.connect() as db:
+                rows = [dict(row) for row in db.execute(
+                    "SELECT * FROM managed_watches WHERE thread=? AND removed=0 ORDER BY name", (thread,))]
+            return {"thread": thread, "monitors": [self._managed_public(row) for row in rows]}
+        return self._managed_public(self._managed_row(thread, name))
+
+    def managed_set_enabled(self, thread, name, enabled):
+        row = self._managed_row(thread, name)
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            current = db.execute("SELECT * FROM managed_watches WHERE id=? AND removed=0", (row["id"],)).fetchone()
+            if current is None:
+                raise IngressError("unknown managed watch", 404)
+            db.execute("UPDATE managed_watches SET enabled=?,worker_state=?,updated=? WHERE id=?",
+                       (int(enabled), "starting" if enabled else "stopped", self.clock(), row["id"]))
+            db.execute("UPDATE bindings SET enabled=? WHERE name=?", (int(enabled), row["binding"]))
+        self.wakeup.set()
+        return self.managed_status(thread, name)
+
+    def managed_remove(self, thread, name):
+        row = self._managed_row(thread, name)
+        result = self._managed_public(row)
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("UPDATE managed_watches SET enabled=0,removed=1,worker_state='stopped',updated=? WHERE id=?",
+                       (self.clock(), row["id"]))
+            db.execute("UPDATE bindings SET enabled=0 WHERE name=?", (row["binding"],))
+        self.wakeup.set()
+        result.update({"enabled": False, "collector_status": "stopped", "removed": True,
+                       "note": "Existing receipts and checkpoint are preserved; recreating the name creates a new generation."})
+        return result
 
     def bindings(self):
         with self.connect() as db:

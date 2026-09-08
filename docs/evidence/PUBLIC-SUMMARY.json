@@ -536,6 +536,107 @@
         "writer_loaded_no_threads": true,
         "completed_turns_not_interrupted": true
       }
+    },
+    {
+      "result": "PASS",
+      "scope": "installed wheel / real receiver / managed file producer",
+      "evidence_kind": "fake App Server protocol and process evidence; no model or UI claim",
+      "wheel_sha256": "0941ad3f44d31679d0540c288205723c115825bf22e6e6fd0a94de033a3249f1",
+      "elapsed_seconds": 94.539,
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "checks": {
+        "missing_thread_is_rejected": true,
+        "same_name_isolated_by_thread": true,
+        "explicit_and_environment_thread_selection": true,
+        "initial_sample_is_silent": true,
+        "change_receipt_reaches_selected_thread": true,
+        "change_does_not_reach_other_thread": true,
+        "pause_suppresses_new_delivery": true,
+        "paused_thread_does_not_block_other_thread": true,
+        "pause_does_not_rewrite_prior_history": true,
+        "resume_delivers_retained_change_once": true,
+        "remove_is_scoped_to_one_thread": true,
+        "remaining_same_name_monitor_still_runs": true,
+        "sigkill_restart_preserves_checkpoint_without_duplicate": true,
+        "restart_change_is_delivered_once": true,
+        "nonregular_file_does_not_hang_other_monitor": true,
+        "receiver_remains_healthy_with_nonregular_file": true,
+        "soak_change_has_one_receipt": true,
+        "soak_checkpoint_events_are_unique": true,
+        "ordinary_tui_renders_managed_watch_event": true
+      },
+      "local_report": "managed-tui-final-2026-09-08.json",
+      "tui": {
+        "result": "PASS",
+        "client_ui_verified": true,
+        "event_consumed": true,
+        "followup_response_seen": true
+      },
+      "soak": {
+        "requested_seconds": 60,
+        "actual_seconds": 60.054,
+        "events": 6,
+        "restarts": 1,
+        "unchanged_idle_samples": 8,
+        "duplicate_hashes": [],
+        "model_delivery_verified": false
+      }
+    },
+    {
+      "result": "PASS",
+      "wheel_sha256": "0941ad3f44d31679d0540c288205723c115825bf22e6e6fd0a94de033a3249f1",
+      "client_ui_verified": false,
+      "local_report": "managed-linux-2026-09-08.json",
+      "platform": "Debian 12 arm64 / Python3.11",
+      "tests": "75 passed",
+      "process_checks": {
+        "missing_thread_is_rejected": true,
+        "same_name_isolated_by_thread": true,
+        "explicit_and_environment_thread_selection": true,
+        "initial_sample_is_silent": true,
+        "change_receipt_reaches_selected_thread": true,
+        "change_does_not_reach_other_thread": true,
+        "pause_suppresses_new_delivery": true,
+        "paused_thread_does_not_block_other_thread": true,
+        "pause_does_not_rewrite_prior_history": true,
+        "resume_delivers_retained_change_once": true,
+        "remove_is_scoped_to_one_thread": true,
+        "remaining_same_name_monitor_still_runs": true,
+        "sigkill_restart_preserves_checkpoint_without_duplicate": true,
+        "restart_change_is_delivered_once": true,
+        "nonregular_file_does_not_hang_other_monitor": true,
+        "receiver_remains_healthy_with_nonregular_file": true
+      },
+      "process_elapsed_seconds": 5.203
+    },
+    {
+      "result": "PASS",
+      "scope": "installed wheel / macOS LaunchAgent / managed file monitor",
+      "evidence_kind": "fake App Server queue and history evidence; no model or UI claim",
+      "wheel_sha256": "0941ad3f44d31679d0540c288205723c115825bf22e6e6fd0a94de033a3249f1",
+      "elapsed_seconds": 8.604,
+      "client_ui_verified": false,
+      "model_delivery_verified": false,
+      "checks": {
+        "init_and_explicit_monitor_create": true,
+        "launchagent_installed_started_and_ready": true,
+        "initial_sample_creates_silent_baseline": true,
+        "atomic_change_has_one_accepted_consumed_receipt": true,
+        "sigkill_restart_preserves_checkpoint_and_receipt": true,
+        "second_change_has_distinct_one_receipt": true,
+        "service_stop_unloads_owned_job": true,
+        "stop_preserves_registry_sqlite_checkpoint_and_receipts": true,
+        "uninstall_removes_owned_plist_and_job": true,
+        "uninstall_preserves_registry_sqlite_checkpoint_and_receipts": true
+      },
+      "local_report": "managed-service-2026-09-08.json"
+    },
+    {
+      "local_report": "managed-desktop-2026-09-08.json",
+      "result": "ACCEPTED_AWAITING_NATIVE_CONSUMPTION",
+      "scope": "managed file event accepted; latest native inspection queued during active Desktop task",
+      "client_ui_verified": false
     }
   ]
 }

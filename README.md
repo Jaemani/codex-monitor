@@ -27,7 +27,7 @@ Validated against Codex CLI **0.153.4**, using experimental App Server queue API
 - Actual ordinary TUI on macOS and Debian arm64, including user/event interleaving, unsent drafts, idle silence and restart/resume.
 - Unix remote TUI, a one-hour TUI soak and a one-hour receiver outage test.
 - Desktop same-conversation delivery, explicit reply round trip, and user-observed app restart and event visibility.
-- Runtime installation, upgrade and uninstall on macOS and Linux; 66 regression tests and hosted CI on Python 3.11/3.14.
+- Runtime installation, upgrade and uninstall on macOS and Linux; 75 regression tests; hosted CI on Python 3.11/3.14.
 
 Desktop draft/approval contention, Windows/WSL, Desktop SSH projects, OS sleep/reboot and fresh-client skill discovery still need validation. Protocol tests do not substitute for these cases. The project does not claim overall parity with Claude Channels; see the [comparison](docs/PRODUCT-COMPARISON.md).
 
@@ -51,6 +51,23 @@ $codex-monitor Receive build-failure events in this conversation.
 
 The skill manages the installed runtime. Installation alone does not start a receiver or an event producer. See [installation, upgrades and removal](docs/INSTALLATION.md).
 
+## Manage a file monitor for this conversation
+
+Use an explicit conversation ID, or omit `--thread` only when the Codex host supplies `CODEX_THREAD_ID`:
+
+```bash
+MONITOR="$HOME/.local/share/codex-monitor/bin/codex-monitor"
+"$MONITOR" init
+"$MONITOR" doctor --thread "$THREAD_ID"
+"$MONITOR" monitor create build --thread "$THREAD_ID" --file /absolute/project/build-status.json
+"$MONITOR" serve
+```
+
+From another terminal, use `monitor list`, `monitor status build`, `monitor pause build`,
+`monitor resume build` or `monitor remove build`, with the same `--thread` and state.
+The receiver owns these collectors. Creating a definition alone does not start the receiver.
+See [conversation-scoped monitors](docs/CONVERSATION-MONITORS.md) for lifecycle, isolation and limits.
+
 ## Attach an existing conversation
 
 Use the exact existing conversation ID. The monitor and client must use the same OS user and Codex store (`CODEX_HOME` / `sqlite_home`).
@@ -64,7 +81,7 @@ MONITOR="$HOME/.local/share/codex-monitor/bin/codex-monitor"
 "$MONITOR" serve
 ```
 
-Set `THREAD_ID` to the intended conversation ID before running these commands. `serve` runs in the foreground; use the documented [service workflow](docs/OPERATIONS.md) for persistent operation. A receiver service does not supervise a separate event producer.
+Set `THREAD_ID` to the intended conversation ID before running these commands. `serve` runs in the foreground; use the documented [service workflow](docs/OPERATIONS.md) for persistent operation. The receiver supervises managed file collectors; external producers and legacy `watch-file` processes need their own lifecycle.
 
 State defaults to `~/.local/state/codex-monitor`. Use `--state /absolute/path` or `CODEX_MONITOR_HOME` for another location. Source tokens are stored in private files; the CLI prints their paths, not token values. Existing state and credentials are preserved.
 

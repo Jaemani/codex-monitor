@@ -1,6 +1,6 @@
 # Discord project PM: operating levels
 
-This is a proposed implementation sequence for a project PM or relay agent that uses Codex and Discord. Discord integration is not implemented yet. The existing monitor provides durable event delivery into a selected Codex conversation; it does not infer worker progress or keep a closed Codex client running.
+This is an application example; the core roadmap follows [monitoring technology levels](MONITOR-LEVELS.md). This is a proposed implementation sequence for a project PM or relay agent that uses Codex and Discord. Discord integration is not implemented yet. The existing monitor provides durable event delivery into a selected Codex conversation; it does not infer worker progress or keep a closed Codex client running.
 
 ## Levels and examples
 

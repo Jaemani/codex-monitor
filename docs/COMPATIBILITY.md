@@ -17,6 +17,8 @@ Status as of **2026-09-08**. The goal is to continue the same conversation from 
 
 Direct WebSocket and daemon adapters require the same server to have the thread loaded. **`shared-local` does not.** It writes input through the official queue API for the same OS user and Codex store, and the server that owns the conversation consumes it. The writer's loaded-thread list may be empty. It does not call `thread/start`, `thread/resume`, or `turn/start`. If the client closes, the input remains queued and may be processed when the conversation is opened again.
 
+Managed local file collectors use the same delivery path. The new installed wheel passed 75 tests and 16 receiver/collector process checks on macOS and Linux; an ordinary macOS TUI consumed its managed event and answered a user follow-up. Managed Desktop input is accepted but its native consumption remains pending. These results do not add new Desktop pixel or Linux managed-TUI evidence.
+
 ## Evidence for the shared local queue
 
 - The `queue_cmd.rs` and `session_queue_commands.rs` sources for installed version `rust-v0.153.4`: `codex queue` uses `thread/queue/add` even through a separate embedded server.
