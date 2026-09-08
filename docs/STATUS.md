@@ -10,6 +10,10 @@ target thread to be loaded on their server.
 
 ## Confirmed
 
+- Graphical/global-command implementation `9b57d60` passed all four hosted macOS/Linux
+  Python 3.11/3.14 regression and packaging jobs:
+  [CI run](https://github.com/Jaemani/codex-monitor/actions/runs/34265996815).
+
 - Graphical dashboard and global command update: the default installer now registers
   `~/.local/bin/codex-monitor`; `link` supports existing installs without a receiver restart.
   Foreign commands, modified owned links, legacy markers, opt-out and removal have focused coverage.

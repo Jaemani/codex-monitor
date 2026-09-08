@@ -1537,7 +1537,13 @@
         "receiver_authenticated_ready": true,
         "global_command_from_other_cwd_and_fresh_zsh": true
       },
-      "candidate_owned_uninstall_passed": true
+      "candidate_owned_uninstall_passed": true,
+      "hosted_ci": {
+        "implementation_commit": "9b57d6025a3523764802f2ae3b8a039bac6ebf1f",
+        "url": "https://github.com/Jaemani/codex-monitor/actions/runs/34265996815",
+        "result": "PASS",
+        "matrix": "macOS/Linux x Python 3.11/3.14; regression and packaging"
+      }
     }
   ]
 }
