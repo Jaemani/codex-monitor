@@ -1039,6 +1039,19 @@
       "client_ui_verified": true,
       "completed_business_work_verified": false,
       "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
+    },
+    {
+      "local_report": "request-hosted-ci-2026-09-09",
+      "result": "PASS",
+      "commit": "154c257e2f1f49fd532c013acfffb1a549e69b5c",
+      "url": "https://github.com/Jaemani/codex-monitor/actions/runs/34247881428",
+      "scope": "macOS/Linux Python 3.11/3.14 regression and packaging; no UI claim"
+    },
+    {
+      "local_report": "request-default-upgrade-2026-09-09",
+      "result": "PASS",
+      "scope": "default runtime and bundled skill upgraded; state preserved; no permanent receiver started",
+      "wheel_sha256": "f183f3d24ce2d9ce64954abd4f281102cc0f0020ef51b82cb3b3c444319c9a42"
     }
   ]
 }

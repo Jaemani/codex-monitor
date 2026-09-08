@@ -218,6 +218,7 @@ class RequestAPITest(unittest.TestCase):
             },
         )
         self.assertIn(code, (200, 201))
+        self.assertEqual(set(tracked["capacity"]), {"updates_used", "updates_limit", "updates_remaining"})
         request_id = self.unwrap(tracked)["request_id"]
 
         code, listed = self.http_call(
@@ -225,6 +226,7 @@ class RequestAPITest(unittest.TestCase):
         )
         self.assertEqual(code, 200)
         self.assertEqual(self.request_items(listed)[0]["request_id"], request_id)
+        self.assertNotIn("open_requests", self.request_items(listed)[0]["capacity"])
         code, _ = self.http_call("GET", "/v1/requests", "build-secret")
         self.assertEqual(code, 400)
         code, other_list = self.http_call("GET", "/v1/requests?thread=other-thread", "build-secret")
@@ -234,6 +236,7 @@ class RequestAPITest(unittest.TestCase):
         code, status = self.http_call("GET", "/v1/requests/" + request_id, "build-secret")
         self.assertEqual(code, 200)
         revision = self.unwrap(status)["revision"]
+        self.assertNotIn("notifications_total", self.unwrap(status)["capacity"])
         code, updated = self.http_call(
             "POST", "/v1/requests/" + request_id + "/updates", "build-secret", {
                 "update_id": "http-update-1",
@@ -244,6 +247,7 @@ class RequestAPITest(unittest.TestCase):
         )
         self.assertEqual(code, 200)
         self.assertEqual(self.unwrap(updated)["state"], "completed")
+        self.assertNotIn("notifications_used", self.unwrap(updated)["capacity"])
 
         self.assertEqual(self.http_call("POST", "/v1/requests", "admin-secret", {
             "delivery_id": delivery_id, "request_key": "forged", "payload": {},

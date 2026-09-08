@@ -38,6 +38,10 @@ The existing exact-thread rules apply: host-provided CODEX_THREAD_ID and an expl
 
 Source-authenticated HTTP operations use the source attached to the original receipt. They cannot retarget another source's request or select a different conversation through event text. Administrator credentials are not treated as source credentials.
 
+Source responses expose per-request update capacity only. Store-wide activity
+counts remain available to the local operator and are not included in another
+source's HTTP response.
+
 | Method | Route | Body or query |
 |---|---|---|
 | POST | `/v1/requests` | `delivery_id`, `request_key`, optional object `payload` and Unix timestamp `expires_at` |

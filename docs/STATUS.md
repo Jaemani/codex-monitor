@@ -168,3 +168,12 @@ isolation checks with Docker `--init`, leaving no sampler PIDs. The original
 combined FAIL is preserved; its successful regression and request phases are
 reported separately. Container deployments need an init/reaper for orphaned
 children after forced receiver termination.
+
+Commit `154c257` passed all four hosted macOS/Linux Python 3.11/3.14 regression
+and packaging jobs ([run](https://github.com/Jaemani/codex-monitor/actions/runs/34247881428)).
+The validated wheel and bundled skill were installed as the next default local
+runtime upgrade. Existing state was preserved and no permanent receiver was
+started by the installer.
+
+A follow-up HTTP hardening removes store-wide activity counters from
+source-authenticated request responses; six focused API checks passed.

@@ -189,6 +189,16 @@ class Server:
                     values[name] = items[0]
                 return values
 
+            @staticmethod
+            def request_view(value):
+                """Do not expose store-wide activity counts to one source."""
+                if "data" in value:
+                    return {**value, "data": [Handler.request_view(item) for item in value["data"]]}
+                capacity = value.get("capacity", {})
+                return {**value, "capacity": {key: capacity[key] for key in (
+                    "updates_used", "updates_limit", "updates_remaining",
+                ) if key in capacity}}
+
             def handle_request(self, write=False):
                 try:
                     if self.headers.get("Origin"):
@@ -226,14 +236,14 @@ class Server:
                             event["id"], event["binding"], data.get("payload", {}),
                             expires_at=data.get("expires_at"),
                         )
-                        self.reply(201, value)
+                        self.reply(201, self.request_view(value))
                         return
                     if path.startswith("/v1/requests/") and not write and "/" not in path[len("/v1/requests/"):]:
                         source = self.source()
                         self.query_values(query, ())
-                        self.reply(200, owner.requests.get_by_id(
+                        self.reply(200, self.request_view(owner.requests.get_by_id(
                             path[len("/v1/requests/"):], source=source,
-                        ))
+                        )))
                         return
                     if path == "/v1/requests" and not write:
                         source = self.source()
@@ -247,10 +257,10 @@ class Server:
                                 limit = int(limit)
                             except (TypeError, ValueError):
                                 raise IngressError("limit query parameter must be an integer", 400)
-                        self.reply(200, owner.requests.list_requests(
+                        self.reply(200, self.request_view(owner.requests.list_requests(
                             thread, source=source, limit=100 if limit is None else limit,
                             after=values.get("after"),
-                        ))
+                        )))
                         return
                     if path.startswith("/v1/requests/") and write and path.endswith("/updates"):
                         request_id = path[len("/v1/requests/"):-len("/updates")]
@@ -269,7 +279,7 @@ class Server:
                             update_id=data.get("update_id"), target_state=data.get("state"),
                             expected_revision=data.get("expected_revision"), summary=summary,
                         )
-                        self.reply(200, value)
+                        self.reply(200, self.request_view(value))
                         return
                     if write:
                         source = self.source()
