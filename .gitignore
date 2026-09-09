@@ -21,3 +21,6 @@ docs/evidence/*
 *.db
 *.db-*
 *.log
+
+# Rust build output
+rust/target/

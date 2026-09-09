@@ -1,5 +1,9 @@
 # codex-monitor
 
+> This development branch includes an isolated [Rust runtime candidate](rust/README.md).
+> See its [measured evaluation and adoption gates](docs/RUST-EVALUATION.md).
+> The Python runtime remains the default; the instructions below describe that baseline.
+
 **Keep working in your Codex conversation. Let external events come to you.**
 
 codex-monitor connects file changes, webhooks and worker events to an existing **Codex CLI or Desktop conversation**. A small receiver waits outside the model, stores events and delivers them through Codex's **official but experimental App Server queue API**. You can keep typing in the same conversation while its owning client is loaded. Unloaded Desktop tasks retain queued input but do not automatically wake.

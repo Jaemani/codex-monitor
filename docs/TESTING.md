@@ -475,3 +475,45 @@ receiver outage/recovery, terminal restoration and no model/session calls. An au
 attempt under system Python encountered three missing-websockets errors; it is not a full-suite PASS.
 The change adds scope metadata and names delivery/work reports explicitly. No model/tool telemetry,
 new native delivery, Desktop validation or installed-runtime upgrade is claimed.
+
+## Rust candidate checks
+
+The `codex/rust-runtime` branch has a separate executable and state directory.
+Python evidence does not count as Rust acceptance. See [adoption gates](RUST-EVALUATION.md).
+
+```sh
+cargo fmt --manifest-path rust/Cargo.toml --check
+cargo clippy --locked --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+cargo test --locked --manifest-path rust/Cargo.toml
+cargo build --release --locked --manifest-path rust/Cargo.toml
+```
+
+The contract tests use disposable state and fake native peers; they do not invoke
+models. The resource harness requires POSIX `ps`/`wait4`, Python 3.11+ and the
+Python runtime dependencies. It samples the receiver process tree, validates each
+initial checkpoint and keeps failed cases separate. Use reports outside Git:
+
+```sh
+python3 rust/bench/compare_collectors.py \
+  --python /path/to/python-environment/bin/python \
+  --rust rust/target/release/codex-monitor-rs \
+  --counts 0,10,50,128 --duration 30 --interval 10 \
+  --output /tmp/monitor-resource-report.json
+```
+
+`--duration` applies separately to idle and changed-file phases. A low event count
+is a failure, not evidence of efficiency. RSS sums can double-count shared pages
+and sampled peaks can miss short-lived workers. Waited CPU covers the whole
+receiver lifetime and its reaped descendants. Database/WAL size is not bytes written.
+
+The opt-in TUI check also requires `pyte` and a compatible authenticated Codex CLI.
+It creates an ordinary TUI in its own PTY, verifies exact client IDs and visible
+history, accepts only its disposable workspace trust prompt, and archives its task:
+
+```sh
+python3 rust/bench/tui_canary.py --run \
+  --report /tmp/monitor-rust-tui-report.json
+```
+
+This is a source release-build check, not installed-package, Desktop, Windows or
+long-duration evidence. The existing Python packaging workflow remains separate.

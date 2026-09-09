@@ -31,6 +31,20 @@ source validation, not new native delivery, Desktop, runtime upgrade or matched 
 An auxiliary system-Python full-suite attempt had three errors from a missing websockets dependency;
 the focused checks used the project virtual environment. See [review decisions](FEEDBACK-REVIEW.md).
 
+Rust candidate (2026-09-10): implementation is isolated on `codex/rust-runtime`,
+with its own executable, database and credentials. The Python installation and
+main branch remain unchanged. The candidate uses native file notifications,
+bounded reusable workers, a persistent SQLite connection and bounded native/HTTP
+connections. Adoption requires matched resource measurements and workflow parity;
+see [Rust evaluation](RUST-EVALUATION.md) and issue #14. Prior Python evidence does
+not establish Rust support. Local checks include 20 Rust contracts, 206 unchanged
+Python tests, 61 matched functional assertions per runtime and actual ordinary
+TUI/resident/receiver/owner restart checks. Resource runs show lower RSS in the
+valid 0/10-watch comparisons and bounded Rust behavior at 128 watches; overloaded
+Python cases are excluded from relative performance comparisons. Detailed test
+boundaries and remaining parity gaps are in the evaluation, not inferred from
+protocol success.
+
 ## Incident findings and current limitations (2026-09-09)
 
 - Desktop follow-up: shared-local queue access passed for the current conversation, while the local

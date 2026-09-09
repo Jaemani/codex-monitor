@@ -1,0 +1,23 @@
+name: Rust candidate
+on:
+  push:
+    paths: ['rust/**', '.github/workflows/rust.yml']
+  pull_request:
+    paths: ['rust/**', '.github/workflows/rust.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - run: cargo +1.97.1 fmt --manifest-path rust/Cargo.toml --check
+      - run: cargo +1.97.1 clippy --locked --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+      - run: cargo +1.97.1 test --locked --manifest-path rust/Cargo.toml

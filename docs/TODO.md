@@ -25,7 +25,21 @@ when its remaining acceptance criteria pass. Update the corresponding issue and 
 | [#10](https://github.com/Jaemani/codex-monitor/issues/10) | Versioned distribution | Final-candidate validation/publication pending; depends on #11 |
 | [#11](https://github.com/Jaemani/codex-monitor/issues/11) | License | Owner decision pending |
 | [#12](https://github.com/Jaemani/codex-monitor/issues/12) | Upgrade and rollback | Existing staging works; workflow and rollback verification remain |
+| [#14](https://github.com/Jaemani/codex-monitor/issues/14) | Rust runtime adoption | Isolated candidate; matched evaluation and parity gates pending |
 | [#13](https://github.com/Jaemani/codex-monitor/issues/13) | Matched Claude benchmark | Planned; current comparison is documentation-based |
+
+## Rust candidate evaluation
+
+- [x] **Isolated Rust core and matched evaluation.** A separate receiver, durable
+  store, reusable native file workers, transports and CLI controls are implemented
+  on `codex/rust-runtime`. Local contracts, matched functional cases, resource
+  observations and ordinary TUI/resident restart checks are documented; this is
+  not full feature or release parity.
+- [ ] **Rust adoption gate.** ([#14](https://github.com/Jaemani/codex-monitor/issues/14))
+  Develop and measure the isolated `codex/rust-runtime` candidate. Preserve durable
+  delivery and ordinary TUI behavior; compare settled Python/Rust workloads before
+  adopting it. Request notification/expiry/history, dashboard acceptance and
+  distribution/upgrade parity remain required. See [evaluation](RUST-EVALUATION.md).
 
 ## Technical progression
 
