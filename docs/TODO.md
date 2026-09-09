@@ -10,6 +10,14 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Next: reliable everyday use
 
+- [x] **Explicit project groups and conversation names.** Persist project/display metadata rather
+  than inferring project identity from route prefixes. Group rows, distinguish duplicate labels,
+  and leave unassigned conversations under Ungrouped. See [grouping](DASHBOARD.md).
+- [x] **Scoped dashboard monitor controls.** Stop/resume the selected route; confirm removal while
+  preserving receipts and the native conversation. Managed file collectors follow the same
+  lifecycle updates. These controls do not restart external producers or revive unloaded clients.
+
+
 - [x] **Global command registration.** The default runtime installer owns a stable
   `~/.local/bin/codex-monitor` link; `link` registers an existing install without restarting it.
   Custom prefixes require an explicit command directory. Foreign commands and modified owned links

@@ -65,3 +65,13 @@ final result: passed
 
 The subsequent width correction caps the live panel at 96 columns and removes footer stretching.
 The refreshed 100 by 40 renderer capture was inspected; the whole panel stays together.
+
+## Project grouping and controls
+
+The bounded compact panel now adds explicit project headings and a project-qualified selected
+context. The footer exposes stop/resume/remove keys. Duplicate display names in a project carry
+an ID suffix; delete confirmation retains the exact selected route. Grouped PTY coverage and
+ordinary TUI interaction are recorded separately in the evidence summary.
+
+The final `.runtime/projects-screen.png` renderer capture was opened at 100 by 40 using the
+local grouped inventory. Project heading, compact rows and action footer are visible together.

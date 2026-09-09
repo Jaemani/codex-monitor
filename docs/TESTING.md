@@ -1,5 +1,20 @@
 # Test design and results
 
+## Dashboard groups and monitor controls
+
+```bash
+.venv/bin/python scripts/dashboard-controls-canary.py --run \
+  --report /tmp/codex-monitor-dashboard-controls.json
+```
+
+This disposable PTY canary creates two projects with the same conversation label and two routes
+in one conversation. It verifies exact-route stop/resume, named delete confirmation, cancellation
+by another key, retirement and receipt preservation. It starts no native conversation or model.
+Use `--dashboard-python /absolute/installed-runtime/bin/python` for an installed UI. Unit coverage
+also checks duplicate-name suffixes, stale identity rejection, managed lifecycle epochs and retired
+route intake/dispatch guards. Keep these controls checks separate from ordinary-TUI interaction.
+
+
 ## Dashboard to ordinary Codex TUI
 
 The open action must preserve the selected conversation ID and explicit owner endpoint, pass

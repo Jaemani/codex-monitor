@@ -3,7 +3,8 @@
 The dashboard is a separate terminal view of one local codex-monitor state directory. It reads
 configured conversations, managed collector observations, delivery receipts and explicit request
 reports. Refreshes do not call the Codex App Server, create model turns or change monitoring
-configuration. An explicit open action launches the ordinary Codex TUI for the selected conversation.
+configuration. Explicit keyboard actions can stop, resume or remove the selected monitor route. Enter launches
+the ordinary Codex TUI for the selected conversation.
 
 ```bash
 codex-monitor dashboard
@@ -25,13 +26,44 @@ Use snapshot mode in scripts and redirected output.
 - Home / End and Page Up / Page Down: navigate longer inventories.
 - Tab: cycle the selected conversation's connections; the selected route remains visible below.
 - `d`: toggle details for the selected connection.
+- `p`: stop monitoring on the selected connection.
+- `r`: resume monitoring on that connection.
+- `x`, then `y`: remove the selected connection. Any other key cancels the confirmation.
+  The confirmation holds its original selection even if the inventory changes.
 - Enter or `o`: open the selected conversation in the ordinary Codex TUI on its saved owner endpoint.
   Exit that TUI to return to the dashboard in the same terminal.
 - Resize the terminal to fit your workspace; the next render adapts to its dimensions.
 
-The dashboard preserves the terminal's input settings on normal exit. Its read-only view cannot
-pause bindings, replay events, send replies or restart the receiver. Use explicit CLI operations
-for those actions after inspecting the relevant conversation and receipt.
+The dashboard preserves the terminal's input settings on normal exit. Refreshes remain read-only;
+only deliberate control keys change monitoring. Controls apply to the route shown below the list,
+not every route in the conversation or project. Use Tab to choose the intended route first.
+The conversation dot can stay green when another route remains enabled; use `d` to inspect the
+selected route status. The action notice names the route that changed.
+For managed file monitors, stop/resume also updates the collector lifecycle. For external sources,
+resume re-enables intake and delivery; it does not restart a separate producer process or load an
+unloaded native conversation. Stopping or removing monitoring does not terminate a Codex turn, archive the conversation or erase
+its history. Delivery already in flight or submitted to Codex may still finish. The dashboard does not replay
+events, send replies or restart the receiver.
+Removal retires the route and preserves receipts; it is not a reversible pause. Retired external
+binding names remain reserved, so use a new name when registering a replacement. Recreating a
+managed file monitor creates a new generation.
+
+## Project groups and stable names
+
+Projects and display names are explicit per-conversation metadata, independent of routing IDs.
+New conversations appear under **Ungrouped** until assigned. A project group is an organizational
+label; it does not create a parent agent or broadcast events. Different projects may use the same
+name, such as PM or Mobile. Duplicate names within one project receive an ID suffix in the view.
+
+```bash
+codex-monitor conversation set --thread "$THREAD_ID" --project "My project" --name "Mobile"
+codex-monitor conversation list
+```
+
+All routes for that exact conversation inherit its group and display name. Adding another route
+will not rename a conversation with an explicit display name. Without one, the dashboard derives
+a fallback from saved route names; that fallback is not the native Codex conversation title.
+The assignment is local to the selected monitor state directory and does not modify Codex projects.
 
 ## Open a conversation and interact
 
@@ -74,7 +106,7 @@ is visible before Enter; changing presentation never changes its stored conversa
 Managed monitors use their collector names instead of generated binding IDs. UUIDs, server addresses,
 receipt IDs and raw delivery states appear in `d` details. An em dash means no recorded event activity.
 Narrow layouts prioritize names and the selected route. Neither a dash nor a green dot means a model
-is idle. Conversation labels are presentation hints derived from saved routes, not fetched native titles.
+is idle. Conversation labels use saved display names, with route-derived fallbacks; they are not fetched native titles.
 
 - **Green dot:** binding enabled or receiver ready, according to the field.
 - **Red dot:** binding paused or receiver stopped.
@@ -125,7 +157,9 @@ An explicit open checks that the selected binding still matches the displayed id
 changed or unsafe identities are rejected. Connection failures appear in the Codex TUI, and its exit
 status appears when the dashboard returns. Opening is not proof that a task completed its work.
 
-SQLite is opened in read-only mode without invoking runtime constructors or migrations. Local reads
+Snapshot SQLite connections use read-only mode without runtime constructors or migrations.
+Explicit monitor controls recheck the displayed binding, conversation and endpoint in the write
+transaction; stale targets are rejected. Local reads
 and status probes are bounded; the HTTP check stays on configured loopback, does not use environment
 proxies, and does not follow redirects. Token contents and event bodies are not displayed.
 

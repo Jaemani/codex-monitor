@@ -1907,6 +1907,150 @@
         "dashboard_does_not_mutate_database": true,
         "no_model_session_calls": true
       }
+    },
+    {
+      "date": "2026-09-09",
+      "scope": "Project grouping and exact-route dashboard controls",
+      "result": "PASS",
+      "source_tests": 201,
+      "source_elapsed_seconds": 54.706,
+      "final_focused_tests": 21,
+      "final_focused_elapsed_seconds": 2.725,
+      "reports": [
+        {
+          "local_report": "codex-monitor-project-controls-installed-final.json",
+          "result": "PASS",
+          "elapsed_seconds": 1.183,
+          "checks": {
+            "initial_route_context_visible": true,
+            "same_display_name_projects_visible": true,
+            "project_metadata_rows_visible": true,
+            "tab_selects_alternate_route": true,
+            "pause_targets_alternate_route": true,
+            "pause_preserves_primary_route": true,
+            "pause_preserves_other_conversation": true,
+            "resume_targets_alternate_route": true,
+            "resume_preserves_primary_route": true,
+            "delete_confirmation_names_selected_route": true,
+            "delete_cancel_keeps_state": true,
+            "delete_cancel_keeps_selection": true,
+            "navigation_cancels_delete": true,
+            "navigation_cancel_keeps_selection": true,
+            "delete_notice_names_selected_route": true,
+            "deleted_route_is_retired": true,
+            "deleted_route_is_disabled": true,
+            "other_route_is_preserved": true,
+            "other_conversation_is_preserved": true,
+            "deleted_route_receipt_is_preserved": true,
+            "metadata_keeps_same_display_name_projects": true,
+            "dashboard_process_exited_cleanly": true
+          },
+          "wheel_sha256": "9cbac799a3ef5141f06d6c427943203953a6d8584f31cbb405fde1a641d09b7d"
+        },
+        {
+          "local_report": "codex-monitor-project-dashboard-installed.json",
+          "result": "PASS",
+          "elapsed_seconds": 6.208,
+          "checks": {
+            "managed_collector_is_visible": true,
+            "json_snapshot_is_read_only": true,
+            "json_snapshot_filters_thread": true,
+            "json_snapshot_contains_bindings": true,
+            "json_snapshot_excludes_other_thread": true,
+            "json_snapshot_contains_collector": true,
+            "json_snapshot_reports_receiver_ready": true,
+            "text_snapshot_contains_multiple_bindings": true,
+            "text_snapshot_contains_collector": true,
+            "text_snapshot_contains_conversation_inventory": true,
+            "text_snapshot_labels_configuration_states": true,
+            "text_snapshot_has_no_terminal_controls": true,
+            "text_snapshot_lines_fit_default_width": true,
+            "text_snapshot_has_persistent_header": true,
+            "no_color_snapshot_is_plain": true,
+            "color_snapshot_preserves_status_palette": true,
+            "unfiltered_json_contains_other_thread": true,
+            "missing_state_snapshot_fails_read_only": true,
+            "missing_state_remains_missing": true,
+            "live_dashboard_reports_receiver_ready": true,
+            "live_dashboard_renders_conversation_inventory": true,
+            "live_dashboard_renders_route_context": true,
+            "route_tab_cycles_binding": true,
+            "route_context_shows_binding": true,
+            "live_unfiltered_dashboard_reaches_other_thread": true,
+            "row_navigation_changes_selection": true,
+            "live_indicator_animates_independently": true,
+            "live_frames_render_current_header": true,
+            "snapshot_age_is_rendered": true,
+            "snapshot_age_changes_between_frames": true,
+            "live_color_attributes_are_present": true,
+            "live_renderer_avoids_full_screen_clear": true,
+            "narrow_resize_keeps_lines_bounded": true,
+            "narrow_resize_keeps_dashboard_visible": true,
+            "receiver_outage_is_visible": true,
+            "receiver_recovery_is_visible": true,
+            "q_process_cleaned_up": true,
+            "q_termios_restored": true,
+            "ctrl_c_process_cleaned_up": true,
+            "ctrl_c_termios_restored": true,
+            "dashboard_does_not_mutate_database": true,
+            "no_model_session_calls": true
+          },
+          "wheel_sha256": "53ef60444304460fd29766a5cdbf39b4e77760d7ab9d7a0445fe74b029817654"
+        },
+        {
+          "local_report": "codex-monitor-project-open-installed.json",
+          "result": "PASS",
+          "elapsed_seconds": 19.748,
+          "checks": {
+            "initial_thread_history_exact": true,
+            "dashboard_defaults_to_explicit_owner_route": true,
+            "dashboard_tab_cycles_alternative_binding": true,
+            "shared_local_route_open_is_rejected": true,
+            "dashboard_selects_explicit_owner_route": true,
+            "dashboard_selected_exact_thread": true,
+            "dashboard_opened_existing_tui": true,
+            "followup_same_thread_history_exact": true,
+            "initial_and_followup_share_thread": true,
+            "dashboard_returned_after_tui_exit": true,
+            "owned_thread_archived": true,
+            "owned_processes_gone": true,
+            "temporary_root_removed": true
+          },
+          "wheel_sha256": "53ef60444304460fd29766a5cdbf39b4e77760d7ab9d7a0445fe74b029817654"
+        },
+        {
+          "local_report": "codex-monitor-project-managed-controls.json",
+          "result": "PASS",
+          "elapsed_seconds": 1.222,
+          "checks": {
+            "pause_prevents_changed_file_event": true,
+            "resume_detects_changed_file": true,
+            "remove_stops_new_events_and_keeps_receipt": true,
+            "owned_collector_stopped": true
+          },
+          "wheel_sha256": "53ef60444304460fd29766a5cdbf39b4e77760d7ab9d7a0445fe74b029817654"
+        }
+      ],
+      "global_upgrade": {
+        "bindings_preserved": true,
+        "receipts_preserved": true,
+        "credentials_preserved": true,
+        "receiver_ready": true,
+        "project_assignment": true,
+        "modules_match": true,
+        "module_count": 21,
+        "binding_count": 18,
+        "receipt_count": 12,
+        "conversation_count": 8
+      },
+      "earlier_failures": [
+        "Source controls driver assumed metadata row ordering; corrected without dropping identity checks.",
+        "Sampler driver stdin spawning and incorrect cleanup were corrected in final file-based run."
+      ],
+      "limits": [
+        "Final caption polish reran controls; native interaction and sampler results apply to the preceding candidate.",
+        "Already in-flight delivery may finish; no native cancellation or Desktop wakeup claim."
+      ]
     }
   ]
 }

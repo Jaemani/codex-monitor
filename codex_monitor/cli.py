@@ -124,9 +124,17 @@ def parser():
     bind.add_argument("name"); bind.add_argument("--thread", required=True)
     bind.add_argument("--source", action="append", required=True)
     bind.add_argument("--endpoint", default="shared-local")
+    conversation = commands.add_parser("conversation", help="group and label an attached conversation")
+    conversation_commands = conversation.add_subparsers(dest="conversation_action", required=True)
+    metadata_set = conversation_commands.add_parser("set")
+    metadata_set.add_argument("--thread", required=True)
+    metadata_set.add_argument("--project", required=True)
+    metadata_set.add_argument("--name", required=True, dest="display_name")
+    metadata_list = conversation_commands.add_parser("list")
+    metadata_list.add_argument("--thread")
     commands.add_parser("serve")
     commands.add_parser("status")
-    dashboard = commands.add_parser("dashboard", help="read-only inventory of attached conversations")
+    dashboard = commands.add_parser("dashboard", help="conversation groups and explicit monitor controls")
     dashboard.add_argument("--once", action="store_true", help="render one snapshot and exit")
     dashboard.add_argument("--json", action="store_true", help="emit one JSON snapshot (requires --once)")
     dashboard.add_argument("--interval", type=float, default=2.0, help="live refresh interval in seconds")
@@ -369,7 +377,13 @@ def main(argv=None):
             output({"source": args.name, "token_file": str(token_path), "note": "restart serve to load the new source"})
             return 0
         monitor = Monitor(root, pool, **config.get("limits", {}))
-        if args.command == "request":
+        if args.command == "conversation":
+            if args.conversation_action == "set":
+                value = monitor.set_conversation_metadata(args.thread, args.project, args.display_name)
+            else:
+                value = {"conversations": monitor.conversation_metadata(args.thread)}
+            output(value)
+        elif args.command == "request":
             thread = monitor_thread(args.thread)
             if args.request_action in ("track", "update"):
                 require_receiver_capability(root, config, "request_lifecycle")

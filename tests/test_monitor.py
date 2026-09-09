@@ -189,6 +189,75 @@ class MonitorTest(unittest.TestCase):
         with self.assertRaises(IngressError):
             monitor.ingest("work", {"id": "nan", "source": "build", "type": "notice", "data": float("nan")})
 
+    def test_conversation_metadata_persists_and_defaults_unconfigured_bindings(self):
+        self.assertEqual(self.monitor.conversation_metadata(), [{
+            "thread": "thread-user", "project": "Ungrouped", "display_name": "thread-user",
+        }])
+        saved = self.monitor.set_conversation_metadata("thread-user", "Operations", "Deployments")
+        self.assertEqual(saved, {
+            "thread": "thread-user", "project": "Operations", "display_name": "Deployments",
+        })
+        restarted = Monitor(Path(self.temp.name), lambda _: self.session)
+        self.assertEqual(restarted.conversation_metadata("thread-user"), [saved])
+        self.assertEqual(restarted.set_conversation_metadata("unbound", "Operations", "Unbound"), {
+            "thread": "unbound", "project": "Operations", "display_name": "Unbound",
+        })
+        self.assertEqual(
+            restarted.conversation_metadata(),
+            [saved, {"thread": "unbound", "project": "Operations", "display_name": "Unbound"}],
+        )
+
+    def test_dashboard_action_rechecks_identity_and_preserves_retired_receipts(self):
+        from codex_monitor.errors import IngressError
+
+        self.monitor.bind("retire", "thread-user", "local", ["build"])
+        with self.assertRaises(IngressError):
+            self.monitor.dashboard_action("retire", "thread-user", "other", "pause")
+        self.assertTrue(next(item for item in self.monitor.bindings() if item["name"] == "retire")["enabled"])
+        receipt = self.monitor.ingest("retire", {
+            "id": "retire-1", "source": "build", "type": "notice", "data": {"value": 1},
+        })
+        paused = self.monitor.dashboard_action("retire", "thread-user", "local", "pause")
+        self.assertEqual(paused["action"], "pause")
+        self.assertFalse(paused["enabled"])
+        with self.assertRaises(IngressError):
+            self.monitor.ingest("retire", {
+                "id": "retire-2", "source": "build", "type": "notice", "data": {"value": 2},
+            })
+        self.assertEqual(self.monitor.event(receipt["delivery_id"])["state"], "pending")
+        resumed = self.monitor.dashboard_action("retire", "thread-user", "local", "resume")
+        self.assertTrue(resumed["enabled"])
+        self.monitor.dispatch_once()
+        self.assertEqual(self.monitor.event(receipt["delivery_id"])["state"], "accepted")
+
+        pending = self.monitor.ingest("retire", {
+            "id": "retire-3", "source": "build", "type": "notice", "data": {"value": 3},
+        })
+        removed = self.monitor.dashboard_action("retire", "thread-user", "local", "remove")
+        self.assertTrue(removed["removed"])
+        self.assertFalse(removed["enabled"])
+        self.assertFalse(self.monitor.dispatch_once())
+        self.assertEqual(self.monitor.event(pending["delivery_id"])["state"], "pending")
+        retired = next(item for item in self.monitor.bindings() if item["name"] == "retire")
+        self.assertEqual(retired["removed"], 1)
+        with self.assertRaises(IngressError):
+            self.monitor.ingest("retire", {
+                "id": "retire-4", "source": "build", "type": "notice", "data": {"value": 4},
+            })
+
+    def test_dashboard_action_keeps_managed_lifecycle_in_sync(self):
+        path = Path(self.temp.name) / "managed-input"
+        path.write_text("one")
+        created = self.monitor.managed_create("thread-user", "watch", str(path), .1, endpoint="local")
+        paused = self.monitor.dashboard_action(created["binding"], "thread-user", "local", "pause")
+        self.assertTrue(paused["managed"])
+        self.assertFalse(self.monitor.managed_runtime_row(created["id"])["enabled"])
+        resumed = self.monitor.dashboard_action(created["binding"], "thread-user", "local", "resume")
+        self.assertTrue(resumed["enabled"])
+        removed = self.monitor.dashboard_action(created["binding"], "thread-user", "local", "remove")
+        self.assertTrue(removed["removed"])
+        self.assertTrue(self.monitor.managed_runtime_row(created["id"])["removed"])
+        self.assertEqual(next(item for item in self.monitor.bindings() if item["name"] == created["binding"])["removed"], 1)
 
 if __name__ == "__main__":
     unittest.main()

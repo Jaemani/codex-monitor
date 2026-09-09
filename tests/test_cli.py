@@ -78,6 +78,34 @@ class CLITest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse(json.loads(result.stdout)["ready"])
 
+    def test_conversation_metadata_cli_sets_and_lists_project_label(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            def run(*args):
+                return subprocess.run(
+                    [sys.executable, "-m", "codex_monitor", "--state", tmp, *args],
+                    capture_output=True, text=True,
+                )
+
+            self.assertEqual(run("init").returncode, 0)
+            self.assertEqual(run("source", "build").returncode, 0)
+            self.assertEqual(
+                run("bind", "work", "--thread", "thread-user", "--source", "build").returncode,
+                0,
+            )
+            result = run(
+                "conversation", "set", "--thread", "thread-user",
+                "--project", "Operations", "--name", "Deployments",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), {
+                "thread": "thread-user", "project": "Operations", "display_name": "Deployments",
+            })
+            listed = run("conversation", "list")
+            self.assertEqual(listed.returncode, 0, listed.stderr)
+            self.assertEqual(json.loads(listed.stdout), {"conversations": [{
+                "thread": "thread-user", "project": "Operations", "display_name": "Deployments",
+            }]})
+
     def test_inspect_reports_local_and_native_state_without_changing_delivery(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -112,6 +112,9 @@ dashboard. Opening uses the binding's explicit shared owner endpoint and the sam
 
 The Graphite view shows one row per conversation, status dots, connection counts and recent activity.
 The selected route appears below the list; use **Tab** to cycle routes before opening it.
+Project groups and stable display names distinguish similar agents across projects. **p** stops
+the selected monitor route, **r** resumes it, and **x**, then **y**, removes it while preserving
+the Codex conversation. See [groups and controls](docs/DASHBOARD.md).
 Press **d** for technical details such
 as conversation IDs, owner endpoints and receipt states. Green/red dots describe the displayed
 binding or receiver; they do not imply that an agent is currently generating or has finished work.
@@ -159,7 +162,7 @@ Comparison checked **2026-09-09**. “Native Codex” means local CLI/Desktop ca
 | Delivery latency | Depends on integration and client | Shared-local scan roughly 10s in tested version; direct-owner CLI option measured separately | Push notification transport; busy state and processing still add delay [C2] |
 | Closed local client | Local scheduled work requires the app running; cloud work has different hosting [O1] | Running receiver retains events; native queued input can wait for reopening | Channels require a running session; offline retention is an adapter responsibility [C1] |
 | Multiple agents | Native subagents, model configuration and activity UI [O3] | Multiple registered conversations/sources; optional relay; no replacement agent scheduler | Subagents plus experimental teams with shared tasks and mailboxes; Channels are separate [C5, C6] |
-| Monitoring visibility | Native agent activity, `/agent`, hooks and scheduled-task views [O1, O3, O4] | Read-only connection dashboard, receipts and managed collector observations; no native monitor badge | Source-labelled channel input, `/mcp` server status and selectable team panels [C1, C6] |
+| Monitoring visibility | Native agent activity, `/agent`, hooks and scheduled-task views [O1, O3, O4] | Project-grouped dashboard with explicit route controls, receipts and collector observations; no native monitor badge | Source-labelled channel input, `/mcp` server status and selectable team panels [C1, C6] |
 | Background monitoring | Native tools and lifecycle hooks; behavior depends on the integration | Managed collectors and external producers run independently of model turns | Native `Monitor` streams script output or WebSocket events while conversation continues; availability restrictions apply [C9] |
 | Monitor startup/lifetime | Depends on the tool or integration | Installed receiver can outlive the client; source setup remains explicit | Plugins can declare auto-start monitors; session/subagent end stops its monitors [C9] |
 | File conditions | Implement with tools, scripts or integrations | Managed sampling, JSON comparisons, stable debounce and recovery events | Implement through scripts, hooks or a channel server; not the same managed collector contract |

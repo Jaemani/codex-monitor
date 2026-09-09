@@ -22,6 +22,8 @@ MANAGED_SOURCE = "managed/file"
 MAX_MANAGED_WATCHES = 128
 MAX_MANAGED_WATCHES_PER_THREAD = 32
 MANAGED_LIVENESS_WINDOW = 2.0
+DEFAULT_PROJECT = "Ungrouped"
+MAX_METADATA_TEXT = 200
 _SSH_ALIAS = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
 
 
@@ -82,7 +84,10 @@ class Monitor:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS bindings (
                     name TEXT PRIMARY KEY, thread TEXT NOT NULL, endpoint TEXT NOT NULL,
-                    sources TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1);
+                    sources TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+                    removed INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS conversation_metadata (
+                    thread TEXT PRIMARY KEY, project TEXT NOT NULL, display_name TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS events (
                     seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
                     binding TEXT NOT NULL, source TEXT NOT NULL, event_id TEXT NOT NULL,
@@ -108,6 +113,9 @@ class Monitor:
             """)
             # Serialize schema inspection and migrations across receiver/CLI startup.
             db.execute("BEGIN IMMEDIATE")
+            binding_columns = {row["name"] for row in db.execute("PRAGMA table_info(bindings)")}
+            if "removed" not in binding_columns:
+                db.execute("ALTER TABLE bindings ADD COLUMN removed INTEGER NOT NULL DEFAULT 0")
             managed_columns = {row["name"] for row in db.execute("PRAGMA table_info(managed_watches)")}
             if "last_sample_error" not in managed_columns:
                 db.execute("ALTER TABLE managed_watches ADD COLUMN last_sample_error TEXT")
@@ -119,6 +127,12 @@ class Monitor:
                 db.execute("ALTER TABLE managed_watches ADD COLUMN debounce_seconds REAL NOT NULL DEFAULT 0")
             if "condition_json" not in managed_columns:
                 db.execute("ALTER TABLE managed_watches ADD COLUMN condition_json TEXT")
+            # Older managed removals retired the watch but left its binding
+            # visible. Backfill the route tombstone during startup migration.
+            db.execute(
+                "UPDATE bindings SET enabled=0,removed=1 "
+                "WHERE name IN (SELECT binding FROM managed_watches WHERE removed=1)"
+            )
         os.chmod(self.path, 0o600)
 
     @contextmanager
@@ -142,6 +156,60 @@ class Monitor:
             db.execute("INSERT INTO bindings(name,thread,endpoint,sources) VALUES(?,?,?,?)",
                        (name, thread, endpoint, compact(sources)))
         return {"name": name, "thread": thread, "endpoint": endpoint, "sources": sources}
+
+    @staticmethod
+    def _metadata_text(value, field):
+        if not isinstance(value, str):
+            raise IngressError(f"{field} must be a nonempty string")
+        value = value.strip()
+        if not value:
+            raise IngressError(f"{field} must be a nonempty string")
+        if len(value) > MAX_METADATA_TEXT or any(ord(char) < 32 or 0x7F <= ord(char) <= 0x9F for char in value):
+            raise IngressError(f"{field} is too long or contains control characters")
+        return value
+
+    def set_conversation_metadata(self, thread, project=None, display_name=None):
+        """Persist the grouping and display label for one conversation."""
+
+        if not isinstance(thread, str) or not NAME.fullmatch(thread):
+            raise IngressError("thread must be a nonempty identifier")
+        project = self._metadata_text(project if project is not None else DEFAULT_PROJECT, "project")
+        display_name = self._metadata_text(display_name if display_name is not None else thread, "display name")
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO conversation_metadata(thread,project,display_name) VALUES(?,?,?) "
+                "ON CONFLICT(thread) DO UPDATE SET project=excluded.project,display_name=excluded.display_name",
+                (thread, project, display_name),
+            )
+        return {"thread": thread, "project": project, "display_name": display_name}
+
+    def conversation_metadata(self, thread=None):
+        """List metadata, supplying stable defaults for unconfigured bindings."""
+
+        if thread is not None and (not isinstance(thread, str) or not NAME.fullmatch(thread)):
+            raise IngressError("thread must be a nonempty identifier")
+        with self.connect() as db:
+            query = "SELECT thread,project,display_name FROM conversation_metadata"
+            params = []
+            if thread is not None:
+                query += " WHERE thread=?"
+                params.append(thread)
+            metadata = {row["thread"]: dict(row) for row in db.execute(query, params)}
+            bindings_query = "SELECT DISTINCT thread FROM bindings"
+            bindings_params = []
+            if thread is not None:
+                bindings_query += " WHERE thread=?"
+                bindings_params.append(thread)
+            for row in db.execute(bindings_query, bindings_params):
+                metadata.setdefault(row["thread"], {
+                    "thread": row["thread"], "project": DEFAULT_PROJECT, "display_name": row["thread"],
+                })
+        return [metadata[key] for key in sorted(metadata)]
+
+    def list_conversation_metadata(self, thread=None):
+        """Compatibility alias for callers that prefer an explicit list name."""
+
+        return self.conversation_metadata(thread)
 
     @staticmethod
     def _managed_checkpoint(root, watch_id):
@@ -346,7 +414,7 @@ class Monitor:
             db.execute("BEGIN IMMEDIATE")
             db.execute("UPDATE managed_watches SET enabled=0,removed=1,worker_state='stopped',updated=?,lifecycle_epoch=lifecycle_epoch+1 WHERE id=?",
                        (self.clock(), row["id"]))
-            db.execute("UPDATE bindings SET enabled=0 WHERE name=?", (row["binding"],))
+            db.execute("UPDATE bindings SET enabled=0,removed=1 WHERE name=?", (row["binding"],))
         self.wakeup.set()
         result.update({"enabled": False, "collector_status": "stopped", "removed": True,
                        "note": "Existing receipts and checkpoint are preserved; recreating the name creates a new generation."})
@@ -388,7 +456,7 @@ class Monitor:
                 if existing["envelope"] != encoded:
                     raise IngressError("event ID already used for different content", 409)
                 return {"delivery_id": existing["id"], "duplicate": True}
-            if not target["enabled"]:
+            if not target["enabled"] or target["removed"]:
                 raise IngressError("binding is disabled", 409)
             count = db.execute("SELECT count(*) FROM events WHERE binding=? AND state IN ('pending','submitting','uncertain')", (binding,)).fetchone()[0]
             if count >= self.max_pending:
@@ -417,9 +485,70 @@ class Monitor:
 
     def enable(self, binding, enabled):
         with self.connect() as db:
-            if not db.execute("UPDATE bindings SET enabled=? WHERE name=?", (int(enabled), binding)).rowcount:
+            if enabled:
+                row = db.execute("SELECT removed FROM bindings WHERE name=?", (binding,)).fetchone()
+                if row is None:
+                    raise IngressError("unknown binding", 404)
+                if row["removed"]:
+                    raise IngressError("binding has been retired", 409)
+            if not db.execute("UPDATE bindings SET enabled=? WHERE name=? AND removed=0", (int(enabled), binding)).rowcount:
                 raise IngressError("unknown binding", 404)
         self.wakeup.set()
+
+    def dashboard_action(self, binding, thread, endpoint, action):
+        """Apply a selected route action after an exact identity re-check.
+
+        Retiring a route leaves its bindings and receipts in place. The removed
+        flag hides it from new intake and dispatch while preserving audit data.
+        The dispatch lock serializes actions and dispatch in one Monitor
+        instance. A receiver may already be submitting a delivery when this
+        action starts; that in-flight delivery is allowed to finish, while the
+        tombstone prevents later dispatch claims.
+        """
+
+        if action not in ("pause", "resume", "remove"):
+            raise IngressError("dashboard action must be pause, resume, or remove")
+        if not all(isinstance(value, str) and value for value in (binding, thread, endpoint)):
+            raise IngressError("dashboard route identity is invalid")
+        with self.dispatch_lock, self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT * FROM bindings WHERE name=? AND thread=? AND endpoint=? AND removed=0",
+                (binding, thread, endpoint),
+            ).fetchone()
+            if row is None:
+                raise IngressError("selected route changed or no longer exists", 409)
+            managed = db.execute("SELECT * FROM managed_watches WHERE binding=?", (binding,)).fetchone()
+            if managed is not None and managed["removed"]:
+                raise IngressError("selected managed route has been retired", 409)
+            now = self.clock()
+            enabled = action == "resume"
+            removed = action == "remove"
+            db.execute(
+                "UPDATE bindings SET enabled=?,removed=? WHERE name=? AND thread=? AND endpoint=? AND removed=0",
+                (int(enabled), int(removed), binding, thread, endpoint),
+            )
+            if managed is not None:
+                db.execute(
+                    "UPDATE managed_watches SET enabled=?,removed=?,worker_state=?,updated=?,"
+                    "lifecycle_epoch=lifecycle_epoch+1 WHERE binding=? AND removed=0",
+                    (int(enabled), int(removed), "starting" if enabled else "stopped", now, binding),
+                )
+        self.wakeup.set()
+        return {
+            "action": action,
+            "binding": binding,
+            "thread": thread,
+            "endpoint": endpoint,
+            "enabled": enabled,
+            "removed": removed,
+            "managed": managed is not None,
+            "note": (
+                "Existing receipts are preserved; a removed route will not accept or dispatch new events."
+                if removed else
+                "Controls intake and dispatch for this exact route; already accepted native input is unchanged."
+            ),
+        }
 
     def resolve(self, delivery_id, action, reason):
         if action not in ("accept", "replay", "discard") or not reason.strip():
@@ -445,7 +574,7 @@ class Monitor:
         with self.dispatch_lock, self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("""SELECT e.*,b.thread,b.endpoint FROM events e JOIN bindings b ON b.name=e.binding
-                                WHERE e.state IN ('pending','submitting','uncertain') AND b.enabled=1 AND e.next_at<=?
+                                WHERE e.state IN ('pending','submitting','uncertain') AND b.enabled=1 AND b.removed=0 AND e.next_at<=?
                                 AND NOT EXISTS(SELECT 1 FROM events prior WHERE prior.binding=e.binding AND prior.seq<e.seq
                                                AND prior.state IN ('pending','submitting','uncertain'))
                                 ORDER BY e.next_at,e.seq LIMIT 1""", (self.clock(),)).fetchone()

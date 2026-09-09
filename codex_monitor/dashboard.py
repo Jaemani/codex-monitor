@@ -1,9 +1,7 @@
-"""Read-only terminal inventory for the local codex-monitor state.
+"""Read-only dashboard snapshots with explicit, scoped monitor controls.
 
-The dashboard deliberately does not use :class:`Monitor` or any of the
-durable stores.  Their constructors create and migrate databases, which is
-the wrong thing for a view-only command.  This module uses SQLite's URI
-``mode=ro`` and a small busy timeout instead.
+Refreshes use SQLite mode=ro and never construct a runtime. Only an explicit
+user action invokes Monitor; opening a conversation launches the native TUI.
 """
 
 from __future__ import annotations
@@ -240,6 +238,8 @@ def _checkpoint(root: Path, watch_id: str, now: float) -> dict[str, Any]:
 def _connection(thread: str) -> dict[str, Any]:
     return {
         "thread": _safe(thread),
+        "project": "Ungrouped",
+        "display_name": "",
         "bindings": [],
         "collectors": [],
         "events": {"counts": {}, "latest": None},
@@ -384,7 +384,8 @@ class DashboardReader:
             if "bindings" not in tables:
                 raise DashboardError("monitor database is missing the bindings table")
             row = db.execute(
-                "SELECT name,thread,endpoint FROM bindings WHERE name=? AND thread=?",
+                "SELECT name,thread,endpoint FROM bindings WHERE name=? AND thread=?"
+                + (" AND removed=0" if "removed" in _columns(db, "bindings") else ""),
                 (name, thread),
             ).fetchone()
             if row is None:
@@ -421,7 +422,7 @@ class DashboardReader:
             connections: dict[str, dict[str, Any]] = {}
             binding_query = "SELECT name,thread,endpoint,sources" + (
                 ",enabled" if "enabled" in binding_columns else ""
-            ) + " FROM bindings ORDER BY thread,name"
+            ) + " FROM bindings" + (" WHERE removed=0" if "removed" in binding_columns else "") + " ORDER BY thread,name"
             for row in db.execute(binding_query):
                 source_list, source_error = _parse_sources(row["sources"])
                 item = {
@@ -494,7 +495,21 @@ class DashboardReader:
                         "checkpoint": checkpoint,
                         "activity": "unknown",
                     })
-            result = [connections[key] for key in sorted(connections, key=lambda value: _safe(value))]
+            if "conversation_metadata" in tables:
+                for row in db.execute("SELECT thread,project,display_name FROM conversation_metadata"):
+                    if row["thread"] in connections:
+                        connections[row["thread"]]["project"] = _safe(row["project"]) or "Ungrouped"
+                        connections[row["thread"]]["display_name"] = _safe(row["display_name"])
+            result = sorted(connections.values(), key=lambda value: (
+                value["project"].casefold(), _conversation_label(value).casefold(), value["thread"]))
+            labels: dict[tuple[str, str], list[dict[str, Any]]] = {}
+            for value in result:
+                labels.setdefault((value["project"].casefold(), _conversation_label(value).casefold()), []).append(value)
+            for duplicates in labels.values():
+                if len(duplicates) > 1:
+                    suffixes = [item["thread"][-8:] for item in duplicates]
+                    for item in duplicates:
+                        item["display_suffix"] = item["thread"][-8:] if len(set(suffixes)) == len(suffixes) else item["thread"]
             for value in result:
                 value["requests"] = _request_inventory(self.root, value["thread"], now, deadline)
             return result, []
@@ -809,6 +824,15 @@ def _conversation_status(connection: dict[str, Any]) -> str:
 def _conversation_label(connection: dict[str, Any]) -> str:
     """Derive a stable human route label without rewriting identifiers."""
 
+    if connection.get("display_name"):
+        label = _safe(connection["display_name"])
+    else:
+        label = _derived_conversation_label(connection)
+    suffix = connection.get("display_suffix")
+    return f"{_clip(label, 24)} · {suffix}" if suffix else label
+
+
+def _derived_conversation_label(connection: dict[str, Any]) -> str:
     bindings = connection.get("bindings") or []
     entries = [(_binding_label(connection, binding), binding) for binding in bindings]
     nonmanaged = [label for label, binding in entries if "managed/file" not in (binding.get("sources") or [])]
@@ -1041,7 +1065,14 @@ def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = Fa
             _fit("Connections", connections_width) + "Recent activity"
         )
         lines.append(_paint("─" * width, 90, color))
+    previous_project = None
     for conversation_index, connection in enumerate(connections):
+        project = connection.get("project") or "Ungrouped"
+        if project != previous_project:
+            if previous_project is not None:
+                lines.append("")
+            lines.append("  " + _paint(_safe(project), 1, color))
+            previous_project = project
         bindings = connection.get("bindings") or []
         marker = _paint("▶", 36, color) if conversation_index == selected and not color else " "
         label = _conversation_label(connection)
@@ -1093,7 +1124,7 @@ def _selection_context(snapshot: dict[str, Any], selected: int, selected_route: 
         return [divider, "  " + _conversation_label(connection), "  No routes available", divider]
     route = selected_route % len(bindings)
     binding = bindings[route]
-    label = _conversation_label(connection)
+    label = _safe(connection.get("project") or "Ungrouped") + " / " + _conversation_label(connection)
     route_label = _binding_label(connection, binding)
     route_line = f"  Route {route + 1}/{len(bindings)} · {route_label}"
     return [
@@ -1110,7 +1141,7 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
                 color: bool = False, selected: int = 0, selected_route: int = 0,
                 detail: bool | str = False, live: bool = False,
                 frame: bool = False, animate: bool = True, now: float | None = None,
-                notice: str | None = None) -> str:
+                notice: str | None = None, notice_kind: str = "OPEN") -> str:
     """Render a bounded viewport with a persistent header and compact table."""
 
     width = min(96, max(1, int(width or 1)))
@@ -1120,7 +1151,7 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
     context = _selection_context(snapshot, selected, selected_route, width, color)
     # Keep the title, receiver state and summary pinned. The conversation list
     # scrolls while the selected context and controls stay visible.
-    header_count = min(3, len(body))
+    header_count = min(4 if detail and len(body) > 3 and body[3].startswith("Status:") else 3, len(body))
     header = body[:header_count]
     table = body[header_count:]
     if height >= 20:
@@ -1155,23 +1186,45 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
     conversation_total = len(snapshot.get("connections") or [])
     conversation_position = min(max(int(selected), 0), max(0, conversation_total - 1)) + 1 if conversation_total else 0
     footer = (
-        f"↑↓ select · Tab route · Enter open · d details · q quit · "
+        f"↑↓ Tab · Enter open · p stop · r resume · x delete · d · q · "
         f"{conversation_position}/{conversation_total}"
     )
     if width >= 90:
         freshness = _refresh_line(snapshot, time.time() if now is None else now)
-        footer += " " * max(2, width - len(footer) - len(freshness)) + freshness
+        if len(footer) + len(freshness) + 2 <= width:
+            footer += " " * (width - len(footer) - len(freshness)) + freshness
     if width < 65:
-        footer = "↑↓ · Tab route · Enter · d · q"
+        footer = "↑↓ Tab Enter p/r x d q"
     if width < 36:
-        footer = "↑↓ Tab Enter d q"
+        footer = "↑↓ Tab Enter p/r x d q"
     if height < 16:
-        trailing = context + (["OPEN: " + notice] if notice else []) + [footer]
+        trailing = context + ([notice_kind + ": " + notice] if notice else []) + [footer]
     else:
-        trailing = context[:-1] + (["OPEN: " + notice] if notice else []) + [context[-1], footer]
+        trailing = context[:-1] + ([notice_kind + ": " + notice] if notice else []) + [context[-1], footer]
     # Keep the whole panel together instead of stretching to the terminal edges.
     content = visible + trailing[:-1]
     return "\n".join(_clip(line, width) for line in (content + trailing[-1:])[-height:])
+
+
+def _action_target(snapshot: dict[str, Any], selected: int, selected_route: int) -> dict[str, str]:
+    index = _selected_binding_index(snapshot, selected, selected_route)
+    connection, binding, _ = _binding_rows(snapshot)[index]
+    if binding.get("identity_exact") is not True:
+        raise DashboardError("route identity is not exact; inspect it before changing monitoring")
+    return {"binding": binding["name"], "thread": connection["thread"], "endpoint": binding["endpoint"]}
+
+
+def _apply_action(root: Path, target: dict[str, str], action: str) -> str:
+    # Runtime construction is intentionally confined to explicit keyboard actions.
+    from .monitor import Monitor, IngressError
+    def no_session(*args, **kwargs):
+        raise DashboardError("monitor controls must not create native sessions")
+    try:
+        Monitor(root, no_session).dashboard_action(**target, action=action)
+    except (IngressError, ValueError, OSError, sqlite3.Error) as exc:
+        raise DashboardError(str(exc)) from exc
+    verb = {"pause": "Stopped", "resume": "Resumed", "remove": "Removed"}[action]
+    return f"{verb} route {target['binding']}; native conversation kept"
 
 
 def _key(stdin: TextIO) -> str | None:
@@ -1320,6 +1373,8 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
     selected_route = 0
     detail = False
     open_status: str | None = None
+    notice_kind = "OPEN"
+    delete_target: dict[str, str] | None = None
 
     def suspend_dashboard() -> None:
         """Return the terminal to the user's shell state for the child TUI."""
@@ -1353,6 +1408,7 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
         poll_lock = threading.Lock()
         poll_running = False
         pending_snapshot: dict[str, Any] | None = None
+        inventory_epoch = 0
 
         def start_poll() -> None:
             nonlocal poll_running
@@ -1360,13 +1416,15 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
                 if poll_running:
                     return
                 poll_running = True
+                epoch = inventory_epoch
 
             def poll() -> None:
                 nonlocal poll_running, pending_snapshot
                 try:
                     value = reader.snapshot()
                     with poll_lock:
-                        pending_snapshot = value
+                        if epoch == inventory_epoch:
+                            pending_snapshot = value
                 finally:
                     with poll_lock:
                         poll_running = False
@@ -1379,7 +1437,7 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
         while True:
             now_mono = time.monotonic()
             with poll_lock:
-                if pending_snapshot is not None:
+                if pending_snapshot is not None and delete_target is None:
                     snapshot = pending_snapshot
                     pending_snapshot = None
             if now_mono >= next_poll:
@@ -1401,7 +1459,7 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
                     snapshot, width=size.columns, height=size.lines, scroll=scroll,
                     color=color_enabled, selected=selected, selected_route=selected_route,
                     detail=detail, live=True,
-                    frame=frame, animate=animate, notice=open_status,
+                    frame=frame, animate=animate, notice=open_status, notice_kind=notice_kind,
                 )
                 _draw_frame(stdout, rendered)
                 stdout.flush()
@@ -1417,6 +1475,43 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
             if value in ("q", "Q", "\x03"):
                 return 0
             connections = displayed_snapshot.get("connections") or []
+            if delete_target is not None:
+                target = delete_target
+                delete_target = None
+                notice_kind = "MONITOR"
+                if value in ("y", "Y"):
+                    try:
+                        open_status = _apply_action(reader.root, target, "remove")
+                    except DashboardError as exc:
+                        open_status = str(exc)
+                    with poll_lock:
+                        inventory_epoch += 1
+                        pending_snapshot = None
+                    snapshot = reader.snapshot()
+                    next_poll = 0.0
+                else:
+                    open_status = "Deletion cancelled"
+                next_frame = 0.0
+                continue
+            if value in ("p", "r", "x"):
+                notice_kind = "MONITOR"
+                try:
+                    target = _action_target(displayed_snapshot, selected, selected_route)
+                    if value == "x":
+                        delete_target = target
+                        notice_kind = "DELETE"
+                        open_status = f"y confirm / other key cancel · {target['binding']}"
+                    else:
+                        open_status = _apply_action(reader.root, target, "pause" if value == "p" else "resume")
+                        with poll_lock:
+                            inventory_epoch += 1
+                            pending_snapshot = None
+                        snapshot = reader.snapshot()
+                        next_poll = 0.0
+                except DashboardError as exc:
+                    open_status = str(exc)
+                next_frame = 0.0
+                continue
             if value in ("j", "down"):
                 selected = min(selected + 1, max(0, len(connections) - 1))
                 selected_route = _preferred_route(connections[selected]) if connections else 0
@@ -1442,6 +1537,7 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
             elif value == "d":
                 detail = not detail
             elif value in ("\r", "\n", "o", "O"):
+                notice_kind = "OPEN"
                 try:
                     open_status = _launch_selected(
                         reader, displayed_snapshot,

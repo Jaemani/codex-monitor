@@ -387,6 +387,8 @@ class Canary:
         ):
             self.monitor.bind(name, THREAD, "shared-local", sources)
         self.monitor.bind("gamma", OTHER_THREAD, "shared-local", ["other-thread"])
+        self.monitor.set_conversation_metadata(OTHER_THREAD, "A", "gamma")
+        self.monitor.set_conversation_metadata(THREAD, "B", "alpha")
         self.monitor.enable("paused", False)
         self.monitor.managed_create(THREAD, "collector", str(sample), .1)
         self.supervisor = ManagedSupervisor(self.monitor, poll_interval=.05, sample_timeout=.5)

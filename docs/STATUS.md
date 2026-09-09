@@ -10,6 +10,18 @@ target thread to be loaded on their server.
 
 ## Incident findings and current limitations (2026-09-09)
 
+- Explicit project groups and stable conversation names are stored separately from routing IDs.
+  The dashboard now stops/resumes the selected route and confirms removal; retired routes remain
+  in the audit store but cannot accept fresh events or dispatch new claims. Native conversations
+  and receipts are preserved. The full source suite passed **201 tests in 54.706 seconds**.
+  Installed controls: **22 PTY checks**; read-only refresh: **42 checks in 6.208 seconds**;
+  ordinary TUI open/follow-up/return: **19.748 seconds**; managed sampler control check: **1.222 seconds**.
+  Final confirmation/long-label polish passed 21 focused tests in 2.725 seconds and the final-wheel
+  controls rerun in 1.183 seconds. Global upgrade matched 21 modules, retained eighteen bindings,
+  twelve receipts and credentials, and assigned eight conversations to the requested project group.
+  Receiver readiness returned. Resume does not restart external producers or revive unloaded clients;
+  delivery already in flight may finish. No new Desktop validation is claimed.
+
 - Bounded compact panel: live width is capped at 96 columns; keyboard hints follow the content.
   This prevents right-side indicators and the footer from drifting to distant terminal edges.
   Dashboard tests: 18 passed in 2.700 seconds; global-installed PTY: 42 checks passed in

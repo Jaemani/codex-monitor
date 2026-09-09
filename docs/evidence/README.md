@@ -6,6 +6,31 @@ Raw reports, terminal buffers, conversation IDs and host paths remain local and 
 
 Key observations:
 
+- Explicit project groups and stable conversation names are stored separately from routing IDs.
+  The dashboard now stops/resumes the selected route and confirms removal; retired routes remain
+  in the audit store but cannot accept fresh events or dispatch new claims. Native conversations
+  and receipts are preserved. The full source suite passed **201 tests in 54.706 seconds**.
+  Installed controls: **22 PTY checks**; read-only refresh: **42 checks in 6.208 seconds**;
+  ordinary TUI open/follow-up/return: **19.748 seconds**; managed sampler control check: **1.222 seconds**.
+  Final confirmation/long-label polish passed 21 focused tests in 2.725 seconds and the final-wheel
+  controls rerun in 1.183 seconds. Global upgrade matched 21 modules, retained eighteen bindings,
+  twelve receipts and credentials, and assigned eight conversations to the requested project group.
+  Receiver readiness returned. Resume does not restart external producers or revive unloaded clients;
+  delivery already in flight may finish. No new Desktop validation is claimed.
+
+  Local reports: `codex-monitor-project-controls-installed-final.json`,
+  `codex-monitor-project-dashboard-installed.json`, `codex-monitor-project-open-installed.json`,
+  and `codex-monitor-project-managed-controls.json`. Controls report covers same-name projects,
+  exact-route changes, cancellation, retirement, receipt preservation and cleanup. The managed
+  check used an actual isolated sampler process; it did not submit to Codex.
+  The earlier source driver compared unordered metadata rows in a fixed order and failed;
+  corrected comparison preserved both project identities. Early sampler driver attempts used an
+  unsuitable stdin entry point and cleanup method; final file-based execution and cleanup passed.
+  The final wheel differs from the first installed candidate only in long-name display truncation
+  and confirmation wording. It reran the controls PTY; the earlier candidate supplied native TUI
+  and sampler evidence. Final SHA-256:
+  `9cbac799a3ef5141f06d6c427943203953a6d8584f31cbb405fde1a641d09b7d`.
+
 - Bounded compact panel: live width is capped at 96 columns; keyboard hints follow the content.
   This prevents right-side indicators and the footer from drifting to distant terminal edges.
   Dashboard tests: 18 passed in 2.700 seconds; global-installed PTY: 42 checks passed in
