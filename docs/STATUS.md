@@ -16,6 +16,12 @@ Documentation update (2026-09-10): the README comparison now separates event fea
 and controls into symbol-based support matrices with linked caveats. Existing source/evidence scope
 is preserved; no new comparative benchmark or platform verification is claimed.
 
+Issue synchronization (2026-09-10): GitHub issues #1–#3 now distinguish completed evidence from
+remaining acceptance criteria. Issues #4–#13 cover previously document-only open work; every unchecked
+TODO item links to an issue. Desktop ownership is an integration blocker, large-history reconnect is
+an unverified mitigation, and CLI residency still needs operational coverage. No issue was closed
+from documentation changes, and no new implementation or test evidence is claimed.
+
 ## Incident findings and current limitations (2026-09-09)
 
 - Desktop follow-up: shared-local queue access passed for the current conversation, while the local

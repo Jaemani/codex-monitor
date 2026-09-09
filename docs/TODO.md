@@ -1,8 +1,31 @@
 # Project TODO
 
-Updated: 2026-09-09. The goal is reliable external-event participation in the user's ongoing Codex conversation, with ordinary CLI TUI as the primary interface and Desktop also supported.
+Updated: 2026-09-10. The goal is reliable external-event participation in the user's ongoing Codex conversation, with ordinary CLI TUI as the primary interface and Desktop also supported.
 
 This file is the project backlog. Update it with the corresponding code change; record measured results in STATUS.md and the public evidence summary. Do not mark a platform or user flow done from protocol tests alone.
+
+## GitHub issue index
+
+Synchronized **2026-09-10**. Every unchecked item below maps to an open issue. Completed milestones
+stay in this document and STATUS.md; no retrospective issues were created just to inflate completion.
+Implementation, measured validation and blocked integration are distinct states. Close an issue only
+when its remaining acceptance criteria pass. Update the corresponding issue and this backlog together.
+
+| Issue | Scope | Current state |
+|---|---|---|
+| [#1](https://github.com/Jaemani/codex-monitor/issues/1) | Event latency | Direct-owner measurements exist; broader validation remains |
+| [#2](https://github.com/Jaemani/codex-monitor/issues/2) | Producers, adapters and webhook deployment | Managed files implemented; external integration/health remains |
+| [#3](https://github.com/Jaemani/codex-monitor/issues/3) | Skill onboarding and Desktop interaction | CLI basic workflow passed; final-candidate and Desktop cases remain |
+| [#4](https://github.com/Jaemani/codex-monitor/issues/4) | Unloaded Desktop ownership | Blocked on supported integration; not permanently impossible |
+| [#5](https://github.com/Jaemani/codex-monitor/issues/5) | CLI resident operation | Bounded native checks passed; supervision, approvals and endurance remain |
+| [#6](https://github.com/Jaemani/codex-monitor/issues/6) | Large-history reconnect | Mitigation implemented; root cause and deployment recovery unverified |
+| [#7](https://github.com/Jaemani/codex-monitor/issues/7) | Versions, platforms and OS lifecycle | Partial matrix; Windows/WSL, SSH and recovery coverage remain |
+| [#8](https://github.com/Jaemani/codex-monitor/issues/8) | Escalation policies | Planned beyond verified predicates/debounce |
+| [#9](https://github.com/Jaemani/codex-monitor/issues/9) | Request archival | Planned beyond verified request lifecycle |
+| [#10](https://github.com/Jaemani/codex-monitor/issues/10) | Versioned distribution | Final-candidate validation/publication pending; depends on #11 |
+| [#11](https://github.com/Jaemani/codex-monitor/issues/11) | License | Owner decision pending |
+| [#12](https://github.com/Jaemani/codex-monitor/issues/12) | Upgrade and rollback | Existing staging works; workflow and rollback verification remain |
+| [#13](https://github.com/Jaemani/codex-monitor/issues/13) | Matched Claude benchmark | Planned; current comparison is documentation-based |
 
 ## Technical progression
 
@@ -55,7 +78,7 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 - [x] **Event-first session guidance.** Explain optional relay conversations, full-envelope forwarding,
   concise destination replies and separate configuration/process/delivery evidence. Updated local skill
   installed; this does not establish fresh-client behavioral validation.
-- [ ] **External producer health integration.** Surface observed connection state and freshness from
+- [ ] **External producer health integration.** ([#2](https://github.com/Jaemani/codex-monitor/issues/2)) Surface observed connection state and freshness from
   authenticated producers. Receiver liveness, REST credentials and an old successful receipt must not
   imply a currently connected event stream. Preserve unknown until observation exists.
 
@@ -63,13 +86,13 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 
 - [ ] **P1 — Manage event producers ([#2](https://github.com/Jaemani/codex-monitor/issues/2)).** Managed local files now expose observed collector state and checkpoint recovery under the receiver. Bounded process isolation passed installed failure/recovery checks. Remaining: broader CI/webhook producers, longer endurance coverage and OS sleep/reboot. A configured binding must not imply an active watch.
-- [ ] **P1 — Conditional monitor policies (level 4).** Durable debounce and bounded JSON predicates passed installed macOS/Linux process checks, including invalid samples, restart/pause timing reset and independent conversations. A 300-second unchanged-condition soak passed. Actual ordinary default shared-local and Unix remote TUI matched/recovery events and user follow-up passed with exact client-ID correlation; escalation policies remain future work. Keep evaluation outside the model.
+- [ ] **P1 — Conditional monitor policies (level 4).** ([#8](https://github.com/Jaemani/codex-monitor/issues/8)) Durable debounce and bounded JSON predicates passed installed macOS/Linux process checks, including invalid samples, restart/pause timing reset and independent conversations. A 300-second unchanged-condition soak passed. Actual ordinary default shared-local and Unix remote TUI matched/recovery events and user follow-up passed with exact client-ID correlation; escalation policies remain future work. Keep evaluation outside the model.
 - [x] **Correlated request lifecycle foundation (level 5).** Durable request identity, explicit state transitions, expiry, ordered notification outbox and scoped CLI/HTTP passed installed macOS/Linux and ordinary TUI checks. Delivery acceptance never implies completed work. See [request workflow](REQUEST-LIFECYCLE.md).
-- [ ] **P2 — Request retention and archival.** Provide explicit bounded archival with a documented deduplication horizon; preserve unresolved native delivery evidence. Current records are retained up to the store capacity.
+- [ ] **P2 — Request retention and archival.** ([#9](https://github.com/Jaemani/codex-monitor/issues/9)) Provide explicit bounded archival with a documented deduplication horizon; preserve unresolved native delivery evidence. Current records are retained up to the store capacity.
 - [ ] **P1 — Reduce event latency through supported APIs ([#1](https://github.com/Jaemani/codex-monitor/issues/1)).** Managed monitors now accept explicit owner endpoints. A six-sample actual Unix `codex --remote` TUI run passed: idle 0.793–1.150 seconds, post-receiver-restart 0.585–0.633 seconds, busy generation 30.005–33.051 seconds. Two samples per scenario are not a dependable tail estimate. Broader workloads and Desktop owner paths remain. See [technical latency comparison](LATENCY.md). Shared-local currently observes external changes at roughly 10-second intervals; do not claim universal real-time delivery or use private Desktop IPC.
 - [ ] **P1 — Verify skill onboarding in fresh clients ([#3](https://github.com/Jaemani/codex-monitor/issues/3)).** Fresh ordinary TUI native skill autocomplete passed, and the installed basic skill workflow passed in an owned CLI TUI for create/status/pause/resume/remove on one disposable managed file. Remaining: rerun against the final candidate runtime and skill, fresh Desktop discovery, a real producer, and natural-language reply/stop coverage without changing the target conversation.
-- [ ] **P1 — Complete Desktop interaction cases.** Unsent draft, event during active response, approval waiting and cancellation recovery; retain actual user-visible observations.
-- [ ] **P2 — Add an external adapter after conversation-scoped collector lifecycle is verified.** Authenticate the producer, filter relevant changes, preserve stable event IDs, and implement explicit source-scoped replies.
+- [ ] **P1 — Complete Desktop interaction cases.** ([#3](https://github.com/Jaemani/codex-monitor/issues/3)) Unsent draft, event during active response, approval waiting and cancellation recovery; retain actual user-visible observations.
+- [ ] **P2 — Add an external adapter after conversation-scoped collector lifecycle is verified.** ([#2](https://github.com/Jaemani/codex-monitor/issues/2)) Authenticate the producer, filter relevant changes, preserve stable event IDs, and implement explicit source-scoped replies.
 
 ## Compatibility and resilience
 
@@ -86,20 +109,20 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
   on its explicit owner endpoint and returns after TUI exit. Source and installed ordinary-TUI
   runs verified same-thread history and user interaction; regression covers routing, identity
   changes, authentication and terminal restoration. Shared-local owner discovery remains separate.
-- [ ] **Large-history resident recovery.** Registration now omits saved turns from resume
+- [ ] **Large-history resident recovery.** ([#6](https://github.com/Jaemani/codex-monitor/issues/6)) Registration now omits saved turns from resume
   responses with `excludeTurns: true`. Verify recovery on the reported deployment before closing
   the incident; the suspected WebSocket frame limit has not been confirmed by a measured response
   or close code. Do not replay its original inputs to test subscription recovery.
 - [x] **CLI owner subscription primitive.** `resident` registers explicit existing tasks on one
   owner, retains the connection and restores subscriptions after transport loss. `connect --thread`
   returns to the exact same task through that owner. Read-only probes do not create model turns.
-- [ ] **CLI resident operational validation.** Complete real ordinary-TUI multi-task, disconnected
+- [ ] **CLI resident operational validation.** ([#5](https://github.com/Jaemani/codex-monitor/issues/5)) Complete real ordinary-TUI multi-task, disconnected
   UI, owner restart, human approval, long idle and OS supervision cases. Two actual TUI-created tasks,
   closed-UI delivery, same-owner reconnect and owner-down backlog/restart now pass bounded native
   checks. Remaining: human approvals, long idle, OS startup/sleep/reboot and dashboard integration
   for resident health. A foreground command alone is not automatic startup after reboot.
 
-- [ ] **P1 — Unloaded conversation ownership.** Shared-local persistence cannot automatically load
+- [ ] **P1 — Unloaded conversation ownership.** ([#4](https://github.com/Jaemani/codex-monitor/issues/4)) Shared-local persistence cannot automatically load
   arbitrary Desktop tasks. A real accepted/queued event with a `notLoaded` target exposed this operational
   gap. Keep its receipt intact; actual single consumption and substantive reply remain unresolved.
   Implement a supported persistent-owner lifecycle without forced turns, replay or model polling.
@@ -107,19 +130,19 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
   See [required architecture and acceptance criteria](OWNER-LIFECYCLE.md).
   Prior multi-conversation delivery results do not establish unloaded-task wakeup.
 
-- [ ] **P1 — Version compatibility probe and matrix.** Structured doctor diagnostics now distinguish missing queue methods and consumer readiness. Actual isolated Codex 0.147.0 rejects `thread/queue/list`; 0.153.4 remains the tested baseline. Broader versions and affected Windows-host recovery remain unverified.
-- [ ] **P1 — Windows/WSL.** Validate runtime transports and ordinary TUI. Current POSIX installer refuses Windows; do not advertise installer parity.
-- [ ] **P2 — Desktop remote/SSH.** Test an explicitly configured remote host and exact conversation ownership.
-- [ ] **P2 — OS sleep and reboot.** Verify receiver/producer restart, credential preservation and same-conversation event recovery.
-- [ ] **P2 — Public webhook deployment.** Validate a selected reverse proxy, authentication, body/rate limits and outage recovery.
-- [ ] **P2 — Matched Claude comparison.** Use the same event workloads, restart/failure cases and latency measurements. Document adapter differences; no overall superiority claim before evidence.
+- [ ] **P1 — Version compatibility probe and matrix.** ([#7](https://github.com/Jaemani/codex-monitor/issues/7)) Structured doctor diagnostics now distinguish missing queue methods and consumer readiness. Actual isolated Codex 0.147.0 rejects `thread/queue/list`; 0.153.4 remains the tested baseline. Broader versions and affected Windows-host recovery remain unverified.
+- [ ] **P1 — Windows/WSL.** ([#7](https://github.com/Jaemani/codex-monitor/issues/7)) Validate runtime transports and ordinary TUI. Current POSIX installer refuses Windows; do not advertise installer parity.
+- [ ] **P2 — Desktop remote/SSH.** ([#7](https://github.com/Jaemani/codex-monitor/issues/7)) Test an explicitly configured remote host and exact conversation ownership.
+- [ ] **P2 — OS sleep and reboot.** ([#7](https://github.com/Jaemani/codex-monitor/issues/7)) Verify receiver/producer restart, credential preservation and same-conversation event recovery.
+- [ ] **P2 — Public webhook deployment.** ([#2](https://github.com/Jaemani/codex-monitor/issues/2)) Validate a selected reverse proxy, authentication, body/rate limits and outage recovery.
+- [ ] **P2 — Matched Claude comparison.** ([#13](https://github.com/Jaemani/codex-monitor/issues/13)) Use the same event workloads, restart/failure cases and latency measurements. Document adapter differences; no overall superiority claim before evidence.
 
 ## Distribution and maintenance
 
 - [x] **First hosted CI passed.** macOS/Linux × Python 3.11/3.14 regression and packaging: [CI workflow](https://github.com/Jaemani/codex-monitor/actions/workflows/ci.yml). This does not replace real-client UI tests.
-- [ ] **P2 — Publish a versioned release.** Rebuild and verify the final archive, document dependencies and checksums, and decide release support policy. A public repository is not a package-registry release.
-- [ ] **P2 — Choose a license.** Public source visibility alone does not grant an open-source license.
-- [ ] **P2 — Upgrade/rollback usability.** Simplify receiver migration across runtime releases while preserving explicit ownership and state.
+- [ ] **P2 — Publish a versioned release.** ([#10](https://github.com/Jaemani/codex-monitor/issues/10)) Rebuild and verify the final archive, document dependencies and checksums, and decide release support policy. A public repository is not a package-registry release.
+- [ ] **P2 — Choose a license.** ([#11](https://github.com/Jaemani/codex-monitor/issues/11)) Public source visibility alone does not grant an open-source license.
+- [ ] **P2 — Upgrade/rollback usability.** ([#12](https://github.com/Jaemani/codex-monitor/issues/12)) Simplify receiver migration across runtime releases while preserving explicit ownership and state.
 
 ## Completed baseline
 
