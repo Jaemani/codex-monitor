@@ -45,6 +45,12 @@ Python cases are excluded from relative performance comparisons. Detailed test
 boundaries and remaining parity gaps are in the evaluation, not inferred from
 protocol success.
 
+Hosted Rust checks passed on macOS and Ubuntu. The first Python CI run passed
+three matrix entries but exposed a timing-sensitive resident health test on
+macOS/Python 3.14; its failed assertion left a worker running until job timeout.
+The test now holds the injected failure until observation, checks recovery and
+always stops its worker. No Python runtime behavior changed.
+
 ## Incident findings and current limitations (2026-09-09)
 
 - Desktop follow-up: shared-local queue access passed for the current conversation, while the local

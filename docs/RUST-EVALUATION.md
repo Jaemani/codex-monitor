@@ -34,6 +34,11 @@ source/admin authentication, conflict replay, watch epochs/checkpoints, retry
 backoff, stale completion, Unix WebSocket handshake, paginated native inspection
 and native connection reuse. Formatting and Clippy with warnings denied passed.
 These are local contract checks, not proof of all deployed environments.
+Hosted Rust checks subsequently passed on both macOS and Ubuntu. The Python
+matrix initially passed three entries; macOS/Python 3.14 exposed a resident test
+that could miss a 10 ms failure window and leave its worker alive after failure.
+The test now holds the simulated outage until observed, verifies recovery and
+always stops the worker. This changes test synchronization, not runtime behavior.
 A subsequent long-interval test found that macOS reported `/private/tmp` for a
 watch registered under `/tmp`. The collector now obtains its native path key
 inside the killable worker, including arbitrary parent-directory aliases, while

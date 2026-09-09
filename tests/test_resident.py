@@ -276,18 +276,32 @@ class ResidentTest(unittest.TestCase):
                 )
 
     def test_health_probe_error_clears_ready_without_reresuming(self):
-        rpc = FakeRpc(
-            ["thread-a"],
-            loaded_errors=[None, RpcError({"code": -32000, "message": "temporary probe failure"})],
-        )
+        probe_failure = threading.Event()
+
+        class ControlledRpc(FakeRpc):
+            def call(self, method, params):
+                if method == "thread/loaded/list" and probe_failure.is_set():
+                    self.calls.append((method, params))
+                    raise RpcError({"code": -32000, "message": "temporary probe failure"})
+                return super().call(method, params)
+
+        rpc = ControlledRpc(["thread-a"])
         keeper = ResidentKeeper("unix:///owner.sock", ["thread-a"], rpc_factory=lambda _: rpc, health_interval=.01)
         stop = threading.Event()
         worker = threading.Thread(target=keeper.run, args=(stop,))
         worker.start()
-        self.wait_for(lambda: keeper.status()["threads"]["thread-a"]["ready"])
-        self.wait_for(lambda: not keeper.status()["threads"]["thread-a"]["ready"])
-        stop.set()
-        worker.join(timeout=1)
+        try:
+            self.wait_for(lambda: keeper.status()["threads"]["thread-a"]["ready"])
+            # Hold the failure until observed instead of sampling a 10 ms window.
+            probe_failure.set()
+            self.wait_for(lambda: not keeper.status()["threads"]["thread-a"]["ready"])
+            self.assertTrue(keeper.status()["threads"]["thread-a"]["subscribed"])
+            probe_failure.clear()
+            self.wait_for(lambda: keeper.status()["threads"]["thread-a"]["ready"])
+        finally:
+            stop.set()
+            worker.join(timeout=1)
+        self.assertFalse(worker.is_alive())
 
         self.assertEqual(
             [method for method, params in rpc.calls if method == "thread/resume" and params["threadId"] == "thread-a"],

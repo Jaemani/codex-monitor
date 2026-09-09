@@ -30,6 +30,9 @@ when its remaining acceptance criteria pass. Update the corresponding issue and 
 
 ## Rust candidate evaluation
 
+- [x] **Remove resident health-test timing race.** Hold the simulated outage
+  through observation, verify recovery without resuming again, and clean up the
+  worker even after an assertion failure. Found by the candidate's hosted CI.
 - [x] **Isolated Rust core and matched evaluation.** A separate receiver, durable
   store, reusable native file workers, transports and CLI controls are implemented
   on `codex/rust-runtime`. Local contracts, matched functional cases, resource
