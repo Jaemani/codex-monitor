@@ -51,6 +51,15 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Compatibility and resilience
 
+- [x] **CLI owner subscription primitive.** `resident` registers explicit existing tasks on one
+  owner, retains the connection and restores subscriptions after transport loss. `connect --thread`
+  returns to the exact same task through that owner. Read-only probes do not create model turns.
+- [ ] **CLI resident operational validation.** Complete real ordinary-TUI multi-task, disconnected
+  UI, owner restart, human approval, long idle and OS supervision cases. Two actual TUI-created tasks,
+  closed-UI delivery, same-owner reconnect and owner-down backlog/restart now pass bounded native
+  checks. Remaining: human approvals, long idle, OS startup/sleep/reboot and dashboard integration
+  for resident health. A foreground command alone is not automatic startup after reboot.
+
 - [ ] **P1 — Unloaded conversation ownership.** Shared-local persistence cannot automatically load
   arbitrary Desktop tasks. A real accepted/queued event with a `notLoaded` target exposed this operational
   gap. Keep its receipt intact; actual single consumption and substantive reply remain unresolved.

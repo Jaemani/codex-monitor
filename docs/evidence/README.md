@@ -6,6 +6,19 @@ Raw reports, terminal buffers, conversation IDs and host paths remain local and 
 
 Key observations:
 
+- Expanded CLI resident run: two ordinary TUI-created tasks, four independent test events, each
+  consumed once with one native response. A 23.3-second owner outage retained an event with zero
+  spent attempts; transport-only reconnect and owner restart restored availability. Native run:
+  75.617 seconds; final regression: 185 tests in 50.880 seconds. Both fixtures were archived before
+  final PASS. Prior driver failures and their verified causes remain in the JSON summary.
+
+- CLI resident, 2026-09-09: a bounded one-conversation ordinary TUI run passed in 26.800 seconds.
+  It covered event consumption while the TUI was closed, return to the same task, user follow-up and
+  owner restart with subscription recovery. The post-review runtime passed 183 regression tests;
+  an isolated wheel install passed 51 focused tests. Local upgrade preserved eight bindings,
+  credentials and seven receipts. Earlier incomplete/timeout runs remain in the summary. This is
+  not a Desktop owner fix or a long-duration resident/approval-screen result.
+
 - Actual ordinary Codex TUI on macOS and Debian arm64, and Unix remote TUI: PASS.
 - Actual TUI one-hour soak: 3,600.025 seconds, 12 events, 3 client restart/resume cycles.
 - Receiver outage: 3,600.15 seconds, 665 health samples, 55 graceful restarts. An earlier incomplete run remains recorded.

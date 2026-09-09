@@ -15,6 +15,52 @@ from codex_monitor.session import Rpc, SharedLocalSession
 
 
 class CLITest(unittest.TestCase):
+    def test_connect_resumes_only_explicit_thread_on_selected_owner(self):
+        class ExecCalled(BaseException):
+            pass
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch(
+            "codex_monitor.cli.os.execvp", side_effect=ExecCalled
+        ) as execute, mock.patch("codex_monitor.cli.server_token", return_value=None):
+            with self.assertRaises(ExecCalled):
+                cli.main(["--state", tmp, "connect", "--endpoint", "ws://127.0.0.1:9010",
+                          "--cwd", tmp, "--thread", "explicit-task"])
+            execute.assert_called_once_with("codex", ["codex", "--remote", "ws://127.0.0.1:9010",
+                                                       "-C", tmp, "resume", "explicit-task"])
+
+    def test_connect_passes_auth_by_environment_name_without_token_in_argv(self):
+        class ExecCalled(BaseException):
+            pass
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {}), mock.patch(
+            "codex_monitor.cli.server_token", return_value="test-only-credential"
+        ), mock.patch("codex_monitor.cli.os.execvp", side_effect=ExecCalled) as execute:
+            with self.assertRaises(ExecCalled):
+                cli.main(["--state", tmp, "connect", "--endpoint", "wss://owner.example",
+                          "--cwd", tmp, "--thread", "explicit-task"])
+            command = execute.call_args.args[1]
+            self.assertNotIn("test-only-credential", command)
+            self.assertEqual(os.environ["CODEX_MONITOR_SERVER_TOKEN"], "test-only-credential")
+            self.assertIn("--remote-auth-token-env", command)
+
+    def test_resident_needs_no_receiver_state_and_restores_signal_handlers(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch(
+            "codex_monitor.cli.ResidentKeeper"
+        ) as factory, mock.patch("codex_monitor.cli.signal.signal") as signals, mock.patch(
+            "codex_monitor.cli.SessionPool", side_effect=AssertionError("no queue writer")
+        ), redirect_stdout(io.StringIO()):
+            keeper = factory.return_value
+            keeper.status.return_value = {"connected": False}
+            keeper.run.side_effect = lambda stopped: stopped.set()
+            signals.return_value = "previous-handler"
+            self.assertEqual(cli.main(["--state", str(Path(tmp) / "absent"), "resident",
+                                       "--endpoint", "unix:///tmp/owned.sock", "--thread", "one",
+                                       "--thread", "two"]), 0)
+            self.assertFalse((Path(tmp) / "absent").exists())
+            self.assertEqual(factory.call_args.args, ("unix:///tmp/owned.sock", ["one", "two"]))
+            self.assertEqual(signals.call_count, 4)
+            self.assertEqual(signals.call_args.args[1], "previous-handler")
+
     def test_init_source_binding_and_status_are_portable_and_do_not_start_codex(self):
         with tempfile.TemporaryDirectory() as tmp:
             def run(*args):

@@ -11,7 +11,7 @@ import re
 from contextlib import contextmanager
 from urllib.parse import urlsplit
 
-from .errors import IngressError, Retryable, Uncertain, Permanent
+from .errors import IngressError, Unavailable, Retryable, Uncertain, Permanent
 from .conditions import ConditionDebouncer
 from .lock import process_alive
 from .predicates import PredicateError, normalize_condition, public_condition
@@ -472,6 +472,16 @@ class Monitor:
             except Exception as exc:
                 if reconciling or isinstance(exc, Uncertain):
                     state, delay = "uncertain", 30
+                elif isinstance(exc, Unavailable):
+                    # The event was never handed to the native queue. Return
+                    # it to pending without consuming the delivery budget;
+                    # max_age still bounds how long an outage may retain it.
+                    state, delay = "pending", 5
+                    db.execute(
+                        "UPDATE events SET attempts=CASE WHEN attempts > 0 THEN attempts - 1 ELSE 0 END "
+                        "WHERE id=?",
+                        (row["id"],),
+                    )
                 elif isinstance(exc, Retryable):
                     state = "dead" if row["attempts"] + 1 >= self.max_attempts else "pending"
                     delay = min(60, 2 ** row["attempts"])

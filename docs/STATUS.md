@@ -10,6 +10,35 @@ target thread to be loaded on their server.
 
 ## Incident findings and current limitations (2026-09-09)
 
+- CLI-first owner lifecycle is implemented: `resident` retains explicit
+  conversations on one shared owner and restores subscriptions after connection loss;
+  `connect --thread` opens that exact task in the ordinary remote TUI. Registration is a deliberate
+  lifecycle operation, distinct from delivery retry. Default local Desktop owner access remains
+  unresolved. Foreground owner/resident processes currently need separate OS supervision.
+- A bounded actual ordinary macOS TUI run passed in **26.800 seconds** using Codex 0.153.4 and
+  Luna/xhigh. One selected conversation consumed an event once while its TUI was closed, accepted
+  a user follow-up after reopening, and consumed another event once after owner restart and resident
+  re-registration. This is not multi-task, long-idle, approval-screen or Desktop evidence. Earlier
+  incomplete/timed-out attempts remain recorded in the curated evidence.
+- Review fixes add per-target transient registration retry, native-shareable endpoint validation and
+  honest failed-probe readiness. Known pre-submission outages no longer consume delivery attempts;
+  expiry and uncertain-delivery reconciliation remain intact. The complete local suite passed
+  **183 tests in 51.153 seconds** after these runtime changes.
+- The matching resident wheel was installed locally with the updated skill. Authenticated receiver
+  readiness returned after restart; all eight bindings, credentials and seven prior receipts were
+  preserved. The original incident still has one submission attempt; no replay or Desktop recovery
+  is claimed. A separate candidate install passed 51 focused tests and removed its owned command
+  and skill cleanly. The global `resident` command also works from another working directory.
+- Expanded native coverage passed in **75.617 seconds**: two TUI-created conversations, independent
+  exact-once events while both TUIs were closed, same-owner transport reconnect, a **23.3-second**
+  owner outage with a pending event consuming zero attempts, and owner restart restoring both
+  subscriptions. Backlog and post-restart events each produced one native response. Both fixtures
+  were archived and cleanup completed before PASS. The suite including report-safety regressions
+  passed **185 tests in 50.880 seconds**. Long-idle residency, reboot and approval-screen cases remain.
+- The final native rerun passed in **71.765 seconds**, including a **22.4-second** owner outage
+  and the same four exact-once event/response checks across two tasks. The harness now distinguishes
+  a temporary in-flight attempt reservation from a spent retry in settled pending state.
+
 - A reported Windows health-hook delivery failure was traced to a missing `thread/queue/list` API
   in Codex 0.147.0. An isolated official 0.147.0 macOS binary independently reproduced JSON-RPC
   `-32600` / unknown method variant. The updated doctor diagnosed it without sending input or changing

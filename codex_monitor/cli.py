@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from .errors import IngressError
+from .errors import IngressError, Permanent
 from .http import Server
 from .lock import ProcessLock, process_alive
 from .monitor import Monitor, NAME
@@ -28,6 +28,7 @@ from .requests import RequestStore
 from .sessions import overview, display
 from .dashboard import run_dashboard
 from .doctor import probe_queue_target
+from .resident import ResidentKeeper
 
 
 def output(value):
@@ -176,6 +177,11 @@ def parser():
     host = commands.add_parser("host"); host.add_argument("--port", type=int, default=8765)
     connect = commands.add_parser("connect")
     connect.add_argument("--endpoint"); connect.add_argument("--cwd", default=os.getcwd())
+    connect.add_argument("--thread", help="resume this exact conversation on the selected owner")
+    resident = commands.add_parser("resident", help="retain explicit CLI conversations on one shared owner; foreground process")
+    resident.add_argument("--endpoint", required=True, help="same owner endpoint used by codex --remote; shared-local is not supported")
+    resident.add_argument("--thread", action="append", required=True, help="existing conversation ID; repeat for multiple conversations")
+    resident.add_argument("--health-interval", type=float, default=10, help="read-only owner probe interval in seconds; no model calls")
     service = commands.add_parser("service", help="manage the macOS launchd receiver")
     service.add_argument("action", choices=["install", "start", "stop", "restart", "status", "uninstall"])
     service.add_argument("--codex-home", help="Codex storage home (defaults to CODEX_HOME or ~/.codex)")
@@ -204,6 +210,48 @@ def main(argv=None):
     config_path = root / "config.json"
     pool = None
     try:
+        if args.command == "resident":
+            token = server_token()
+            keeper = ResidentKeeper(
+                args.endpoint, args.thread, health_interval=args.health_interval,
+                rpc_factory=lambda endpoint: Rpc(endpoint, token=token),
+            )
+            stopped = threading.Event()
+            handlers = {}
+            errors = []
+
+            def run_keeper():
+                try:
+                    keeper.run(stopped)
+                except Exception as exc:
+                    errors.append(str(exc))
+                finally:
+                    stopped.set()
+
+            worker = threading.Thread(target=run_keeper, name="codex-monitor-resident")
+            try:
+                for sig in (signal.SIGINT, signal.SIGTERM):
+                    handlers[sig] = signal.signal(sig, lambda *_: stopped.set())
+                worker.start()
+                previous = None
+                while True:
+                    snapshot = keeper.status()
+                    # Probe freshness changes every interval; print actual
+                    # transitions instead of filling terminals with heartbeats.
+                    comparable = {key: value for key, value in snapshot.items() if key != "last_probe_at"}
+                    if comparable != previous:
+                        output({"resident": snapshot, "model_polling": False})
+                        previous = comparable
+                    if stopped.wait(.25):
+                        break
+            finally:
+                stopped.set()
+                if worker.ident is not None:
+                    worker.join()
+                for sig, handler in handlers.items():
+                    signal.signal(sig, handler)
+            output({"resident": keeper.status(), "stopped": True, "errors": errors})
+            return 2 if errors else 0
         if args.command == "init":
             if config_path.exists():
                 raise ValueError("already initialized; existing credentials were preserved")
@@ -270,7 +318,14 @@ def main(argv=None):
                     raise ValueError("port must be between 1 and 65535")
                 endpoint = f"ws://127.0.0.1:{args.port}"
                 os.execvp("codex", ["codex", "app-server", "--listen", endpoint])
-            os.execvp("codex", ["codex", "--remote", args.endpoint or endpoint, "-C", args.cwd])
+            command = ["codex", "--remote", args.endpoint or endpoint, "-C", args.cwd]
+            token = server_token()
+            if token is not None:
+                os.environ["CODEX_MONITOR_SERVER_TOKEN"] = token
+                command += ["--remote-auth-token-env", "CODEX_MONITOR_SERVER_TOKEN"]
+            if args.thread:
+                command += ["resume", args.thread]
+            os.execvp("codex", command)
         if args.command == "dashboard":
             # The dashboard does not need configuration to read the local
             # inventory.  A missing or malformed config only makes the
@@ -478,7 +533,7 @@ def main(argv=None):
                         except (OSError, IngressError) as exc: print(f"watch delivery retained: {exc}", file=sys.stderr)
                         stop.wait(args.interval)
         return 0
-    except (ValueError, TypeError, OSError, KeyError, RuntimeError, sqlite3.Error) as exc:
+    except (ValueError, TypeError, OSError, KeyError, RuntimeError, sqlite3.Error, Permanent) as exc:
         print(f"codex-monitor: {exc}", file=sys.stderr)
         return 2
     finally:

@@ -81,6 +81,74 @@ class MonitorTest(unittest.TestCase):
         monitor.dispatch_once()
         self.assertEqual(monitor.event(first["delivery_id"])["state"], "dead")
 
+    def test_unavailable_outage_does_not_consume_attempts_and_recovers(self):
+        from codex_monitor.errors import Unavailable
+
+        now = [100.0]
+        available = [False]
+        monitor = Monitor(Path(self.temp.name), lambda _: self.session, clock=lambda: now[0], max_attempts=2, max_age=100)
+        monitor.bind("other", "thread-other", "local", ["build"])
+        first = monitor.ingest("work", {"id": "outage-1", "source": "build", "type": "notice", "data": 1})
+        monitor.ingest("work", {"id": "outage-2", "source": "build", "type": "notice", "data": 2})
+        other = monitor.ingest("other", {"id": "outage-3", "source": "build", "type": "notice", "data": 3})
+        original = self.session.deliver
+
+        def owner(thread, client_id, text):
+            if thread == "thread-user" and not available[0]:
+                raise Unavailable("owner unavailable")
+            return original(thread, client_id, text)
+
+        self.session.deliver = owner
+        for tick in (100.0, 105.0, 110.0, 115.0, 120.0):
+            now[0] = tick
+            monitor.dispatch_once()
+            monitor.dispatch_once()
+        self.assertEqual(monitor.event(first["delivery_id"])["state"], "pending")
+        self.assertEqual(monitor.event(first["delivery_id"])["attempts"], 0)
+        self.assertEqual(monitor.event(other["delivery_id"])["state"], "accepted")
+
+        available[0] = True
+        now[0] = 125.0
+        monitor.dispatch_once()
+        self.assertEqual(monitor.event(first["delivery_id"])["state"], "accepted")
+        self.assertEqual(monitor.event(first["delivery_id"])["attempts"], 1)
+
+    def test_unavailable_event_still_expires_by_max_age(self):
+        from codex_monitor.errors import Unavailable
+
+        now = [100.0]
+        monitor = Monitor(Path(self.temp.name), lambda _: self.session, clock=lambda: now[0], max_attempts=2, max_age=10)
+        receipt = monitor.ingest("work", {"id": "outage-expire", "source": "build", "type": "notice", "data": {}})
+        self.session.deliver = lambda *_: (_ for _ in ()).throw(Unavailable("owner unavailable"))
+        monitor.dispatch_once()
+        self.assertEqual(monitor.event(receipt["delivery_id"])["attempts"], 0)
+        now[0] = 111.0
+        monitor.dispatch_once()
+        self.assertEqual(monitor.event(receipt["delivery_id"])["state"], "dead")
+
+    def test_unavailable_session_factory_does_not_consume_attempts(self):
+        from codex_monitor.errors import Unavailable
+
+        now = [100.0]
+        monitor = Monitor(
+            Path(self.temp.name),
+            lambda _: (_ for _ in ()).throw(Unavailable("owner connection unavailable")),
+            clock=lambda: now[0],
+            max_attempts=2,
+            max_age=100,
+        )
+        receipt = monitor.ingest("work", {"id": "factory-outage", "source": "build", "type": "notice", "data": {}})
+        for tick in (100.0, 105.0, 110.0, 115.0):
+            now[0] = tick
+            monitor.dispatch_once()
+        self.assertEqual(monitor.event(receipt["delivery_id"])["state"], "pending")
+        self.assertEqual(monitor.event(receipt["delivery_id"])["attempts"], 0)
+
+        monitor.factory = lambda _: self.session
+        now[0] = 120.0
+        monitor.dispatch_once()
+        self.assertEqual(monitor.event(receipt["delivery_id"])["state"], "accepted")
+
     def test_crash_after_queue_acceptance_recovers_without_duplicate_delivery(self):
         class Crash(BaseException):
             pass

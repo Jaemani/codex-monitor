@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .errors import Retryable, Uncertain, Permanent
+from .errors import Unavailable, Retryable, Uncertain, Permanent
 
 
 def _validate_server_token(value, source):
@@ -181,7 +181,7 @@ class Rpc:
             raise
         except Exception as exc:
             self.close()
-            raise Retryable("App Server is unreachable or initialization failed; verify the conversation's endpoint") from exc
+            raise Unavailable("App Server is unreachable or initialization failed; verify the conversation's endpoint") from exc
 
     def _write(self, message):
         data = json.dumps(message, ensure_ascii=False)
@@ -222,7 +222,7 @@ class Rpc:
         status = queue.Queue(maxsize=1)
         with self.lock:
             if self.closed:
-                raise Retryable("App Server connection closed before submission")
+                raise Unavailable("App Server connection unavailable before submission")
             self.outbound.put((message, status))
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -234,7 +234,7 @@ class Rpc:
             self.close()
             raise Uncertain("App Server write timed out; acceptance unknown") from exc
         if outcome == "not_sent":
-            raise Retryable("App Server connection closed before submission")
+            raise Unavailable("App Server connection unavailable before submission")
         if outcome == "uncertain":
             self.close()
             raise Uncertain("App Server write failed; acceptance unknown") from error
@@ -272,7 +272,7 @@ class Rpc:
         deadline = time.monotonic() + call_timeout
         with self.lock:
             if self.closed:
-                raise Retryable("App Server connection closed before submission")
+                raise Unavailable("App Server connection unavailable before submission")
             self.sequence += 1
             request_id = self.sequence
             waiter = queue.Queue()
@@ -361,11 +361,20 @@ class AppServerSession:
         try:
             live = self.rpc.call("thread/loaded/list", {})["data"]
         except Uncertain as exc:
-            raise Retryable("cannot verify that the interactive thread is loaded") from exc
+            raise Unavailable("cannot verify that the interactive thread is loaded") from exc
         except RpcError as exc:
-            raise _operation_error("loaded-thread validation", exc) from exc
+            classified = _operation_error("loaded-thread validation", exc)
+            if isinstance(classified, Permanent):
+                raise classified from exc
+            raise Unavailable(str(classified)) from exc
+        except Retryable as exc:
+            raise Unavailable("cannot verify that the interactive thread is loaded") from exc
+        except Permanent:
+            raise
+        except Exception as exc:
+            raise Unavailable("cannot verify that the interactive thread is loaded") from exc
         if thread not in live:
-            raise Retryable("open this exact thread in the client attached to the same App Server")
+            raise Unavailable("open this exact thread in the client attached to the same App Server")
 
     def deliver(self, thread, client_id, text):
         self.check_target(thread)
@@ -445,9 +454,18 @@ class SharedLocalSession(AppServerSession):
             # The server validates persistence, archive state and queue support.
             self.rpc.call("thread/queue/list", {"threadId": thread, "limit": 1})
         except RpcError as exc:
-            raise _operation_error("local queue target", exc) from exc
+            classified = _operation_error("local queue target", exc)
+            if isinstance(classified, Permanent):
+                raise classified from exc
+            raise Unavailable(str(classified)) from exc
         except Uncertain as exc:
-            raise Retryable("cannot verify the shared local queue") from exc
+            raise Unavailable("cannot verify the shared local queue") from exc
+        except Retryable as exc:
+            raise Unavailable("cannot verify the shared local queue") from exc
+        except Permanent:
+            raise
+        except Exception as exc:
+            raise Unavailable("cannot verify the shared local queue") from exc
 
 
 class SessionPool:

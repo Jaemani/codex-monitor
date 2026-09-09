@@ -1,5 +1,12 @@
 # Client connectivity and validation scope
 
+Current development priority (2026-09-09): CLI conversations on one explicitly shared App Server.
+`resident --endpoint ENDPOINT --thread THREAD_ID` maintains owner subscriptions and reconnects to
+that owner. This is distinct from the default shared-local queue writer. The foreground owner and
+resident require supervision for unattended process restarts; see [owner lifecycle](OWNER-LIFECYCLE.md).
+Default local Desktop still lacks a verified supported owner endpoint for this feature. Previous
+successful Desktop deliveries cover loaded targets, not automatic wakeup of arbitrary unloaded tasks.
+
 The 2026-09-09 JSON predicate extension passed installed macOS/Linux process
 checks and actual ordinary default shared-local and Unix remote TUI
 matched/recovery/follow-up flows.

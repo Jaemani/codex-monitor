@@ -9,7 +9,7 @@ import time
 from unittest import mock
 
 from codex_monitor.session import Rpc, AppServerSession, SharedLocalSession, SessionPool, server_token
-from codex_monitor.errors import Uncertain, Retryable, Permanent
+from codex_monitor.errors import Unavailable, Uncertain, Retryable, Permanent
 
 
 class SessionTest(unittest.TestCase):
@@ -114,7 +114,7 @@ class SessionTest(unittest.TestCase):
         self.assertFalse(rpc.writer.is_alive())
 
     def test_closed_or_wrong_conversation_is_not_resumed_elsewhere(self):
-        with self.assertRaises(Retryable):
+        with self.assertRaises(Unavailable):
             self.session.deliver("unloaded-desktop-thread", "event-1", "must not create a worker")
         methods = self.rpc.call("test/methods", {})
         self.assertNotIn("thread/queue/add", methods)
@@ -195,7 +195,7 @@ class SessionTest(unittest.TestCase):
 
         shared = SharedLocalSession(self.rpc)
         self.rpc.call("test/fail-next", {"method": "thread/queue/list", "code": -32603, "message": "database busy"})
-        with self.assertRaises(Retryable):
+        with self.assertRaises(Unavailable):
             shared.deliver("thread-user", "retry-2", "retry target check")
 
     def test_internal_error_after_persistence_reconciles_without_resubmission(self):
@@ -210,6 +210,16 @@ class SessionTest(unittest.TestCase):
         self.rpc.call("test/fail-next", {"method": "thread/loaded/list", "code": -32601, "message": "Method not found"})
         with self.assertRaises(Permanent):
             self.session.deliver("thread-user", "unsupported-1", "do not retry forever")
+
+    def test_direct_permanent_target_errors_are_not_downgraded(self):
+        class PermanentRpc:
+            def call(self, *_args, **_kwargs):
+                raise Permanent("unsupported target API")
+
+        with self.assertRaises(Permanent):
+            AppServerSession(PermanentRpc()).check_target("thread-user")
+        with self.assertRaises(Permanent):
+            SharedLocalSession(PermanentRpc()).check_target("thread-user")
 
     def test_reconciliation_exhausts_history_beyond_twenty_pages(self):
         self.session.deliver("thread-user", "old-accepted", "accepted before a long outage")
@@ -239,6 +249,10 @@ class SessionTest(unittest.TestCase):
         for endpoint in ("ssh://host;touch-file", "ssh://-oProxyCommand=x", "ws://example.com:8765", "wss://user:secret@example.com"):
             with self.subTest(endpoint=endpoint), self.assertRaises(Permanent):
                 Rpc(endpoint, timeout=.1)
+
+    def test_unreachable_rpc_initialization_is_pre_submission_unavailable(self):
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(Unavailable):
+            Rpc("unix://" + str(Path(tmp) / "missing.sock"), timeout=.1)
 
     def test_server_token_file_is_private_absolute_and_secret_safe(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1560,6 +1560,114 @@
       "original_actual_response_verified": false,
       "windows_host_retested": false,
       "upstream_cold_thread_test_read_not_executed": true
+    },
+    {
+      "date": "2026-09-09",
+      "result": "CLI_RESIDENT_BOUNDED_PASS",
+      "scope": "source runtime, one owned Unix App Server and one ordinary macOS Codex TUI; no Desktop or original-incident recovery claim",
+      "codex_version": "0.153.4",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "xhigh",
+      "elapsed_seconds": 26.8,
+      "checks": {
+        "tui_closed_event_consumed_once": true,
+        "same_task_tui_reopen_user_followup": true,
+        "owner_restart_subscription_restored": true,
+        "post_restart_event_consumed_once": true,
+        "owned_thread_archived": true
+      },
+      "limits": [
+        "one selected conversation in this run",
+        "combined resident disconnect and owner restart",
+        "not a long idle or approval-screen test",
+        "owner and resident OS startup supervision not implemented"
+      ],
+      "earlier_attempts": [
+        {
+          "result": "INCOMPLETE",
+          "last_elapsed_seconds": 11.817
+        },
+        {
+          "result": "FAIL",
+          "elapsed_seconds": 130.874,
+          "reason": "native follow-up acknowledgement timeout"
+        },
+        {
+          "result": "FAIL",
+          "elapsed_seconds": 74.684,
+          "reason": "native post-restart acknowledgement timeout"
+        }
+      ],
+      "regression_tests": 183,
+      "regression_elapsed_seconds": 51.153,
+      "wheel_sha256": "c724c88229d5d8abd8e08158d7c937bebe86e6600248a87c5402e611a3a86a29",
+      "installed_validation": {
+        "focused_tests": 51,
+        "candidate_owned_uninstall": true,
+        "global_command_from_other_directory": true,
+        "receiver_authenticated_ready_after_upgrade": true,
+        "bindings_preserved": 8,
+        "prior_receipts_preserved": 7,
+        "credentials_preserved": true,
+        "original_incident_submission_attempts": 1,
+        "desktop_response_recovery_claimed": false
+      }
+    },
+    {
+      "date": "2026-09-09",
+      "result": "CLI_RESIDENT_MULTI_OUTAGE_PASS",
+      "scope": "source runtime; two ordinary TUI-created conversations on one owned Unix App Server; no Desktop claim",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "xhigh",
+      "elapsed_seconds": 75.617,
+      "owner_outage_seconds": 23.3,
+      "conversation_count": 2,
+      "events": 4,
+      "native_occurrences_per_event": 1,
+      "native_exact_responses_per_event": 1,
+      "outage_pending_attempts": 0,
+      "same_owner_rpc_reconnect": true,
+      "owner_restart_restored_both_subscriptions": true,
+      "same_task_user_followup": true,
+      "both_owned_threads_archived": true,
+      "final_pass_after_cleanup": true,
+      "regression_tests": 185,
+      "regression_elapsed_seconds": 50.88,
+      "harness_corrections": [
+        {
+          "prior_attempt": 2,
+          "finding": "interrupted run; exact owned task archived and workspace removed"
+        },
+        {
+          "prior_attempt": 3,
+          "finding": "follow-up remained in composer; driver now waits for rendered input"
+        },
+        {
+          "prior_attempt": 4,
+          "finding": "driver closed TUI before native turn completion; native interrupted state correctly held subsequent input"
+        },
+        {
+          "prior_attempt": 6,
+          "finding": "second event completed in native history but driver queried the first task; ACK lookup now thread-scoped"
+        }
+      ],
+      "limits": [
+        "no real native approval-screen check",
+        "no long-idle resident or OS reboot result",
+        "resident and owner require external OS supervision",
+        "source native canary plus matching installed wheel; not an installed CLI resident-process native canary"
+      ],
+      "final_rerun": {
+        "result": "PASS",
+        "elapsed_seconds": 71.765,
+        "owner_outage_seconds": 22.4,
+        "events": 4,
+        "conversation_count": 2,
+        "native_occurrences_per_event": 1,
+        "native_exact_responses_per_event": 1,
+        "final_pass_after_cleanup": true,
+        "harness_change": "allow temporary in-flight attempt reservation; judge settled pending state"
+      }
     }
   ]
 }

@@ -8,6 +8,10 @@ class Retryable(Exception):
     """Known not accepted; retry is safe."""
 
 
+class Unavailable(Retryable):
+    """Pre-submission connectivity or owner availability failure."""
+
+
 class Uncertain(Exception):
     """Submission may have been accepted. Reconcile, never blindly replay."""
 

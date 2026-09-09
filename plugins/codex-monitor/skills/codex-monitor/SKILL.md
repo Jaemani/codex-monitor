@@ -14,6 +14,9 @@ Busy conversations queue input for native processing; this is not a continuously
 Actual consumption requires the target to remain loaded in an owning Codex client. A running Desktop
 app or an enabled binding does not keep every saved task loaded. Unloaded targets retain queued input
 and do not self-start from a shared-local write. State this limitation for unattended or multi-task setups.
+For explicitly requested unattended CLI operation or owner reconnection, read
+[resident.md](references/resident.md). It uses a shared owner and deliberate subscriptions;
+the default Desktop owner path remains unavailable.
 This workflow needs a local Codex host with shell access; installing the plugin in a web-only chat does
 not provide that runtime or access to a Desktop conversation.
 
@@ -90,7 +93,8 @@ Legacy external bindings use separate commands:
 - `event DELIVERY_ID`: original details behind a shortened visible event.
 
 Preserve user drafts, interruptions and approvals. Ctrl+C may leave native input queued until a later
-user follow-up finishes. Do not force delivery with thread/start/resume, turn/start, or interrupt.
+user follow-up finishes. Receipt diagnosis is read-only; do not force delivery with thread/start/resume,
+turn/start, or interrupt. Explicit CLI resident setup is a separate lifecycle operation described above.
 
 ## Explicit reply
 

@@ -33,6 +33,7 @@ flowchart LR
 | Skill: `$codex-monitor` | Helps configure, inspect and manage monitoring | When an assistant uses it; installing it alone starts nothing |
 | Producer | Receives a webhook/Gateway event or detects a file change | Outside the model; managed files are supervised by the receiver |
 | Receiver | Authenticates, persists, deduplicates and routes events | One long-lived local process; can serve multiple conversations |
+| CLI resident (explicit owner mode) | Retains selected conversation subscriptions and restores them after connection loss | Separate foreground process alongside the shared App Server; no model polling |
 | Codex conversation | Reads events and performs the authorized work alongside user input | Native Codex processing; busy conversations queue events |
 | Dashboard | Reads monitor state and checks receiver readiness | While its terminal is open; closing it does not stop monitoring |
 
@@ -41,6 +42,13 @@ flowchart LR
 The default `shared-local` path uses the same OS user and Codex store (`CODEX_HOME` / `sqlite_home`) as the target client. An independent App Server writer adds input through the official queue API; it does not type into the UI or start/resume conversations. Local Desktop does not require SSH.
 
 In the validated Codex 0.153.4 path, the native consumer checks external changes roughly every 10 seconds. Busy turns can add delay. If the target conversation is unloaded (even while Desktop stays open), input remains queued until an owning client loads it. Keeping the receiver running does not keep every registered conversation loaded. **Event-driven does not mean an immediate model response.** See [latency measurements and direct-owner options](docs/LATENCY.md) and [queue/compatibility troubleshooting](docs/TROUBLESHOOTING.md).
+
+**CLI is the current development priority for unattended conversations.** The explicit-owner
+`resident` command keeps selected CLI conversations subscribed and restores those subscriptions
+after connection loss. The ordinary TUI connects to that same server. This requires an owner and
+resident process in addition to the receiver; see [setup and reconnect behavior](docs/OWNER-LIFECYCLE.md).
+Default local Desktop does not yet have a verified owner connection for this lifecycle. A running
+Desktop app alone therefore cannot guarantee background processing of every saved conversation.
 
 ## Quick start
 
@@ -155,6 +163,12 @@ Sources: [O1: scheduled tasks](https://learn.chatgpt.com/docs/automations), [O2:
 **Native Codex already supports visible agents and scheduled work.** This project's advantage is its reusable external-event delivery, persistence and observation layer for existing local conversations. Claude already provides native background monitoring through `Monitor`, and Channels offers session push with reply tools. There is no evidence for an overall reliability or speed superiority claim. See [detailed comparison and limitations](docs/PRODUCT-COMPARISON.md).
 
 ## What has been verified?
+
+The CLI resident path now has a bounded real test with two ordinary TUI-created conversations:
+closed-TUI event handling, same-owner reconnect, owner-down backlog retention and server restart
+with both subscriptions restored. All four test events appeared once in native history and received
+one response each. This does not establish unattended approvals, long-idle residency or OS reboot
+recovery; Desktop owner access remains a separate limitation.
 
 The core targets **Codex CLI 0.153.4** and experimental queue APIs. Evidence includes ordinary macOS/Linux TUI interaction, a one-hour TUI soak, a one-hour receiver outage test, Desktop consumption and user-observed restart, and installed runtime checks. These results have different scopes; they are not blanket platform certification.
 

@@ -239,6 +239,68 @@ class CanaryReportTest(unittest.TestCase):
         self.assertIn("archive_owned_thread", saved["cleanup_error"])
         self.assertTrue(saved["temporary_work_removed"])
 
+    def test_resident_cleanup_failure_cannot_be_reported_as_pass(self):
+        module = load_script("resident-canary.py")
+        instances = []
+
+        class FakeCanary:
+            def __init__(self, args):
+                self.args = args
+                self.report = {"result": "RUNNING"}
+                instances.append(self)
+
+            def save(self):
+                pass
+
+            def run(self):
+                self.report["functional_checks_complete"] = True
+
+            def cleanup(self):
+                self.report["cleanup_errors"] = ["fake cleanup failure"]
+
+            def dispose_workspace(self):
+                pass
+
+            def finish(self):
+                pass
+
+        with mock.patch.object(module, "Canary", FakeCanary):
+            result = self.run_main(module, "--run", "--report", str(self.report))
+        self.assertEqual(result, 2)
+        self.assertEqual(instances[0].report["result"], "FAIL")
+
+    def test_resident_trust_input_requires_owned_modal_and_is_one_shot(self):
+        module = load_script("resident-canary.py")
+        canary = module.Canary(SimpleNamespace(report=self.report, model="gpt-5.6-luna"))
+
+        class Terminal:
+            def __init__(self, screen):
+                self.screen = screen
+                self.inputs = []
+
+            def pump(self, _seconds):
+                pass
+
+            def text(self):
+                return self.screen
+
+            def input(self, value):
+                self.inputs.append(value)
+
+        canary.workspace = Path("/private/tmp/owned-workspace")
+        terminal = Terminal("Yes, I trust this folder")
+        canary.terminal = terminal
+        canary.pump_terminal()
+        self.assertEqual(terminal.inputs, [])
+
+        terminal.screen = (
+            "Do you trust this folder? /private/tmp/owned-workspace "
+            "Yes, I trust"
+        )
+        canary.pump_terminal()
+        canary.pump_terminal()
+        self.assertEqual(terminal.inputs, ["\r"])
+
 
 if __name__ == "__main__":
     unittest.main()

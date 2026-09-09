@@ -1,5 +1,33 @@
 # Test design and results
 
+## CLI resident lifecycle
+
+Unit tests cover explicit registration, incompatible queue targets, isolated per-task failures,
+connection loss, bounded reconnect backoff, cancellation and no queue writes or approval responses.
+CLI tests cover exact-thread TUI reconnect and foreground shutdown without creating receiver state.
+These tests do not establish native conversation consumption.
+
+The opt-in real-client canary uses an owned Unix App Server and ordinary Codex TUI:
+
+```bash
+.venv/bin/python scripts/resident-canary.py --run --model gpt-5.6-luna \
+  --report /tmp/codex-monitor-resident.json
+```
+
+It requires the development `pyte` extra and authenticated Codex 0.153.4, and uses real model tokens
+at `xhigh`. Keep raw reports and terminal buffers local. Scope every reported result to the cases
+actually completed; disconnected-TUI processing does not establish Desktop wakeup, unattended
+approval handling, OS reboot recovery or long-duration residency.
+
+The expanded run creates two ordinary TUI tasks, retains both subscriptions with both TUIs closed,
+checks independent exact client IDs and responses, reopens one task for user input, disconnects
+the resident without restarting the owner, then holds an owner-down event beyond the former retry
+budget window. After owner restart it checks both loaded targets, backlog consumption and a new
+event. The driver waits for native `completed` turns before closing a TUI; an interrupted turn may
+legitimately hold later input. Native state and rendered composer input are separate observations.
+Final PASS is written only after fixture archival and process/workspace cleanup. See the evidence
+summary for earlier driver failures and measured results.
+
 ## Queue compatibility incident checks (2026-09-09)
 
 The full 162-test suite passed. Doctor tests cover `-32601`, the exact 0.147.0 `-32600` unknown-method
