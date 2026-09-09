@@ -2,6 +2,12 @@
 
 Assessment date: **2026-09-09**. The comparison covers Claude Code's documented Channels, `asyncRewake` hooks, subagents, and agent teams. Claude behavior comes from [first-party documentation research](CLAUDE-COMPARISON.md); codex-monitor behavior comes from saved execution evidence. The two products have not undergone the same large-scale fault-injection campaign, so this document does not claim an overall reliability advantage.
 
+## At-a-glance support matrix
+
+Use the [feature matrix in the README](../README.md#how-it-compares) for supported, conditional,
+unavailable and unverified features. Its footnotes separate implementation availability from runtime
+requirements and test evidence. The tables below explain the evidence behind those distinctions.
+
 ## Current conclusion
 
 The core flow is implemented and verified: one selected conversation can continue to receive both human input and external events. codex-monitor is not equal to or better than Claude Code in every area.
@@ -14,7 +20,7 @@ The core flow is implemented and verified: one selected conversation can continu
 | Long-running behavior | 3,600-second TUI soak and 3,600-second receiver fault run with 55 restarts; failure records retained | Bounded real-world validation passed; no overall superiority claim |
 | Local intervention and permissions | Draft and active-turn concurrency plus TUI recovery after Ctrl+C and a new user prompt | Core behavior met; Desktop draft and approval cases remain |
 | CLI and Desktop support | Verified macOS/Linux TUI combinations and the current Desktop app | Other Windows, WSL, IDE, and SSH combinations remain unverified |
-| Native UI integration | External read-only dashboard, `sessions` snapshots and readable queued event messages | Less integrated than Claude's native channel indicator and reply tools |
+| Native UI integration | External dashboard with scoped route controls, `sessions` snapshots and readable queued event messages | Less integrated than Claude's native channel indicator and reply tools |
 | Event latency | Current Codex `shared-local` consumer checks external queue changes about every 10 seconds | No latency parity with Claude MCP push; immediate response is not guaranteed |
 | Conversation management | `$codex-monitor` skill, scoped `monitor` commands, plus external `attach`, `sessions`, `pause`, and `reply` | Easier management; installing the skill does not start the runtime or a producer |
 | Continuous producer management | Receiver supervises conversation-scoped managed file collectors with checkpoints and observed health; external/legacy producers remain separate | Local file lifecycle and real TUI checks passed; broader producer supervision and Desktop interaction remain gaps |

@@ -12,6 +12,10 @@ Documentation update (2026-09-10): Desktop-requested CLI monitoring now has an e
 ownership boundaries, user handoff commands, status semantics and scoped stop controls. The source
 and local skill guidance were updated. No runtime behavior or new Desktop verification is claimed.
 
+Documentation update (2026-09-10): the README comparison now separates event features, availability
+and controls into symbol-based support matrices with linked caveats. Existing source/evidence scope
+is preserved; no new comparative benchmark or platform verification is claimed.
+
 ## Incident findings and current limitations (2026-09-09)
 
 - Desktop follow-up: shared-local queue access passed for the current conversation, while the local

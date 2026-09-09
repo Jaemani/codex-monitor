@@ -10,6 +10,9 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Next: reliable everyday use
 
+- [x] **Scannable feature comparison.** Use support symbols and short labels with footnotes for
+  runtime, Desktop, adapter and verification limits.
+
 - [x] **Desktop-requested CLI operating guide.** Explain execution ownership, status checks, TUI access,
   supervision, route controls and the remaining unloaded-Desktop boundary.
 

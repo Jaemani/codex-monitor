@@ -164,28 +164,71 @@ the [OS timer health-hook recipe](docs/HEALTH-HOOK.md). The timer runs a script,
 
 ## How it compares
 
-Comparison checked **2026-09-09**. “Native Codex” means local CLI/Desktop capabilities without this project; supported hosted app-event tasks are called out separately. Claude entries describe official documentation, not a matched benchmark. Availability and experimental interfaces can change.
+Feature scope checked **2026-09-09**; presentation updated **2026-09-10**.
+Claude entries describe its official documentation; they are not results from a matched benchmark.
 
-| Capability | Native Codex | Codex + codex-monitor | Claude Code |
-|---|---|---|---|
-| Human and agent interaction | Native conversation and task UI | Keeps those same conversations; adds routed external input | Native conversation; Channels can add external input |
-| External event ingress | App Server integration APIs; hosted app-event tasks have a separate surface/plan scope [O1, O2] | Authenticated HTTP sources and managed file collectors, addressed to existing local conversations | Opted-in Channels deliver MCP notifications into a session [C1, C2] |
-| Scheduled work | Desktop scheduled tasks, including return to an existing chat; web also has supported app events [O1] | Event waiting does not schedule model prompts; use native scheduling for time-based work | `/loop` schedules prompts in-session; Desktop scheduled tasks and cloud Routines are separate modes [C3, C7, C8] |
-| Idle monitoring cost | Depends on the mechanism; a scheduled model check is a run | Receiver/collector/dashboard wait without model turns; actual event handling uses the model | Channel transport waits outside model processing; handling events uses the model [C2] |
-| Events while answering | Native input lifecycle owns processing | Queues without interrupting the current turn | Channel events queue; busy arrivals may be handled together on the next turn [C2] |
-| Delivery latency | Depends on integration and client | Shared-local scan roughly 10s in tested version; direct-owner CLI option measured separately | Push notification transport; busy state and processing still add delay [C2] |
-| Closed local client | Local scheduled work requires the app running; cloud work has different hosting [O1] | Running receiver retains events; native queued input can wait for reopening | Channels require a running session; offline retention is an adapter responsibility [C1] |
-| Multiple agents | Native subagents, model configuration and activity UI [O3] | Multiple registered conversations/sources; optional relay; no replacement agent scheduler | Subagents plus experimental teams with shared tasks and mailboxes; Channels are separate [C5, C6] |
-| Monitoring visibility | Native agent activity, `/agent`, hooks and scheduled-task views [O1, O3, O4] | Project-grouped dashboard with explicit route controls, receipts and collector observations; no native monitor badge | Source-labelled channel input, `/mcp` server status and selectable team panels [C1, C6] |
-| Background monitoring | Native tools and lifecycle hooks; behavior depends on the integration | Managed collectors and external producers run independently of model turns | Native `Monitor` streams script output or WebSocket events while conversation continues; availability restrictions apply [C9] |
-| Monitor startup/lifetime | Depends on the tool or integration | Installed receiver can outlive the client; source setup remains explicit | Plugins can declare auto-start monitors; session/subagent end stops its monitors [C9] |
-| File conditions | Implement with tools, scripts or integrations | Managed sampling, JSON comparisons, stable debounce and recovery events | Implement through scripts, hooks or a channel server; not the same managed collector contract |
-| Delivery recovery | Integration-specific; App Server exposes client primitives [O2] | Durable inbox, stable IDs, bounded retries and explicit uncertain-state inspection | Channel transport write is not model acknowledgement; durability belongs to the adapter [C2] |
-| Outbound replies | Tools/integrations and task permissions | Explicit source-scoped outbox; an adapter retrieves and sends replies | Channel servers expose reply tools; permissions and routing depend on the channel [C2] |
-| Request completion | Agent/task results | Explicit request states; queue consumption never implies successful work | Agent/task results; channel receipt alone is not work completion |
-| Hooks | Lifecycle scripts and MCP handlers, with trust review [O4] | Can receive events emitted by an authorized hook; does not replace native hooks | `async` returns context next turn; `asyncRewake` can wake an idle session on exit 2 [C4] |
-| Permissions | Native sandbox and approvals | Preserves native permissions; external input cannot authorize tools | Native permissions; optional channel permission relay supports selected remote approvals [C2] |
-| Setup and support | First-party product | Additional runtime + skill, experimental queue dependency, adapter setup as needed | Channels research preview: per-session opt-in, allowed plugin and account/org requirements [C1, C2] |
+**✅ Supported · ◐ Conditional / requires setup · ❌ Not provided · ? Not verified · — Not applicable**
+
+“Native Codex” means local CLI/Desktop without this project. “With monitor” includes native Codex
+features. A ✅ describes the specific row, not production certification. Footnotes explain limits.
+
+### Events and conversation
+
+| Feature | Native Codex | With monitor | Claude Code |
+|---|:---:|:---:|:---:|
+| Human input in the monitored conversation | ✅ | ✅ | ✅ |
+| External events into an existing local conversation | ◐ Custom integration[^native] | ✅ | ◐ Channels[^channels] |
+| Wait for events without model polling | ◐ Integration-dependent | ✅ | ✅[^claude-monitor] |
+| Queue events during an active response | ✅ | ✅ | ✅[^channels] |
+| Native background monitoring tool | ◐ Tool-dependent | ◐ External runtime | ✅ Monitor[^claude-monitor] |
+| Managed file/JSON conditions and debounce | ◐ Build integration | ✅ | ◐ Write script[^claude-monitor] |
+| Server-failure-only recovery requests | ◐ Build integration | ◐ Health probe[^adapters] | ◐ Monitor / script[^claude-monitor] |
+| Receive arbitrary webhook events | ◐ Build integration | ✅ HTTP receiver | ◐ Channel server[^channels] |
+| Reply to the originating external source | ◐ Tool / adapter | ◐ Outbox + adapter[^adapters] | ◐ Channel reply tool[^channels] |
+
+### Availability and recovery
+
+| Feature | Native Codex | With monitor | Claude Code |
+|---|:---:|:---:|:---:|
+| Continue monitoring after closing the TUI window | ◐ Separate owner[^owner] | ◐ Owner + resident[^owner] | ❌ Session must run[^channels] |
+| Retain events while target conversation is offline | ◐ Queue integration[^native] | ✅ Durable intake[^retention] | ◐ Adapter storage[^channels] |
+| Automatically wake an unloaded local Desktop task | ? No verified path | ❌[^desktop] | ❌ Channels / Monitor[^claude-monitor] |
+| Request in Desktop, execute through local CLI | ◐ Explicit setup | ✅ Setup workflow[^desktop] | — Outside this comparison |
+| Restore selected CLI subscriptions after owner reconnect | ◐ Build integration | ✅ Resident[^owner] | ? Not tested |
+| Durable inbox + duplicate-ID suppression | ◐ Build integration | ✅[^retention] | ◐ Adapter responsibility[^channels] |
+| Inspect queued / consumed / uncertain delivery | ◐ API integration | ✅ Receipts | ◐ Adapter responsibility[^channels] |
+| Uniform sub-second event response | ❌ No guarantee | ❌[^latency] | ❌ No guarantee |
+| Native scheduled work | ✅ | ✅ Native feature | ✅[^schedules] |
+| Async hook can wake an idle session | ◐ Hook-dependent | ◐ External queue[^desktop] | ✅ asyncRewake[^hooks] |
+
+### Visibility and control
+
+| Feature | Native Codex | With monitor | Claude Code |
+|---|:---:|:---:|:---:|
+| Native subagents and activity UI | ✅ | ✅ Native feature | ✅ |
+| Multiple source/conversation routes | ◐ Build integration | ✅ | ◐ Channels / server setup[^channels] |
+| Monitor project groups and stable role names | ❌ Monitor registry | ✅ | ? Equivalent not verified |
+| Cross-conversation monitor dashboard | ❌ Monitor registry | ✅ Separate TUI | ? Equivalent not verified |
+| Pause / resume / remove individual monitor routes | ◐ Integration-dependent | ✅ Dashboard[^controls] | ◐ Mechanism-dependent |
+| Native monitor indicator / lifecycle UI | ◐ Tool-dependent | ❌ Separate dashboard | ✅[^claude-monitor] |
+| Explicit external-request progress / expiry tracking | ◐ Build integration | ✅ | ◐ Build integration |
+| Preserve native sandbox and approval decisions | ✅ | ✅ | ✅ |
+| External-channel permission approval relay | ? Not assessed | ❌ | ◐ Opt-in relay[^channels] |
+| Full monitoring after plugin installation alone | ❌ Setup needed | ❌ Runtime + source + owner | ◐ Plugin / account limits[^channels] |
+
+### What the symbols do not hide
+
+[^native]: Native Codex exposes [App Server APIs](https://learn.chatgpt.com/docs/app-server); custom clients can build event integrations. Eligible hosted app-event tasks are a separate surface, not generic local Desktop push. Native capability is not the same as a bundled monitoring workflow.
+[^channels]: Claude Channels requires an opted-in running session and eligible account/plugin/org settings. Channel servers implement external adapters, reply tools and any offline persistence. See [Channels](https://code.claude.com/docs/en/channels) and [reference](https://code.claude.com/docs/en/channels-reference).
+[^claude-monitor]: Claude's native [Monitor](https://code.claude.com/docs/en/tools-reference#monitor-tool) accepts script output or WebSocket events; scripts can implement watches and checks. Availability has provider/settings restrictions. Monitors stop with their session or owning subagent. This does not describe Desktop schedules or cloud Routines.
+[^adapters]: codex-monitor includes a receiver, managed collectors and a source-scoped reply outbox. External services need producers/reply adapters. Server health checks run outside the model; only relevant transitions should wake it. See [health-hook recipe](docs/HEALTH-HOOK.md).
+[^owner]: Closing a TUI is different from stopping its owner. codex-monitor's `resident` retains exact subscriptions on a separately running CLI App Server. Owner, resident, receiver and host must remain available or be supervised. Reconnect does not complete interrupted work or answer approvals. See [owner lifecycle](docs/OWNER-LIFECYCLE.md).
+[^retention]: Retention is not execution. Durable input waits for an available consumer, with configured expiry/retry limits. Duplicate suppression does not guarantee exactly-once business side effects.
+[^desktop]: Loaded Desktop conversations can consume shared-local events. Unloaded ones do not self-start; the existing Desktop owner has no verified public attachment path. A Desktop assistant can configure a separate local CLI monitoring task, but this does not keep its own Desktop chat resident or automatically relay replies back. See [Desktop-to-CLI workflow](docs/OWNER-LIFECYCLE.md#request-from-desktop-run-through-cli).
+[^latency]: Tested shared-local queue observation is roughly 10 seconds. Explicit-owner CLI delivery has lower measured latency, but busy turns add delay. No matched Claude latency benchmark exists. See [measurements](docs/LATENCY.md).
+[^schedules]: Native schedules are distinct from event monitoring. Claude `/loop`, Desktop schedules and cloud Routines have different lifetime and hosting rules; see sources C3, C7 and C8 below.
+[^hooks]: Claude `asyncRewake` can wake an idle session on exit code 2. Ordinary async completion waits for a later turn. A lifecycle hook is not a durable external inbox.
+[^controls]: Dashboard controls target the selected route. They preserve native history and receipts, cannot retract accepted input, and do not start external producers or revive unloaded Desktop tasks. Dots indicate component/configuration state, not proven task success.
 
 Sources: [O1: scheduled tasks](https://learn.chatgpt.com/docs/automations), [O2: App Server](https://learn.chatgpt.com/docs/app-server), [O3: subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents), [O4: hooks](https://learn.chatgpt.com/docs/hooks), [C1: Channels](https://code.claude.com/docs/en/channels), [C2: Channels reference](https://code.claude.com/docs/en/channels-reference), [C3: session schedules](https://code.claude.com/docs/en/scheduled-tasks), [C4: hooks](https://code.claude.com/docs/en/hooks), [C5: subagents](https://code.claude.com/docs/en/sub-agents), [C6: teams](https://code.claude.com/docs/en/agent-teams), [C7: Desktop schedules](https://code.claude.com/docs/en/desktop-scheduled-tasks), [C8: cloud Routines](https://code.claude.com/docs/en/routines), [C9: Monitor tool](https://code.claude.com/docs/en/tools-reference#monitor-tool).
 
