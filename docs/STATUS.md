@@ -10,6 +10,21 @@ target thread to be loaded on their server.
 
 ## Incident findings and current limitations (2026-09-09)
 
+- Desktop owner-access recheck: both installed client binaries report 0.153.4, the Desktop child
+  exposes no observed listener, and `doctor --endpoint local --surface desktop` still fails.
+  Official async hooks do not start a turn on completion; MCP/settings/Remote documentation supplies
+  no verified arbitrary local owner attachment or unloaded-task wakeup API. This is a documented
+  integration gap, not a new delivery failure or proof of permanent impossibility. See
+  [the follow-up and source links](COMPATIBILITY.md#owner-attachment-follow-up-2026-09-09).
+- Resident registration now requests `excludeTurns: true` on `thread/resume`, retaining the
+  subscription without transferring the complete saved history. A deployment reported repeated
+  resume disconnections on a large existing task; logs and upstream source identify unnecessary
+  history hydration, but do not establish a measured frame-limit failure. Recovery of that actual
+  task has not been verified, and its services and queued inputs were not changed for this patch.
+  Regression: **185 tests in 51.917 seconds**. The isolated source resident/ordinary-TUI rerun
+  passed in **72.701 seconds**, covering two tasks, reconnect and a **23.0-second** owner outage.
+  All four test events produced one native input and response each. This is not a large-history
+  reproduction, installed-service validation or Desktop fix.
 - CLI-first owner lifecycle is implemented: `resident` retains explicit
   conversations on one shared owner and restores subscriptions after connection loss;
   `connect --thread` opens that exact task in the ordinary remote TUI. Registration is a deliberate

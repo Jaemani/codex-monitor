@@ -178,7 +178,11 @@ class ResidentKeeper:
 
     def _resume_one(self, rpc, thread: str) -> str:
         try:
-            rpc.call(_RESUME_METHOD, {"threadId": thread})
+            # The keeper only needs the live subscription and thread metadata.
+            # Hydrating the entire persisted rollout can exceed the WebSocket
+            # frame limit for long/MCP-heavy conversations before the server
+            # can return the successful resume response.
+            rpc.call(_RESUME_METHOD, {"threadId": thread, "excludeTurns": True})
         except RpcError as error:
             # A target-specific rejection does not stop other saved threads.
             classification = self._registration_classification("thread resume", error)

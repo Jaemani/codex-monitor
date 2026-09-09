@@ -6,6 +6,13 @@ Raw reports, terminal buffers, conversation IDs and host paths remain local and 
 
 Key observations:
 
+- Metadata-only resident resume, 2026-09-09: 185 regression tests passed in 51.917 seconds;
+  an isolated ordinary-TUI source resident run passed in 72.701 seconds with two tasks,
+  reconnect, a 23.0-second owner outage and four events with one native input/response each.
+  Fixtures were archived and cleaned up. Local report: `codex-monitor-resident-exclude-turns.json`.
+  This confirms native compatibility of the new resume option, not the reported large-history
+  failure's cause or recovery, live service deployment, or Desktop ownership.
+
 - Expanded CLI resident run: two ordinary TUI-created tasks, four independent test events, each
   consumed once with one native response. A 23.3-second owner outage retained an event with zero
   spent attempts; transport-only reconnect and owner restart restored availability. Native run:

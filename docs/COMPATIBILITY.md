@@ -78,6 +78,28 @@ The direct-socket notes below are historical. They do not show that `shared-loca
 
 ## Historical Desktop direct-socket investigation
 
+### Owner attachment follow-up (2026-09-09)
+
+The installed Desktop bundle and CLI both report Codex 0.153.4. The Desktop child still has no
+`--listen` argument, and the official `local` doctor probe returns `ready:false` with no fallback.
+This is an owner-access boundary, not a demonstrated CLI/Desktop version mismatch.
+
+Current official documentation provides no verified replacement for that missing connection:
+
+| Candidate | Documented behavior | Limit for unattended unloaded tasks |
+|---|---|---|
+| [Async command hooks](https://learn.chatgpt.com/docs/hooks) | Completion during idle waits for the next user turn; finishing a background hook does not start a new turn | Cannot supply a cold-task wakeup |
+| [MCP integration](https://learn.chatgpt.com/docs/extend/mcp) | Tools, context and transports configured for clients | No documented arbitrary external-event contract that loads a Desktop task |
+| [Desktop developer settings](https://learn.chatgpt.com/codex/developer-settings) | Shared MCP configuration | No documented arbitrary local App Server attachment setting found |
+| [Remote connections](https://learn.chatgpt.com/docs/remote-connections) | Human remote continuation and Desktop-managed SSH projects | Does not document third-party wakeup of arbitrary local Desktop tasks |
+| [Custom App Server client](https://learn.chatgpt.com/docs/app-server) | Explicit owner connection and `thread/resume` subscription | Enables the CLI resident design; does not expose the existing Desktop owner |
+
+These are documentation findings, not new Desktop delivery tests or proof that future integration
+is impossible. The App Server command and WebSocket transport are explicitly experimental and
+unsupported for production workloads upstream. The CLI implementation uses those public APIs;
+its real-client tests do not override that upstream support policy. No private IPC or application
+patching was used in this follow-up.
+
 ### Local retest before discovering `shared-local` (2026-09-08)
 
 This investigation covered only direct Desktop socket or daemon access. Its failures do not block `shared-local`, which does not require the Desktop server endpoint. SSH is an optional adapter for remote projects.

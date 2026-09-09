@@ -7,6 +7,12 @@ connection loss, bounded reconnect backoff, cancellation and no queue writes or 
 CLI tests cover exact-thread TUI reconnect and foreground shutdown without creating receiver state.
 These tests do not establish native conversation consumption.
 
+The metadata-only resume patch passed all 185 regression tests in 51.917 seconds. Its isolated
+ordinary-TUI resident rerun passed in 72.701 seconds, including two closed-TUI conversations,
+transport reconnect, a 23.0-second owner outage and four events each consumed/responded to once.
+This exercises native `excludeTurns` compatibility, not a large-history frame-limit reproduction
+or recovery of the reported deployment. The harness uses the source `ResidentKeeper` API.
+
 The opt-in real-client canary uses an owned Unix App Server and ordinary Codex TUI:
 
 ```bash

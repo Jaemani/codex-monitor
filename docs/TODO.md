@@ -51,6 +51,10 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Compatibility and resilience
 
+- [ ] **Large-history resident recovery.** Registration now omits saved turns from resume
+  responses with `excludeTurns: true`. Verify recovery on the reported deployment before closing
+  the incident; the suspected WebSocket frame limit has not been confirmed by a measured response
+  or close code. Do not replay its original inputs to test subscription recovery.
 - [x] **CLI owner subscription primitive.** `resident` registers explicit existing tasks on one
   owner, retains the connection and restores subscriptions after transport loss. `connect --thread`
   returns to the exact same task through that owner. Read-only probes do not create model turns.

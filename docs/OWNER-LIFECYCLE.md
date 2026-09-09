@@ -32,6 +32,11 @@ Repeat `--thread` for additional explicitly chosen conversations. The resident p
 subscription state changes without sending chat messages. Its periodic owner probes do not invoke a
 model. `subscribed`/`ready` describes owner availability, not completed work or absence of an approval.
 
+The resident requests metadata and live resume state with `excludeTurns: true`; it does not download
+the full conversation history to retain a subscription. This leaves persisted history intact and
+avoids an unnecessary large resume response. It does not remove transport limits on other responses
+or live notifications.
+
 Configure the receiver binding or managed monitor with this same `--endpoint`. Existing shared-local
 bindings are not silently migrated. For a new file monitor in initialized receiver state:
 

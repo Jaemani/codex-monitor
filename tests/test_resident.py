@@ -110,6 +110,11 @@ class ResidentTest(unittest.TestCase):
             methods[:5],
             ["thread/loaded/list", "thread/queue/list", "thread/resume", "thread/queue/list", "thread/resume"],
         )
+        self.assertTrue(all(
+            params.get("excludeTurns") is True
+            for method, params in rpc.calls
+            if method == "thread/resume"
+        ))
         self.assertNotIn("thread/start", methods)
         self.assertNotIn("turn/start", methods)
         self.assertNotIn("thread/queue/add", methods)
