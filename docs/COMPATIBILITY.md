@@ -22,9 +22,39 @@ Status as of **2026-09-08**. The goal is to continue the same conversation from 
 | Linux | Native CLI TUI and shared receiver | Debian 12 aarch64 clean-wheel session UX: 61 tests plus HTTP/lifecycle and real Codex 0.153.4 TUI baseline PASS |
 | Windows/WSL | Shared Python core and TCP path | Awaiting real-device validation |
 
-Direct WebSocket and daemon adapters require the same server to have the thread loaded. **`shared-local` does not.** It writes input through the official queue API for the same OS user and Codex store, and the server that owns the conversation consumes it. The writer's loaded-thread list may be empty. It does not call `thread/start`, `thread/resume`, or `turn/start`. If the client closes, the input remains queued and may be processed when the conversation is opened again.
+Direct WebSocket and daemon adapters require the same server to have the thread loaded. **Shared-local enqueue does not require loading the thread in the writer; actual consumption still requires a loaded owner in the target client.** It writes input through the official queue API for the same OS user and Codex store. The server that owns the loaded conversation consumes it. An open Desktop app, a saved task in the sidebar, or an enabled binding alone does not establish that ownership. The writer's loaded-thread list may be empty. It does not call `thread/start`, `thread/resume`, or `turn/start`. If the client closes, the input remains queued and may be processed when the conversation is opened again.
 
 Managed local file collectors use the same delivery path. The new installed wheel passed 75 tests and 16 receiver/collector process checks on macOS and Linux; an ordinary macOS TUI consumed its managed event and answered a user follow-up. The managed Desktop event subsequently arrived in the same conversation after the preceding assistant turn ended. These results do not add new Desktop pixel or Linux managed-TUI evidence.
+
+## Compatibility and unattended operation
+
+The verified baseline is Codex 0.153.4, not a promise that every version before or after it supports
+the same experimental API. A Windows deployment reported that 0.147.0 lacks `thread/queue/list`:
+its OS health probe continued working while delivery became `dead`. An isolated official 0.147.0 macOS binary reproduced the missing method with JSON-RPC `-32600`
+and `unknown variant thread/queue/list`; no model call or host CLI replacement was used. The Windows
+host itself has not been independently retested. Check the exact target with `doctor` before relying on
+an outage hook; receiver liveness is independent of Codex API compatibility.
+
+A separate Desktop incident had native `queued` input for more than six minutes while the target
+reported `notLoaded`, with no new processing turn. The writer and Desktop returned identical latest
+turn IDs. This is consistent with a missing loaded consumer, not proof of every current process's
+storage configuration. The original event was not replayed or force-started; successful consumption
+and a substantive reply remain unresolved.
+
+In inspected 0.153.4 source, `watch_external_messages` filters by `ThreadManager.list_thread_ids()`.
+`wake_if_loaded` does nothing when the manager cannot find the thread. The upstream
+`cold_thread_resume_dispatches_a_persisted_queued_submission` test explicitly expects `NotLoaded`
+and a retained queue item before a resume. These are source findings, not a newly executed Desktop test:
+
+- [Queue service](https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/ext/queue/src/service.rs)
+- [Cold-thread test](https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/app-server/tests/suite/v2/thread_queue.rs)
+- [Official thread lifecycle](https://learn.chatgpt.com/docs/app-server#api-overview)
+
+**Arbitrary unloaded Desktop tasks cannot currently be advertised as unattended event responders.**
+An always-available receiver provides durable intake, not a permanent model/session owner. A CLI
+TUI or explicit owner server must keep the intended conversation loaded; its lifecycle still needs
+verification. Automatic loading/ownership is a separate integration requirement, not a dispatch retry.
+See [troubleshooting](TROUBLESHOOTING.md) for safe diagnosis.
 
 ## Evidence for the shared local queue
 

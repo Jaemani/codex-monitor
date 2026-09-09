@@ -1,5 +1,14 @@
 # Test design and results
 
+## Queue compatibility incident checks (2026-09-09)
+
+The full 162-test suite passed. Doctor tests cover `-32601`, the exact 0.147.0 `-32600` unknown-method
+variant, unrelated invalid requests, and shared-local success with unknown consumer readiness.
+An isolated official 0.147.0 binary reproduced the missing API without loading a conversation or
+starting a model turn. The CLI receipt test verifies queued/consumed/unknown diagnostics without
+mutations or new RPC methods. The actual Desktop incident remains open: one original consumption
+and a substantive response have not been verified. Upstream cold-thread tests were read, not run here.
+
 ## Graphical dashboard and global command verification (2026-09-09)
 
 The graphical dashboard adds a persistent live header, color-coded status labels and selectable

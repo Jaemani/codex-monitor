@@ -40,7 +40,7 @@ flowchart LR
 
 The default `shared-local` path uses the same OS user and Codex store (`CODEX_HOME` / `sqlite_home`) as the target client. An independent App Server writer adds input through the official queue API; it does not type into the UI or start/resume conversations. Local Desktop does not require SSH.
 
-In the validated Codex 0.153.4 path, the native consumer checks external changes roughly every 10 seconds. Busy turns can add delay. If the client closes, stored input can wait until the same conversation is reopened. **Event-driven does not mean an immediate model response.** See [latency measurements and direct-owner options](docs/LATENCY.md).
+In the validated Codex 0.153.4 path, the native consumer checks external changes roughly every 10 seconds. Busy turns can add delay. If the target conversation is unloaded (even while Desktop stays open), input remains queued until an owning client loads it. Keeping the receiver running does not keep every registered conversation loaded. **Event-driven does not mean an immediate model response.** See [latency measurements and direct-owner options](docs/LATENCY.md) and [queue/compatibility troubleshooting](docs/TROUBLESHOOTING.md).
 
 ## Quick start
 

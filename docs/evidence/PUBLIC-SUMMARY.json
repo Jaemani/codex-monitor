@@ -1544,6 +1544,22 @@
         "result": "PASS",
         "matrix": "macOS/Linux x Python 3.11/3.14; regression and packaging"
       }
+    },
+    {
+      "date": "2026-09-09",
+      "result": "DIAGNOSTICS_PASS_INCIDENT_OPEN",
+      "scope": "actual isolated macOS Codex0.147.0 read-only unsupported API probe; existing Desktop queued receipt observation; no event-response recovery claim",
+      "missing_method": "thread/queue/list",
+      "rpc_error_code": -32600,
+      "diagnostic_matches_actual_error": true,
+      "regression_tests": 162,
+      "regression_elapsed_seconds": 51.25,
+      "desktop_original_native_state": "queued",
+      "desktop_target_runtime_state": "notLoaded",
+      "original_replayed": false,
+      "original_actual_response_verified": false,
+      "windows_host_retested": false,
+      "upstream_cold_thread_test_read_not_executed": true
     }
   ]
 }

@@ -20,13 +20,14 @@ from .lock import ProcessLock, process_alive
 from .monitor import Monitor, NAME
 from .monitor import MANAGED_SOURCE
 from .managed import ManagedSupervisor
-from .session import SessionPool, Rpc, AppServerSession, SharedLocalSession, server_token
+from .session import SessionPool, Rpc, AppServerSession, server_token
 from .service import ServiceManager
 from .watch import ChangeWatcher, atomic_json, file_sample
 from .replies import ReplyStore
 from .requests import RequestStore
 from .sessions import overview, display
 from .dashboard import run_dashboard
+from .doctor import probe_queue_target
 
 
 def output(value):
@@ -217,14 +218,43 @@ def main(argv=None):
             rpc = None
             try:
                 rpc = Rpc(args.endpoint, token=server_token())
-                loaded = rpc.call("thread/loaded/list", {})["data"]
+                loaded = None
                 if args.thread:
-                    adapter = SharedLocalSession if args.endpoint == "shared-local" else AppServerSession
-                    adapter(rpc).check_target(args.thread)
-                    rpc.call("thread/queue/list", {"threadId": args.thread})
+                    if args.endpoint == "shared-local":
+                        diagnostic = probe_queue_target(
+                            rpc,
+                            args.thread,
+                            endpoint=args.endpoint,
+                            requested_surface=args.surface,
+                        )
+                        if diagnostic is not None:
+                            output(diagnostic)
+                            return 2
+                    else:
+                        loaded = rpc.call("thread/loaded/list", {})["data"]
+                        AppServerSession(rpc).check_target(args.thread)
+                        diagnostic = probe_queue_target(
+                            rpc,
+                            args.thread,
+                            endpoint=args.endpoint,
+                            requested_surface=args.surface,
+                        )
+                        if diagnostic is not None:
+                            output(diagnostic)
+                            return 2
+                queue_ready = bool(args.thread)
+                consumer_ready = "unknown" if args.endpoint == "shared-local" else bool(args.thread)
+                if not args.thread:
+                    delivery_guarantee = "target not checked; provide --thread for a queue compatibility probe"
+                elif args.endpoint == "shared-local":
+                    delivery_guarantee = "queue target is readable; the owning local client consumer remains unverified"
+                else:
+                    delivery_guarantee = "queue target is readable and loaded in this App Server"
                 output({"ready": bool(args.thread), "endpoint": args.endpoint, "requested_surface": args.surface,
                         "level": ("shared-queue-ready" if args.endpoint == "shared-local" else "protocol-ready") if args.thread else "endpoint-only", "client_ui_verified": False,
-                        "loaded_thread_ids": loaded, "note": "The selected local client must use the same Codex storage; its own server consumes this queue." if args.endpoint == "shared-local" else "The selected client must be using this exact App Server and thread."})
+                        "loaded_thread_ids": loaded, "queue_api": {"ready": queue_ready, "method": "thread/queue/list"},
+                        "consumer_ready": consumer_ready, "delivery_guarantee": delivery_guarantee,
+                        "note": "The selected local client must use the same Codex storage; its own server consumes this queue." if args.endpoint == "shared-local" else "The selected client must be using this exact App Server and thread."})
                 return 0 if args.thread else 2
             except Exception as exc:
                 output({"ready": False, "requested_surface": args.surface, "endpoint": args.endpoint,
@@ -383,6 +413,14 @@ def main(argv=None):
                 },
                 "target": {"thread": binding["thread"], "endpoint": binding["endpoint"]},
                 "native": native,
+                "processing": {
+                    "state": {"queued": "awaiting_native_consumption", "consumed": "native_consumed"}.get(native["state"], "unknown"),
+                    "accepted_age_seconds": max(0, monitor.clock() - event["updated"]) if event["state"] == "accepted" else None,
+                    "consumer_presence": "unknown",
+                    "work_completion_verified": False,
+                    "automatic_replay_safe": False,
+                    "guidance": "Queued input needs an owning loaded Codex conversation. An unloaded target does not self-start from a shared-local queue write. Check the exact target in its owning client and the shared storage; do not resend accepted input." if native["state"] == "queued" else "Native history and local acceptance do not verify the requested work or its reply.",
+                },
                 "read_only": True,
                 "note": "Local accepted means Codex storage accepted the message. Native consumed means the client message reached thread history. Neither state proves model completion or success.",
             })

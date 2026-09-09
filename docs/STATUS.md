@@ -8,6 +8,33 @@ writer does not load or start a conversation, resume a thread, start a turn,
 or interrupt a turn. Direct WebSocket, daemon, and SSH adapters require the
 target thread to be loaded on their server.
 
+## Incident findings and current limitations (2026-09-09)
+
+- A reported Windows health-hook delivery failure was traced to a missing `thread/queue/list` API
+  in Codex 0.147.0. An isolated official 0.147.0 macOS binary independently reproduced JSON-RPC
+  `-32600` / unknown method variant. The updated doctor diagnosed it without sending input or changing
+  the host's Codex installation. Actual Windows upgrade and end-to-end recovery remain unverified.
+- A real Desktop delivery remained `accepted`/`queued` while its target reported `notLoaded` and
+  no new processing turn. The independent writer and Desktop returned matching latest turn IDs.
+  Inspected upstream 0.153.4 source watches owned thread IDs and cannot auto-load an unloaded task.
+  This establishes an operational limitation; the original receipt's single consumption and actual
+  responder output are still **unresolved**. No replay, forced load/turn, interruption or database edit
+  was used. Prior loaded/multiple-target tests do not cover unattended unloaded tasks.
+- Diagnostics now separate queue API access from unknown consumer presence, report missing methods
+  with the tested baseline, and explain accepted input waiting for native consumption. The protocol
+  diagnostics are a usability fix, not an automatic owner-lifecycle implementation. See
+  [troubleshooting](TROUBLESHOOTING.md) and [compatibility](COMPATIBILITY.md).
+- The complete local suite passed **162 tests in 51.250 seconds**. Actual 0.147.0 incompatible and
+  0.153.4 readable-target doctor checks passed. These checks do not establish event-response recovery.
+
+- A follow-up isolated two-server native probe confirmed competing resume is rejected with
+  `already has an active writer`. Source analysis also excludes background terminals as a residency
+  guard. The default local Desktop owner connection remains the blocking integration boundary;
+  [owner lifecycle](OWNER-LIFECYCLE.md) records required functionality and acceptance criteria.
+- The diagnostics wheel and skill were installed locally with the receiver returned ready. All eight
+  bindings, credentials and seven existing receipts were preserved. The original event remained
+  queued with one submission attempt at the final inspection; no response recovery is claimed.
+
 ## Confirmed
 
 - Graphical/global-command implementation `9b57d60` passed all four hosted macOS/Linux

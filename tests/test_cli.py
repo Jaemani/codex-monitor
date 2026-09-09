@@ -71,6 +71,10 @@ class CLITest(unittest.TestCase):
                 queued = json.loads(stdout.getvalue())
                 self.assertEqual(queued["local"]["state"], "accepted")
                 self.assertEqual(queued["native"]["state"], "queued")
+                self.assertEqual(queued["processing"]["state"], "awaiting_native_consumption")
+                self.assertEqual(queued["processing"]["consumer_presence"], "unknown")
+                self.assertFalse(queued["processing"]["automatic_replay_safe"])
+                self.assertGreaterEqual(queued["processing"]["accepted_age_seconds"], 0)
                 self.assertTrue(queued["read_only"])
                 self.assertEqual(monitor.event(receipt["delivery_id"]), before)
 
@@ -84,6 +88,8 @@ class CLITest(unittest.TestCase):
                 consumed = json.loads(stdout.getvalue())
                 self.assertEqual(consumed["local"]["state"], "accepted")
                 self.assertEqual(consumed["native"]["state"], "consumed")
+                self.assertEqual(consumed["processing"]["state"], "native_consumed")
+                self.assertFalse(consumed["processing"]["work_completion_verified"])
                 self.assertEqual(monitor.event(receipt["delivery_id"]), before)
 
                 missing = monitor.ingest("work", {

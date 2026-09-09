@@ -11,6 +11,9 @@ The receiver and producer wait outside the model; an event becomes input to the 
 A separate relay conversation is optional: use it when requested for routing or model separation,
 otherwise keep delivery in the chosen conversation. The user can continue ordinary conversation there.
 Busy conversations queue input for native processing; this is not a continuously running model.
+Actual consumption requires the target to remain loaded in an owning Codex client. A running Desktop
+app or an enabled binding does not keep every saved task loaded. Unloaded targets retain queued input
+and do not self-start from a shared-local write. State this limitation for unattended or multi-task setups.
 This workflow needs a local Codex host with shell access; installing the plugin in a web-only chat does
 not provide that runtime or access to a Desktop conversation.
 
@@ -49,6 +52,12 @@ of `serve`. The receiver owns managed collectors and restores their persisted ch
 
 Report the exact conversation, monitor name, desired state, receiver state, observed collector state
 and sample/delivery errors. A running collector does not prove model activity or successful work.
+
+Before enabling an external event workflow, run `doctor --endpoint ENDPOINT --thread THREAD_ID`.
+Treat an unsupported queue API as a setup blocker: preserve the diagnostic and obtain a validated
+Codex build on the receiver's host before claiming the recovery hook works. A successful shared-local
+probe verifies queue access only; report target consumer presence separately as unknown unless the
+owning client provides an observation. Preserve accepted input when diagnosing a queued backlog.
 
 For an existing webhook or agent producer, use the separate source/attach workflow in
 [operations.md](references/operations.md). Do not pretend the managed file collector supervises an

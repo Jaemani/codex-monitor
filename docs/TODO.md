@@ -51,7 +51,15 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Compatibility and resilience
 
-- [ ] **P1 — Version compatibility probe and matrix.** Current runtime evidence targets Codex 0.153.4 and experimental queue APIs. Fail clearly on unsupported contracts and rerun real-client canaries after upstream changes.
+- [ ] **P1 — Unloaded conversation ownership.** Shared-local persistence cannot automatically load
+  arbitrary Desktop tasks. A real accepted/queued event with a `notLoaded` target exposed this operational
+  gap. Keep its receipt intact; actual single consumption and substantive reply remain unresolved.
+  Implement a supported persistent-owner lifecycle without forced turns, replay or model polling.
+  Same-owner subscription is required; an isolated native test confirmed competing-writer rejection.
+  See [required architecture and acceptance criteria](OWNER-LIFECYCLE.md).
+  Prior multi-conversation delivery results do not establish unloaded-task wakeup.
+
+- [ ] **P1 — Version compatibility probe and matrix.** Structured doctor diagnostics now distinguish missing queue methods and consumer readiness. Actual isolated Codex 0.147.0 rejects `thread/queue/list`; 0.153.4 remains the tested baseline. Broader versions and affected Windows-host recovery remain unverified.
 - [ ] **P1 — Windows/WSL.** Validate runtime transports and ordinary TUI. Current POSIX installer refuses Windows; do not advertise installer parity.
 - [ ] **P2 — Desktop remote/SSH.** Test an explicitly configured remote host and exact conversation ownership.
 - [ ] **P2 — OS sleep and reboot.** Verify receiver/producer restart, credential preservation and same-conversation event recovery.
