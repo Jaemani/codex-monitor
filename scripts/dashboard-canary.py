@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from contextlib import suppress
 import json
+import math
 import os
 from pathlib import Path
 import pty
@@ -303,6 +304,50 @@ class Canary:
         if details:
             self.report.setdefault("check_details", {})[name] = details
 
+    @staticmethod
+    def dashboard_header(text: str) -> bool:
+        """Recognize the stable dashboard identity across visual skins."""
+
+        header = "\n".join(text.lower().splitlines()[:3])
+        return "codex-monitor" in header and any(
+            marker in header for marker in ("live", "snapshot", "last refreshed", "updated")
+        )
+
+    @staticmethod
+    def receiver_ready(text: str, raw: bytes = b"") -> bool:
+        """Check receiver readiness using the rendered state or its ANSI color."""
+
+        header = "\n".join(text.lower().splitlines()[:8])
+        if "receiver" in header and "ready" in header and "not ready" not in header:
+            return True
+        receiver_lines = [line for line in raw.splitlines() if b"Receiver" in line]
+        return bool(receiver_lines and b"\x1b[32m" in receiver_lines[-1])
+
+    @staticmethod
+    def receiver_stopped(text: str, raw: bytes = b"") -> bool:
+        """Check an outage using the rendered state or its ANSI color."""
+
+        header = "\n".join(text.lower().splitlines()[:8])
+        if "receiver" in header and any(
+            marker in header for marker in ("stopped", "offline", "not ready")
+        ):
+            return True
+        receiver_lines = [line for line in raw.splitlines() if b"Receiver" in line]
+        return bool(receiver_lines and b"\x1b[31m" in receiver_lines[-1])
+
+    @staticmethod
+    def inventory_header(text: str) -> bool:
+        """Recognize the conversation inventory without a specific table label."""
+
+        upper = text.upper()
+        return "CONVERSATIONS" in upper or "BINDINGS" in upper or "MONITORS" in upper
+
+    @staticmethod
+    def selected_row(text: str) -> str | None:
+        """Return the rendered selected row so navigation is tested directly."""
+
+        return next((line.strip() for line in text.splitlines() if "▶" in line), None)
+
     def setup(self) -> None:
         self.temp = tempfile.TemporaryDirectory(prefix="codex-monitor-dashboard-")
         self.state = Path(self.temp.name) / "state"
@@ -409,11 +454,17 @@ class Canary:
         self.check("text_snapshot_contains_multiple_bindings",
                    all(name in text_snapshot.stdout for name in ("alpha", "beta", "paused", "gamma")))
         self.check("text_snapshot_contains_collector", "collector" in text_snapshot.stdout.lower())
-        self.check("text_snapshot_contains_compact_table", "CONVERSATIONS" in text_snapshot.stdout and "BINDING" in text_snapshot.stdout)
-        self.check("text_snapshot_labels_configuration_states", all(label in text_snapshot.stdout for label in ("ON", "OFF", "UNKNOWN")))
+        self.check("text_snapshot_contains_conversation_inventory", self.inventory_header(text_snapshot.stdout))
+        snapshot_lower = text_snapshot.stdout.lower()
+        self.check(
+            "text_snapshot_labels_configuration_states",
+            ("on" in snapshot_lower or "enabled" in snapshot_lower)
+            and ("off" in snapshot_lower or "paused" in snapshot_lower or "disabled" in snapshot_lower)
+            and ("unknown" in snapshot_lower or "unavailable" in snapshot_lower),
+        )
         self.check("text_snapshot_has_no_terminal_controls", "\x1b" not in text_snapshot.stdout)
         self.check("text_snapshot_lines_fit_default_width", all(len(line) <= 100 for line in text_lines))
-        self.check("text_snapshot_has_persistent_header", text_lines[:3] and "codex-monitor dashboard" in text_lines[0] and "Last refreshed" in text_lines[2])
+        self.check("text_snapshot_has_persistent_header", bool(text_lines[:3]) and self.dashboard_header(text_snapshot.stdout))
 
         no_color_command = [
             self.dashboard_python, "-m", "codex_monitor", "--state", str(self.state), "dashboard",
@@ -424,6 +475,16 @@ class Canary:
             timeout=min(self.args.timeout, 10), check=False,
         )
         self.check("no_color_snapshot_is_plain", no_color_snapshot.returncode == 0 and "\x1b" not in no_color_snapshot.stdout)
+
+        color_snapshot = subprocess.run(
+            [*text_command, "--color", "always"], cwd=self.dashboard_cwd, env=env,
+            capture_output=True, text=True, timeout=min(self.args.timeout, 10), check=False,
+        )
+        self.check(
+            "color_snapshot_preserves_status_palette",
+            color_snapshot.returncode == 0
+            and all(code in color_snapshot.stdout for code in ("\x1b[32m", "\x1b[31m", "\x1b[33m", "\x1b[90m")),
+        )
 
         all_json_command = [
             self.dashboard_python, "-m", "codex_monitor", "--state", str(self.state), "dashboard",
@@ -492,10 +553,10 @@ class Canary:
         self.terminals.append(terminal)
         ready_timeout = max(4.0, self.args.interval * 2 + 2)
         initial = terminal.wait_for(
-            lambda text: "Receiver ON" in text and "/v1/status ready" in text and "LIVE VIEW" in text,
+            lambda text: self.receiver_ready(text, bytes(terminal.raw)) and self.dashboard_header(text),
             ready_timeout, "dashboard initial render",
         )
-        self.check("live_dashboard_reports_receiver_ready", "Receiver ON" in initial and "/v1/status ready" in initial)
+        self.check("live_dashboard_reports_receiver_ready", self.receiver_ready(initial, bytes(terminal.raw)))
         self.check("live_dashboard_renders_multiple_bindings", all(name in initial for name in ("alpha", "beta", "paused")))
         self.check(
             "live_dashboard_renders_paused_binding",
@@ -516,37 +577,65 @@ class Canary:
         at_home = terminal.wait_for(lambda text: "gamma" in text, 2, "dashboard other-thread row")
         self.check("live_unfiltered_dashboard_reaches_other_thread", "gamma" in at_home)
         self.check(
-            "row_navigation_changes_viewport",
-            re.findall(r"\d+-\d+/\d+", before_navigation) != re.findall(r"\d+-\d+/\d+", at_end),
+            "row_navigation_changes_selection",
+            self.selected_row(before_navigation) is not None
+            and self.selected_row(at_end) is not None
+            and self.selected_row(before_navigation) != self.selected_row(at_end),
         )
-        terminal.wait_for(lambda text: "Conversation:" in text, 2, "dashboard home navigation")
+        terminal.wait_for(lambda text: self.inventory_header(text), 2, "dashboard home navigation")
 
+        sample_start = len(terminal.raw)
         terminal.pump(.9)
-        raw = bytes(terminal.raw)
-        self.check("live_indicator_animates_independently", b"LIVE VIEW" in raw and "●".encode() in raw and "○".encode() in raw)
-        refresh_stamps = re.findall(rb"Last refreshed: ([^(\r\n]+)\(age", raw)
-        self.check("live_animation_keeps_snapshot_age_source", len(set(refresh_stamps[-3:])) <= 1)
-        self.check("live_color_attributes_are_present", b"\x1b[32m" in raw and b"\x1b[31m" in raw and b"\x1b[33m" in raw)
+        raw = bytes(terminal.raw[sample_start:])
+        raw_text = raw.decode("utf-8", errors="replace")
+        title_lines = [line for line in raw.splitlines() if b"codex-monitor" in line and b"Live" in line]
+        self.check(
+            "live_indicator_animates_independently",
+            any("●".encode() in line for line in title_lines)
+            and any("○".encode() in line for line in title_lines),
+        )
+        age_tokens = re.findall(r"Updated\s+([^\s]+)\s+ago", raw_text)
+        age_values = []
+        for token in age_tokens:
+            if token == "<1s":
+                age_values.append(.5)
+            else:
+                multiplier = {
+                    "s": 1,
+                    "m": 60,
+                    "h": 3600,
+                    "d": 86400,
+                }.get(token[-1:])
+                if multiplier is not None:
+                    try:
+                        age_values.append(float(token[:-1]) * multiplier)
+                    except ValueError:
+                        pass
+        self.check(
+            "live_frames_render_updated_age",
+            len(age_values) >= 2 and all(math.isfinite(value) and value >= 0 for value in age_values),
+        )
+        self.check("live_color_attributes_are_present", b"\x1b[32m" in raw and b"\x1b[31m" in raw)
         self.check("live_renderer_avoids_full_screen_clear", b"\x1b[2J" not in raw)
 
         terminal.resize(42, 8)
-        narrow = terminal.wait_for(lambda text: "codex-monitor dashboard" in text, ready_timeout, "dashboard narrow resize")
+        narrow = terminal.wait_for(lambda text: self.dashboard_header(text), ready_timeout, "dashboard narrow resize")
         narrow_lines = [line.rstrip() for line in narrow.splitlines() if line]
         self.check("narrow_resize_keeps_lines_bounded", all(len(line) <= 42 for line in narrow_lines))
-        self.check("narrow_resize_keeps_dashboard_visible", "codex-monitor dashboard" in narrow)
+        self.check("narrow_resize_keeps_dashboard_visible", self.dashboard_header(narrow))
         terminal.resize(100, 12)
 
         self.stop_receiver()
         self._release_lock()
-        stopped = terminal.wait_for(lambda text: "Receiver OFF" in text and "process stopped" in text, ready_timeout, "dashboard receiver outage")
-        self.check("receiver_outage_is_visible", "Receiver OFF" in stopped and "process stopped" in stopped)
+        stopped = terminal.wait_for(lambda text: self.receiver_stopped(text, bytes(terminal.raw)), ready_timeout, "dashboard receiver outage")
+        self.check("receiver_outage_is_visible", self.receiver_stopped(stopped, bytes(terminal.raw)))
         self._acquire_lock()
         self.start_receiver()
         recovered = terminal.wait_for(
-            lambda text: "Receiver ON" in text and "/v1/status ready" in text,
+            lambda text: self.receiver_ready(text, bytes(terminal.raw)),
             ready_timeout, "dashboard receiver recovery",
         )
-        self.check("receiver_recovery_is_visible", "Receiver ON" in recovered and "process alive" in recovered)
+        self.check("receiver_recovery_is_visible", self.receiver_ready(recovered, bytes(terminal.raw)))
 
         terminal.send("q")
         terminal.wait_for(lambda text: "CANARY_TERMIO:" in text, 3, "dashboard q cleanup")
@@ -560,7 +649,7 @@ class Canary:
                             env=self.dashboard_env, cwd=self.dashboard_cwd)
         self.terminals.append(terminal)
         terminal.wait_for(
-            lambda text: "Receiver ON" in text and "/v1/status ready" in text and "LIVE VIEW" in text,
+            lambda text: self.receiver_ready(text, bytes(terminal.raw)) and self.dashboard_header(text),
             max(4.0, self.args.interval * 2 + 2), "dashboard Ctrl-C initial render",
         )
         terminal.send(b"\x03")

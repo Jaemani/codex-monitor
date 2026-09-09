@@ -22,7 +22,6 @@ import time
 import re
 import stat as stat_module
 import unicodedata
-from datetime import datetime
 from typing import Any, TextIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
@@ -670,15 +669,25 @@ def _paint(text: Any, code: int | None, color: bool) -> str:
     return f"\x1b[{code}m{value}\x1b[0m" if color and code is not None else value
 
 
-def _status(value: str, color: bool) -> str:
-    codes = {"ON": 32, "OFF": 31, "STALE": 33, "UNKNOWN": 33}
-    return _paint(value, codes.get(value), color)
+_STATUS_DOTS = {
+    "ON": ("●", 32),
+    "OFF": ("●", 31),
+    "STALE": ("●", 33),
+    "UNKNOWN": ("●", 90),
+}
+_STATUS_PLAIN_DOTS = {"ON": "●", "OFF": "○", "STALE": "◐", "UNKNOWN": "·"}
+_STATUS_WORDS = {"ON": "enabled", "OFF": "paused", "STALE": "stale", "UNKNOWN": "unavailable"}
 
 
-def _status_cell(value: str, color: bool, width: int = 8) -> str:
-    """Render a status label with stable display-cell width in the table."""
+def _status_dot(value: str, color: bool) -> str:
+    """Render a compact status dot, with shape carrying no-color meaning."""
 
-    return _status(value, color) + " " * max(0, width - len(value))
+    dot, code = _STATUS_DOTS.get(value, _STATUS_DOTS["UNKNOWN"])
+    return _paint(dot if color else _STATUS_PLAIN_DOTS.get(value, "·"), code, color)
+
+
+def _status_word(value: str) -> str:
+    return _STATUS_WORDS.get(value, "unavailable")
 
 
 def _receiver_status(receiver: dict[str, Any]) -> str:
@@ -712,33 +721,47 @@ def _collector_status(collector: dict[str, Any]) -> str:
     return "UNKNOWN"
 
 
-def _fit(text: Any, width: int) -> str:
-    """Return a fixed-width plain table cell without padding untrusted ANSI."""
-
-    value = _clip(_safe(text), max(0, width))
-    visible = sum(_cell_width(char) for char in value)
-    return value + " " * max(0, width - visible)
-
-
 def _event_summary(value: dict[str, Any]) -> str:
     counts = value.get("counts") or {}
-    rendered = ", ".join(f"{_safe(key)}={count}" for key, count in sorted(counts.items())) or "none"
+    rendered = ", ".join(f"{count} {_event_state(key, technical=True)}" for key, count in sorted(counts.items())) or "No events"
     latest = value.get("latest")
     if latest:
         identifier = latest.get("delivery_id") or latest.get("request_id")
-        rendered += f"; latest {_safe(latest.get('state'))} {_safe(identifier)} ({_age_text(latest.get('age_seconds'))})"
+        rendered += f"; latest {_event_state(latest.get('state'), technical=True)} {_safe(identifier)} ({_age_text(latest.get('age_seconds'))})"
     return rendered
+
+
+def _event_state(value: Any, *, technical: bool = False) -> str:
+    known = {
+        "pending": "pending",
+        "accepted": "sent to Codex",
+        "in_progress": "in progress",
+        "completed": "completed",
+        "failed": "failed",
+        "cancelled": "cancelled",
+        "expired": "expired",
+        "received": "received",
+        "acknowledged": "acknowledged",
+    }
+    return known.get(str(value), _safe(value).replace("_", " ") if technical else "activity updated")
 
 
 def _event_compact(value: dict[str, Any]) -> str:
-    """Summarize counts and age without putting receipt UUIDs in the table."""
+    """Summarize counts and recent activity without technical identifiers."""
 
     counts = value.get("counts") or {}
-    rendered = ", ".join(f"{_safe(key)}={count}" for key, count in sorted(counts.items())) or "none"
+    rendered = ", ".join(f"{count} {_event_state(key)}" for key, count in sorted(counts.items()))
     latest = value.get("latest")
     if latest:
-        rendered += f"; {_safe(latest.get('state'))} {_age_text(latest.get('age_seconds'))}"
-    return rendered
+        latest_state = _event_state(latest.get("state"))
+        counted_states = {_event_state(key) for key in counts}
+        recent = (
+            f"updated {_age_text(latest.get('age_seconds'))} ago"
+            if latest_state in counted_states else
+            f"{latest_state} {_age_text(latest.get('age_seconds'))} ago"
+        )
+        rendered = f"{rendered} · {recent}" if rendered else recent
+    return rendered or "—"
 
 
 def _binding_rows(snapshot: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any], int]]:
@@ -754,18 +777,41 @@ def _binding_rows(snapshot: dict[str, Any]) -> list[tuple[dict[str, Any], dict[s
 def _refresh_line(snapshot: dict[str, Any], now: float) -> str:
     timestamp = _number(snapshot.get("generated_at"))
     if timestamp is None:
-        return "Last refreshed: unknown (age unknown)"
-    refreshed = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+        return "Refresh time unavailable"
     age = max(0.0, now - timestamp)
-    return f"Last refreshed: {refreshed} (age {_age_text(age)})"
+    return f"Updated {_age_text(age)} ago"
+
+
+def _binding_label(connection: dict[str, Any], binding: dict[str, Any]) -> str:
+    """Use the human managed-watch name when a generated binding has one."""
+
+    name = binding.get("name")
+    for collector in connection.get("collectors") or []:
+        if collector.get("binding") == name and collector.get("name"):
+            return _safe(collector.get("name"))
+    if isinstance(name, str) and name.startswith("managed-"):
+        return "managed watch"
+    return _safe(name)
+
+
+def _fit(text: Any, width: int) -> str:
+    """Fit a trusted display cell while preserving any approved SGR."""
+
+    value = _clip(_safe(text), max(0, width))
+    visible = sum(_cell_width(char) for char in _ANSI_SGR.sub("", value))
+    return value + " " * max(0, width - visible)
 
 
 def _detail_lines(connection: dict[str, Any], binding: dict[str, Any], color: bool) -> list[str]:
     """Render details only after the user explicitly asks for them."""
 
-    lines = [f"  Details: {_safe(binding.get('name'))} in {_safe(connection.get('thread'))}"]
+    label = _binding_label(connection, binding)
+    raw_name = _safe(binding.get("name"))
+    lines = [f"  Details: {label} in {_safe(connection.get('thread'))}"]
+    if raw_name != label:
+        lines.append("    binding id: " + raw_name)
     lines.append(
-        f"    status {_status(_binding_status(binding), color)} · endpoint {_safe(binding.get('endpoint'))} · "
+        f"    status {_status_dot(_binding_status(binding), color)} {_status_word(_binding_status(binding))} · endpoint {_safe(binding.get('endpoint'))} · "
         f"sources {', '.join(_safe(source) for source in binding.get('sources', [])) or 'none'}"
     )
     if binding.get("schema_error"):
@@ -778,7 +824,8 @@ def _detail_lines(connection: dict[str, Any], binding: dict[str, Any], color: bo
         observation = collector.get("checkpoint", {}).get("last_observation") or {}
         observed = _safe(observation.get("state"), 40) if observation else "none"
         lines.append(
-            f"    collector {_safe(collector.get('name'))}: {_status(_collector_status(collector), color)}; "
+            f"    collector {_safe(collector.get('name'))}: {_status_dot(_collector_status(collector), color)} "
+            f"{_status_word(_collector_status(collector))}; "
             f"seen {_age_text(collector.get('worker_seen_age_seconds'))}/{_safe(collector.get('worker_seen_status'))}; sample={observed}"
         )
         errors = [collector.get("last_error"), collector.get("last_sample_error"), collector.get("checkpoint", {}).get("error")]
@@ -791,64 +838,71 @@ def _detail_lines(connection: dict[str, Any], binding: dict[str, Any], color: bo
 def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = False,
                  selected: int = 0, detail: bool | str = False, live: bool = False,
                  frame: bool = False, animate: bool = True, now: float | None = None) -> list[str]:
-    """Render a compact, clipped dashboard frame with optional trusted SGR."""
+    """Render the calm overview and optional technical details."""
 
     width = max(1, int(width or 1))
     now = time.time() if now is None else now
-    indicator = "●" if (frame or not animate) else "○"
-    title = f"codex-monitor dashboard  {_paint('LIVE VIEW ' + indicator if live else 'SNAPSHOT', 36, color)}  {_paint('[read-only]', 2, color)}"
+    pulse = "●" if (frame or not animate) else "○"
+    title = (
+        f"codex-monitor  Live {_paint(pulse, 36, color)}"
+        if live else "codex-monitor  Snapshot"
+    )
     lines = [title]
     receiver = snapshot.get("receiver") or {}
     receiver_state = _receiver_status(receiver)
-    process = (
-        "alive" if receiver.get("process_alive") is True else
-        "stopped" if receiver.get("process_alive") is False else
-        "unknown"
-    )
-    readiness = "ready" if receiver.get("ready") else "not ready"
-    reason = receiver.get("reason")
-    lines.append(
-        f"Receiver {_status(receiver_state, color)} · process {process} · /v1/status {readiness}"
-        + (f" [{_safe(receiver.get('health'))}]" if receiver.get("health") else "")
-        + (f" ({_safe(reason)})" if reason else "")
-    )
-    lines.append(_refresh_line(snapshot, now))
-    lines.append(
-        "Status: " + " ".join(
-            f"{_status(label, color)} {description}" for label, description in (
-                ("ON", "enabled/ready"), ("OFF", "paused/stopped"),
-                ("STALE", "old/unhealthy"), ("UNKNOWN", "unavailable"),
-            )
+    if detail:
+        process = (
+            "alive" if receiver.get("process_alive") is True else
+            "stopped" if receiver.get("process_alive") is False else
+            "unknown"
         )
-    )
+        readiness = "ready" if receiver.get("ready") else "not ready"
+        receiver_line = f"{_status_dot(receiver_state, color)} Receiver · process {process} · status probe {readiness}"
+        if receiver.get("health"):
+            receiver_line += " · health " + _safe(receiver.get("health"))
+        if receiver.get("reason"):
+            receiver_line += " · " + _safe(receiver.get("reason"))
+    else:
+        receiver_line = f"{_status_dot(receiver_state, color)} Receiver · {_refresh_line(snapshot, now)}"
+    lines.append(receiver_line)
     if not snapshot.get("ok"):
         lines.append("ERROR: " + _safe(snapshot.get("error"), max(1, width - 7)))
         lines.append("The state inventory will be retried while the dashboard is running.")
         return [_clip(line, width) for line in lines]
     if snapshot.get("thread_filter"):
-        lines.append("Filter: thread=" + _safe(snapshot["thread_filter"]))
-    lines.append("CONVERSATIONS")
-    lines.append("    " + _paint("STATE   BINDING              ENDPOINT        EVENTS                    COLLECTOR", 1, color))
+        lines.append("Filtered conversation")
+    connections = snapshot.get("connections") or []
     rows = _binding_rows(snapshot)
+    connection_word = "connection" if len(rows) == 1 else "connections"
+    conversation_word = "conversation" if len(connections) == 1 else "conversations"
+    lines.append(f"{len(connections)} {conversation_word} · {len(rows)} {connection_word}")
+    if detail:
+        lines.append(
+            "Status: " + " ".join(
+                f"{_status_dot(label, color)} {description}" for label, description in (
+                    ("ON", "enabled"), ("OFF", "paused"),
+                    ("STALE", "stale"), ("UNKNOWN", "unavailable"),
+                )
+            )
+        )
+    lines.append("Conversations")
     if not rows:
-        lines.append("  No conversation bindings found.")
-    for connection in snapshot.get("connections") or []:
-        lines.append("  Conversation: " + _safe(connection.get("thread")))
+        lines.append("  No bindings yet")
+    for group_index, connection in enumerate(connections, 1):
+        lines.append("  " + _paint(f"Conversation {group_index}", 2, color))
         bindings = connection.get("bindings") or []
         for binding in bindings:
             row_index = next(index for conn, item, index in rows if conn is connection and item is binding)
-            collectors = [item for item in connection.get("collectors", []) if item.get("binding") == binding.get("name")]
-            collector_names = ",".join(_safe(item.get("name"), 16) for item in collectors) or "-"
-            line = (
-                f"  {'▶' if row_index == selected else ' '} "
-                f"{_status_cell(_binding_status(binding), color)}"
-                f"{_fit(binding.get('name'), 20)} "
-                f"{_fit(binding.get('endpoint'), 14)} "
-                f"{_fit(_event_compact(binding.get('events', {})), 25)} "
-                f"{_fit(collector_names, 18)}"
-            )
-            if row_index == selected and color:
-                line = "\x1b[7m" + line + "\x1b[0m"
+            marker = _paint("▶", 36, color) if row_index == selected else " "
+            prefix = f"  {marker} {_status_dot(_binding_status(binding), color)} "
+            label = _binding_label(connection, binding)
+            activity = _event_compact(binding.get("events", {}))
+            if width >= 72:
+                label_width = min(32, max(18, width // 3))
+                activity_width = max(1, width - 6 - label_width - 2)
+                line = prefix + _fit(label, label_width) + "  " + _clip(activity, activity_width)
+            else:
+                line = prefix + label + " · " + activity
             lines.append(line)
             if detail == "all" or (detail and row_index == selected):
                 lines.append("")
@@ -868,8 +922,8 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
     height = max(2, int(height or 2))
     body = render_lines(snapshot, width, color=color, selected=selected, detail=detail,
                         live=live, frame=frame, animate=animate, now=now)
-    # Title, receiver state and refresh age stay pinned.  The compact legend
-    # scrolls with the table so it does not consume most of a short terminal.
+    # Keep the title, receiver state and legend pinned. The conversation list
+    # scrolls with the table so the controls remain visible on short screens.
     header_count = min(3, len(body))
     header = body[:header_count]
     table = body[header_count:]
@@ -897,9 +951,11 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
     visible = header + table[offset:offset + body_slots]
     visible = visible[:available]
     visible += [""] * (available - len(visible))
+    binding_total = len(_binding_rows(snapshot))
+    binding_position = min(max(int(selected), 0), max(0, binding_total - 1)) + 1 if binding_total else 0
     footer = (
-        f"q/Ctrl-C quit · j/k scroll/select · d details · "
-        f"{offset + 1}-{min(offset + len(table), len(table))}/{len(table)}"
+        f"Enter/o open · j/k select · d details · q quit · "
+        f"{binding_position}/{binding_total}"
     )
     if notice:
         return "\n".join(visible + [_clip("OPEN: " + notice, width), _clip(footer, width)])

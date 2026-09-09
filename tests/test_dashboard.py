@@ -101,7 +101,10 @@ class DashboardTest(unittest.TestCase):
         rendered = render_text(snapshot, width=36, height=5, scroll=1)
         self.assertNotIn("\x1b", rendered)
         self.assertLessEqual(max(map(len, rendered.splitlines())), 36)
-        self.assertIn("scroll", rendered)
+        self.assertIn("Enter/o", rendered)
+        self.assertNotIn("bad", rendered)
+        details = render_text(snapshot, width=100, height=12, detail=True)
+        self.assertIn("bad", details)
 
     def test_compact_render_groups_connections_and_keeps_details_explicit(self):
         snapshot = {
@@ -125,20 +128,26 @@ class DashboardTest(unittest.TestCase):
             }],
         }
         compact = render_text(snapshot, width=120, height=20, color=True, live=True, frame=True, now=1_001)
-        self.assertIn("LIVE VIEW", compact)
-        self.assertIn("Last refreshed", compact)
-        self.assertIn("Conversation: thread-a", compact)
-        self.assertIn("ON", compact)
-        self.assertIn("OFF", compact)
-        self.assertIn("UNKNOWN", compact)
+        self.assertIn("Live", compact)
+        self.assertIn("Updated 1s ago", compact)
+        self.assertIn("Conversation 1", compact)
+        self.assertIn("1 conversation · 3 connections", compact)
+        self.assertIn("—", compact)
+        self.assertNotIn("ON", compact)
+        self.assertNotIn("OFF", compact)
+        self.assertNotIn("UNKNOWN", compact)
         self.assertNotIn("uuid-on", compact)
+        self.assertNotIn("shared-local", compact)
+        self.assertNotIn("thread-a", compact)
         self.assertIn("\x1b[32m", compact)
         self.assertIn("\x1b[31m", compact)
-        self.assertIn("\x1b[33m", compact)
+        self.assertIn("\x1b[90m", compact)
 
         details = render_text(snapshot, width=120, height=20, color=False, detail=True, selected=0, now=1_001)
         self.assertIn("uuid-on", details)
         self.assertIn("Details: on-binding", details)
+        self.assertIn("endpoint shared-local", details)
+        self.assertIn("Status: ● enabled ○ paused ◐ stale · unavailable", details)
         self.assertNotIn("\x1b", details)
 
         many = dict(snapshot)
@@ -151,8 +160,37 @@ class DashboardTest(unittest.TestCase):
             "collectors": [],
         } for index in range(10)]
         last_details = render_text(many, width=100, height=8, color=False, detail=True, selected=9, now=1_001)
-        self.assertIn("Conversation: thread-9", last_details)
+        self.assertIn("Conversation 10", last_details)
         self.assertIn("Details: binding-9", last_details)
+
+    def test_compact_render_uses_human_managed_name_and_hides_generated_binding_id(self):
+        snapshot = {
+            "ok": True,
+            "read_only": True,
+            "generated_at": 1_000,
+            "receiver": {"process_alive": True, "ready": True, "status_checked": True},
+            "connections": [{
+                "thread": "thread-a",
+                "bindings": [{
+                    "name": "managed-0123456789abcdef",
+                    "enabled": True,
+                    "endpoint": "wss://owner.example:8765",
+                    "sources": ["managed/file"],
+                    "events": {"counts": {}, "latest": None},
+                }],
+                "events": {},
+                "requests": {"available": False, "reason": "none"},
+                "collectors": [{
+                    "name": "deploy-check",
+                    "binding": "managed-0123456789abcdef",
+                    "enabled": True,
+                    "worker_seen_status": "fresh",
+                }],
+            }],
+        }
+        rendered = render_text(snapshot, width=100, height=12, color=False, live=True, now=1_001)
+        self.assertIn("deploy-check", rendered)
+        self.assertNotIn("managed-0123456789abcdef", rendered)
 
     def test_color_policy_honors_no_color_and_dumb_terminal(self):
         stream = io.StringIO()

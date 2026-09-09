@@ -118,6 +118,18 @@ class Canary:
         self.step(name, **details)
 
     @staticmethod
+    def dashboard_inventory_visible(text: str, binding: str) -> bool:
+        """Recognize the selected binding across dashboard visual skins."""
+
+        lower = text.lower()
+        return (
+            "codex-monitor" in lower
+            and binding.lower() in lower
+            and any(label in lower for label in ("conversations", "bindings", "monitors"))
+            and "▶" in text
+        )
+
+    @staticmethod
     def history(rpc: Rpc, thread: str) -> list[dict[str, Any]]:
         return rpc.call(
             "thread/turns/list",
@@ -326,11 +338,7 @@ class Canary:
         self.step("dashboard_started", dashboard_pid=self.dashboard.pid)
         self.wait_for(
             self.dashboard,
-            lambda: (
-                "CONVERSATIONS" in self.dashboard.text()
-                and "open-thread" in self.dashboard.text()
-                and "▶" in self.dashboard.text()
-            ),
+            lambda: self.dashboard_inventory_visible(self.dashboard.text(), "open-thread"),
             "dashboard selected binding",
         )
         self.check("dashboard_selected_exact_thread", True, thread=self.thread)
@@ -398,11 +406,7 @@ class Canary:
         self.step("opened_tui_exit_pressed", command="/quit")
         self.wait_for(
             self.dashboard,
-            lambda: (
-                "codex-monitor dashboard" in self.dashboard.text().lower()
-                and "open-thread" in self.dashboard.text()
-                and "▶" in self.dashboard.text()
-            ),
+            lambda: self.dashboard_inventory_visible(self.dashboard.text(), "open-thread"),
             "dashboard returned after TUI exit",
         )
         self.check("dashboard_returned_after_tui_exit", True)

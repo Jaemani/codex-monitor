@@ -10,6 +10,15 @@ target thread to be loaded on their server.
 
 ## Incident findings and current limitations (2026-09-09)
 
+- Dashboard visual polish replaces status labels with colored dots, uses managed monitor names,
+  aligns recent activity and moves technical IDs/endpoints to details. The compact header reports
+  counts and refresh age; receiver diagnostics remain visible in the pinned header when details
+  are open. No-color dots use distinct shapes. Final source regression: **192 tests in 54.064 seconds**.
+  The installed wheel passed **39 dashboard PTY checks in 7.779 seconds** and the ordinary-TUI
+  open/follow-up/return canary in **20.091 seconds**. Global upgrade matched all 21 modules,
+  preserved fourteen bindings, eight receipts and credentials, and returned the receiver ready.
+  The final global-installed PTY rerun added palette coverage and passed **40 checks in 7.953 seconds**.
+  Dot colors retain their original configuration/readiness meaning, not native model activity.
 - Dashboard Enter/o now opens the selected existing conversation in the ordinary Codex TUI using
   its saved explicit owner endpoint. `/quit` returns to the dashboard. Refreshes remain read-only;
   shared-local routes cannot infer an owner, and changed/unsafe identities are rejected. The source

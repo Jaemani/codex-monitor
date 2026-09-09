@@ -57,18 +57,24 @@ the selected conversation's normal model and permissions.
 
 ## Reading the screen
 
-The fixed header shows **LIVE VIEW** with a pulsing dot and the last snapshot time. This indicates
+The fixed header shows **Live** with a pulsing dot and the snapshot age. This indicates
 that the view is refreshing, not that every producer or Codex model is connected. Animation reuses
 the latest snapshot; it does not increase the configured read/probe frequency or invoke the model.
 
-The overview groups compact binding rows by conversation. Select a row and press `d` for source,
-receipt, request and collector details rather than scanning repeated diagnostics in the main view.
+The overview emphasizes names and recent activity, grouped by conversation. Managed monitors use
+their collector names instead of generated binding IDs. UUIDs, server addresses, receipt IDs and
+raw delivery states appear in `d` details rather than occupying the main view. Selecting a friendly
+label still opens the exact stored conversation; the presentation never changes routing.
+Recent activity occupies a separate column on wider terminals; an em dash means no recorded event
+activity. Narrow layouts prioritize the name. Neither a dash nor a green dot means a model is idle.
 
-- **Green ON:** binding enabled or receiver ready, according to the field.
-- **Red OFF:** binding paused or receiver stopped.
-- **Amber STALE / UNKNOWN:** old, unhealthy or unavailable observations; inspect the details.
+- **Green dot:** binding enabled or receiver ready, according to the field.
+- **Red dot:** binding paused or receiver stopped.
+- **Amber dot:** old or unhealthy observations; inspect the details.
+- **Muted dot:** unavailable observations.
 
-Text labels remain visible without color. Use `--color auto|always|never`; auto honors `NO_COLOR`
+Status cells use dots rather than ON/OFF labels. Without color, dot shapes and descriptive details
+provide the distinction. Use `--color auto|always|never`; auto honors `NO_COLOR`
 and `TERM=dumb`. Use `--no-animate` for a steady live indicator. Text snapshots are plain by default;
 `--color always` opts into ANSI colors, while JSON remains machine-readable.
 

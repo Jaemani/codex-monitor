@@ -111,6 +111,10 @@ TUI. Read events and responses, send messages, or answer approvals; exit the TUI
 dashboard. Opening uses the binding's explicit shared owner endpoint and the same conversation ID.
 `shared-local` bindings need an explicit owner endpoint before they can be opened this way.
 
+The main view shows names, status dots and recent activity. Press **d** for technical details such
+as conversation IDs, owner endpoints and receipt states. Green/red dots describe the displayed
+binding or receiver; they do not imply that an agent is currently generating or has finished work.
+
 Use `--once` for a snapshot, `--once --json` for structured output, or `--thread "$THREAD_ID"` to filter a conversation. The display refreshes observations without calling Codex or the model. See [dashboard controls and status meanings](docs/DASHBOARD.md).
 
 The inventory covers bindings in the selected local state, not every Codex agent or every host. External producer health stays **unknown** until a supported observation exists. A running receiver, an accepted event and a completed work request are different facts. Native consumption remains an explicit `inspect DELIVERY_ID` check.

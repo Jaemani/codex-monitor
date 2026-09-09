@@ -6,6 +6,19 @@ Raw reports, terminal buffers, conversation IDs and host paths remain local and 
 
 Key observations:
 
+- Dashboard visual polish, 2026-09-09: 192 source tests passed in 54.064 seconds. The final wheel
+  passed 39 dashboard PTY checks in 7.779 seconds and the same-thread native TUI open/follow-up/return
+  canary in 20.091 seconds. Local reports: `codex-monitor-dashboard-polish-installed-pty.json`
+  and `codex-monitor-dashboard-polish-installed-open.json`. Checks cover selection movement,
+  title pulse, rendered age, receiver dot transitions, resizing and terminal cleanup. Rendered-age
+  observations do not independently measure snapshot polling cadence. Earlier preliminary reports
+  remain local; review restored animation and navigation assertions during the visual adaptation.
+  Wheel SHA-256: `3d5e7646602c0b02018226564e2b847dad5f978cb04c9556bdf08b2b50b30035`.
+  All 21 installed modules matched; fourteen bindings/eight receipts/credentials were preserved
+  and receiver readiness returned after upgrade. No new Desktop validation is claimed.
+  Final global-installed PTY rerun: 40 checks in 7.953 seconds, including the restored full status
+  palette assertion (`codex-monitor-dashboard-polish-global-final.json`).
+
 - Dashboard open, 2026-09-09: source native PASS in 25.878 seconds; installed-wheel native PASS
   in 18.634 seconds. Enter opened the selected existing ordinary TUI, one user follow-up and response
   remained in the same native history, and `/quit` returned to the dashboard. Owned thread archival,

@@ -51,6 +51,9 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Compatibility and resilience
 
+- [x] **Calmer dashboard presentation.** Status dots, readable managed names, aligned activity,
+  compact counts and explicit technical details passed installed PTY and same-thread TUI checks.
+  The display does not infer native agent activity from enabled bindings.
 - [x] **Dashboard-to-TUI interaction.** Enter/o opens the selected binding's existing conversation
   on its explicit owner endpoint and returns after TUI exit. Source and installed ordinary-TUI
   runs verified same-thread history and user interaction; regression covers routing, identity
