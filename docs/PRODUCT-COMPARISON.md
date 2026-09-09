@@ -15,7 +15,7 @@ The core flow is implemented and verified: one selected conversation can continu
 | Criterion | codex-monitor evidence | Assessment |
 |---|---|---|
 | Human input and events in one conversation | Real macOS/Linux TUI, remote TUI, Desktop native consumption, and user-observed Desktop restart | Core flow met |
-| Retention while the app is closed | Event stored in the official `shared-local` queue, then consumed by the same Desktop or CLI thread | Useful behavior beyond Claude Channels' documented open-session requirement |
+| Retention while the app is closed | Event stored in the official `shared-local` queue, then consumed by the same Desktop or CLI thread | Built-in retention; Claude channel servers can separately implement persistence |
 | Receipt, duplicate, and uncertainty tracking | Durable inbox, stable IDs, `inspect`, and per-source reply outbox with acknowledgement | Strong diagnostics; does not guarantee exactly-once business side effects |
 | Long-running behavior | 3,600-second TUI soak and 3,600-second receiver fault run with 55 restarts; failure records retained | Bounded real-world validation passed; no overall superiority claim |
 | Local intervention and permissions | Draft and active-turn concurrency plus TUI recovery after Ctrl+C and a new user prompt | Core behavior met; Desktop draft and approval cases remain |
@@ -27,6 +27,18 @@ The core flow is implemented and verified: one selected conversation can continu
 | Replies to external sources | Originating source pulls explicit replies and acknowledges them | Two-way delivery exists, without a messenger-native reply UI |
 | Remote approval | External events cannot grant permissions | Intentionally absent; not feature-equivalent to Claude permission relay |
 | Agent-team orchestration | Source, trace, and hop-based messaging only | Does not replace Claude team panels, task coordination, or mailboxes |
+
+## Monitoring scope
+
+External condition monitoring, durable event delivery and runtime telemetry are separate capabilities.
+codex-monitor implements the first two and stores explicit request reports. It does not export model
+requests, tool execution traces, token consumption or cost. Claude's documented OpenTelemetry export
+is a third mechanism, separate from its native Monitor and Channels. See the [telemetry comparison](../README.md#event-monitoring-versus-execution-telemetry).
+
+Built-in receipts and reconciliation distinguish this implementation from a bare notification
+transport. They do not establish superiority over every Claude adapter or guarantee that a reported
+completed request was independently verified. Percentage parity scores have no defined benchmark here.
+See [reviewed feedback and resulting changes](FEEDBACK-REVIEW.md).
 
 ## Deployment and management
 

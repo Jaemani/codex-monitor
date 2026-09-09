@@ -2,7 +2,7 @@
 
 **Keep working in your Codex conversation. Let external events come to you.**
 
-codex-monitor connects file changes, webhooks and worker events to an existing **Codex CLI or Desktop conversation**. A small receiver waits outside the model, stores events and delivers them through Codex's official queue API. You can keep typing in the same conversation.
+codex-monitor connects file changes, webhooks and worker events to an existing **Codex CLI or Desktop conversation**. A small receiver waits outside the model, stores events and delivers them through Codex's **official but experimental App Server queue API**. You can keep typing in the same conversation while its owning client is loaded. Unloaded Desktop tasks retain queued input but do not automatically wake.
 
 [Quick start](#quick-start) · [Execution model](#what-runs-where) · [Use cases](#what-can-i-use-it-for) · [Comparison](#how-it-compares) · [Status & evidence](docs/STATUS.md) · [Roadmap](docs/TODO.md)
 
@@ -14,7 +14,13 @@ codex-monitor connects file changes, webhooks and worker events to an existing *
 - **Separate conversations when useful.** Route several sources into one PM conversation, or use independent conversations for different projects. A relay agent is optional.
 - **See the connections.** A separate terminal dashboard shows configured conversations, collector observations and delivery states without adding chat messages.
 
-This is an event-delivery and monitoring layer. It does not replace Codex's agent orchestration, permissions or task UI. External messaging services need their own adapters.
+This is an **external-condition and event-delivery layer**. It does not collect live model/tool
+execution, token usage or cost telemetry. The dashboard shows delivery observations and explicit work
+reports, not inferred agent progress. External messaging services need their own adapters.
+
+Its built-in reliability features are a durable inbox, duplicate-ID suppression, receipt inspection,
+uncertain-delivery reconciliation and an explicit reply outbox. These make delivery inspectable;
+they do not guarantee loss-free operation, exactly-once side effects or successful agent work.
 
 ## What runs where?
 
@@ -22,7 +28,7 @@ This is an event-delivery and monitoring layer. It does not replace Codex's agen
 flowchart LR
     E[External event or file change] --> P[Producer: receives or detects changes]
     P --> R[codex-monitor receiver: authenticates and stores]
-    R --> Q[Official Codex conversation queue]
+    R --> Q[Experimental App Server queue]
     Q --> C[Existing CLI or Desktop conversation]
     U[You] <--> C
     D[Terminal dashboard] -. observes local state and receiver .-> R
@@ -41,7 +47,7 @@ flowchart LR
 
 **You normally run one receiver, your usual Codex client, and optionally the dashboard.** A Discord integration also needs a Gateway producer and reply adapter. It does not need an always-running model or a separate relay conversation.
 
-The default `shared-local` path uses the same OS user and Codex store (`CODEX_HOME` / `sqlite_home`) as the target client. An independent App Server writer adds input through the official queue API; it does not type into the UI or start/resume conversations. Local Desktop does not require SSH.
+The default `shared-local` path uses the same OS user and Codex store (`CODEX_HOME` / `sqlite_home`) as the target client. An independent App Server writer adds input through the official but experimental queue API; it does not type into the UI or start/resume conversations. Local Desktop does not require SSH.
 
 In the validated Codex 0.153.4 path, the native consumer checks external changes roughly every 10 seconds. Busy turns can add delay. If the target conversation is unloaded (even while Desktop stays open), input remains queued until an owning client loads it. Keeping the receiver running does not keep every registered conversation loaded. **Event-driven does not mean an immediate model response.** See [latency measurements and direct-owner options](docs/LATENCY.md) and [queue/compatibility troubleshooting](docs/TROUBLESHOOTING.md).
 
@@ -124,7 +130,7 @@ TUI. Read events and responses, send messages, or answer approvals; exit the TUI
 dashboard. Opening uses the binding's explicit shared owner endpoint and the same conversation ID.
 `shared-local` bindings need an explicit owner endpoint before they can be opened this way.
 
-The Graphite view shows one row per conversation, status dots, connection counts and recent activity.
+The Graphite view shows one row per conversation, status dots, connection counts and recent delivery observations.
 The selected route appears below the list; use **Tab** to cycle routes before opening it.
 Project groups and stable display names distinguish similar agents across projects. **p** stops
 the selected monitor route, **r** resumes it, and **x**, then **y**, removes it while preserving
@@ -164,7 +170,7 @@ the [OS timer health-hook recipe](docs/HEALTH-HOOK.md). The timer runs a script,
 
 ## How it compares
 
-Feature scope checked **2026-09-09**; presentation updated **2026-09-10**.
+Feature scope checked **2026-09-09**; Monitor, Channels and telemetry references rechecked **2026-09-10**.
 Claude entries describe its official documentation; they are not results from a matched benchmark.
 
 **✅ Supported · ◐ Conditional / requires setup · ❌ Not provided · ? Not verified · — Not applicable**
@@ -181,6 +187,9 @@ features. A ✅ describes the specific row, not production certification. Footno
 | Wait for events without model polling | ◐ Integration-dependent | ✅ | ✅[^claude-monitor] |
 | Queue events during an active response | ✅ | ✅ | ✅[^channels] |
 | Native background monitoring tool | ◐ Tool-dependent | ◐ External runtime | ✅ Monitor[^claude-monitor] |
+| Stream arbitrary command output into the conversation | ◐ Custom producer | ◐ Custom producer | ✅ Monitor[^claude-monitor] |
+| Subscribe directly to an arbitrary WebSocket feed | ◐ Custom producer | ◐ Custom producer | ✅ Monitor[^claude-monitor] |
+| Auto-start monitors declared by a plugin | ◐ Integration-dependent | ❌ Explicit runtime setup | ✅[^claude-monitor] |
 | Managed file/JSON conditions and debounce | ◐ Build integration | ✅ | ◐ Write script[^claude-monitor] |
 | Server-failure-only recovery requests | ◐ Build integration | ◐ Health probe[^adapters] | ◐ Monitor / script[^claude-monitor] |
 | Receive arbitrary webhook events | ◐ Build integration | ✅ HTTP receiver | ◐ Channel server[^channels] |
@@ -197,6 +206,7 @@ features. A ✅ describes the specific row, not production certification. Footno
 | Restore selected CLI subscriptions after owner reconnect | ◐ Build integration | ✅ Resident[^owner] | ? Not tested |
 | Durable inbox + duplicate-ID suppression | ◐ Build integration | ✅[^retention] | ◐ Adapter responsibility[^channels] |
 | Inspect queued / consumed / uncertain delivery | ◐ API integration | ✅ Receipts | ◐ Adapter responsibility[^channels] |
+| Reconcile a timed-out submission before replaying | ◐ Build integration | ✅ Stable client ID[^retention] | ◐ Adapter responsibility[^channels] |
 | Uniform sub-second event response | ❌ No guarantee | ❌[^latency] | ❌ No guarantee |
 | Native scheduled work | ✅ | ✅ Native feature | ✅[^schedules] |
 | Async hook can wake an idle session | ◐ Hook-dependent | ◐ External queue[^desktop] | ✅ asyncRewake[^hooks] |
@@ -216,8 +226,22 @@ features. A ✅ describes the specific row, not production certification. Footno
 | External-channel permission approval relay | ? Not assessed | ❌ | ◐ Opt-in relay[^channels] |
 | Full monitoring after plugin installation alone | ❌ Setup needed | ❌ Runtime + source + owner | ◐ Plugin / account limits[^channels] |
 
+### Event monitoring versus execution telemetry
+
+| Meaning of monitoring | codex-monitor | Claude Code |
+|---|---|---|
+| Detect external changes and deliver events | ✅ Runtime + producers | ✅ Monitor / Channels, subject to setup limits |
+| Inspect persisted delivery and explicit work reports | ✅ Receipts + request state | ◐ Channel-server design |
+| Export model/API/tool activity, token usage and cost | ❌ Not collected by this project | ◐ Configure OTel[^telemetry] |
+| Infer percentage complete from a received event | ❌ | ❌ No guarantee |
+
+Codex's own diagnostics and native activity UI remain separate; this table does not assert that
+native Codex lacks telemetry. Explicit `completed` request reports are caller-supplied state, not an
+independent audit that the requested work succeeded.
+
 ### What the symbols do not hide
 
+[^telemetry]: Claude [OpenTelemetry monitoring](https://code.claude.com/docs/en/monitoring-usage) exports usage/cost metrics, API and tool events, and optional traces to a configured backend. It is separate from Monitor and Channels; it is not an automatic event-delivery receipt or a guaranteed live progress percentage.
 [^native]: Native Codex exposes [App Server APIs](https://learn.chatgpt.com/docs/app-server); custom clients can build event integrations. Eligible hosted app-event tasks are a separate surface, not generic local Desktop push. Native capability is not the same as a bundled monitoring workflow.
 [^channels]: Claude Channels requires an opted-in running session and eligible account/plugin/org settings. Channel servers implement external adapters, reply tools and any offline persistence. See [Channels](https://code.claude.com/docs/en/channels) and [reference](https://code.claude.com/docs/en/channels-reference).
 [^claude-monitor]: Claude's native [Monitor](https://code.claude.com/docs/en/tools-reference#monitor-tool) accepts script output or WebSocket events; scripts can implement watches and checks. Availability has provider/settings restrictions. Monitors stop with their session or owning subagent. This does not describe Desktop schedules or cloud Routines.

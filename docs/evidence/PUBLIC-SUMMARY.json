@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-09",
+  "date": "2026-09-10",
   "kind": "curated summary; original logs retained locally, not independently reproducible evidence",
   "records": [
     {
@@ -2062,6 +2062,17 @@
       "desktop_ui_verified": false,
       "cold_desktop_wakeup_fixed": false,
       "initial_harness_failures": "Unmaterialized fixture lacked stored rollout and turns; corrected checks passed; originals retained locally."
+    },
+    {
+      "local_report": "cm-dashboard-scope-final-20260910.json",
+      "result": "PASS",
+      "scope": "disposable dashboard PTY / loopback receiver / no model",
+      "checks": 42,
+      "elapsed_seconds": 6.386,
+      "focused_tests": 22,
+      "native_delivery_verified": false,
+      "desktop_ui_verified": false,
+      "installed_runtime_upgraded": false
     }
   ]
 }

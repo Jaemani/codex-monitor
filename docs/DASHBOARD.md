@@ -19,6 +19,13 @@ Use `--state /absolute/state` before `dashboard` for a different local receiver.
 interval is two seconds; `--interval SECONDS` changes it. Live mode needs an interactive terminal.
 Use snapshot mode in scripts and redirected output.
 
+
+The dashboard observes **event delivery**, managed collector observations and explicit request work
+reports. It does not collect live model/tool execution, token usage, cost or inferred completion
+percentages. `Delivery events` names the compact column; details separate delivery from work reports.
+JSON snapshots include a `scope` object describing this boundary, including on read failures. A scope
+field describes what the view can report, not whether a producer or consumer is currently healthy.
+
 ## Controls
 
 - `q` or Ctrl-C: leave the dashboard. The receiver and monitors continue running.

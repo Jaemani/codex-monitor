@@ -22,6 +22,15 @@ TODO item links to an issue. Desktop ownership is an integration blocker, large-
 an unverified mitigation, and CLI residency still needs operational coverage. No issue was closed
 from documentation changes, and no new implementation or test evidence is claimed.
 
+Feedback review (2026-09-10): the introduction now qualifies the experimental App Server queue,
+and the comparison distinguishes command/WebSocket monitoring, plugin startup and OTel execution
+telemetry. Dashboard copy now names delivery observations and explicit work reports; JSON declares
+its scope without claiming live model/tool telemetry. Twenty-two focused tests passed in 2.780 seconds;
+the final disposable dashboard PTY run passed 42 checks in 6.386 seconds. This is dashboard-only
+source validation, not new native delivery, Desktop, runtime upgrade or matched Claude evidence.
+An auxiliary system-Python full-suite attempt had three errors from a missing websockets dependency;
+the focused checks used the project virtual environment. See [review decisions](FEEDBACK-REVIEW.md).
+
 ## Incident findings and current limitations (2026-09-09)
 
 - Desktop follow-up: shared-local queue access passed for the current conversation, while the local

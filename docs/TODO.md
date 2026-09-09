@@ -33,6 +33,11 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Next: reliable everyday use
 
+- [x] **Review monitoring feedback against implementation and official sources.** Qualify the
+  experimental API in the introduction, distinguish telemetry from event delivery, expand the
+  comparison and clarify dashboard scope. See [review decisions](FEEDBACK-REVIEW.md); remaining
+  source/contract/benchmark work is tracked in #2, #7 and #13.
+
 - [x] **Scannable feature comparison.** Use support symbols and short labels with footnotes for
   runtime, Desktop, adapter and verification limits.
 

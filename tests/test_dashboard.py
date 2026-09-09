@@ -48,6 +48,14 @@ class DashboardTest(unittest.TestCase):
         snapshot = DashboardReader(self.root, clock=lambda: 10_000).snapshot()
         self.assertTrue(snapshot["ok"])
         self.assertTrue(snapshot["read_only"])
+        self.assertEqual(snapshot["scope"], {
+            "event_delivery": "persisted_observations",
+            "request_lifecycle": "explicit_work_reports",
+            "model_telemetry": "not_collected",
+            "tool_telemetry": "not_collected",
+        })
+        self.assertIn("persisted event-delivery observations", snapshot["note"])
+        self.assertIn("live model, tool, and external source telemetry are not collected", snapshot["note"])
         self.assertEqual(snapshot["connections"][0]["thread"], "thread-a")
         binding = snapshot["connections"][0]["bindings"][0]
         self.assertEqual(binding["events"]["counts"], {"pending": 1})
@@ -136,7 +144,7 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("1 conversation  /  3 connections", compact)
         self.assertIn("Conversation", compact)
         self.assertIn("Connections", compact)
-        self.assertIn("Recent activity", compact)
+        self.assertIn("Delivery events", compact)
         self.assertIn("1 conversation  /  3 connections", compact)
         self.assertIn("1 pending", compact)
         self.assertNotIn("ON", compact)
@@ -152,6 +160,7 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("uuid-on", details)
         self.assertIn("Details: on-binding", details)
         self.assertIn("endpoint shared-local", details)
+        self.assertIn("Scope: delivery + reported work · no live model/tool telemetry", details)
         self.assertIn("Status: ● enabled ○ paused ◐ stale · unavailable", details)
         self.assertNotIn("\x1b", details)
 
@@ -177,6 +186,33 @@ class DashboardTest(unittest.TestCase):
             self.assertTrue(all(len(line) <= width for line in narrow.splitlines()))
             self.assertIn("q", narrow.splitlines()[-1])
             self.assertIn("binding-9", narrow)
+
+    def test_details_name_request_lifecycle_as_explicit_work_reports(self):
+        snapshot = {
+            "ok": True,
+            "read_only": True,
+            "generated_at": 1_000,
+            "receiver": {"process_alive": False, "ready": False},
+            "connections": [{
+                "thread": "thread-a",
+                "bindings": [{
+                    "name": "work", "enabled": True, "endpoint": "shared-local", "sources": ["build"],
+                    "events": {"counts": {}, "latest": None},
+                }],
+                "requests": {
+                    "available": True,
+                    "counts": {"completed": 1},
+                    "latest": {
+                        "request_id": "request-1", "state": "completed", "age_seconds": 2,
+                    },
+                },
+                "collectors": [],
+            }],
+        }
+        details = render_text(snapshot, width=120, height=20, color=False, detail=True, now=1_001)
+        self.assertIn("delivery events: No delivery events", details)
+        self.assertIn("work reports (request lifecycle): 1 completed; latest report completed request-1", details)
+        self.assertNotIn("requests: ", details)
 
     def test_compact_render_uses_human_managed_name_and_hides_generated_binding_id(self):
         snapshot = {

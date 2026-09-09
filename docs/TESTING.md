@@ -466,3 +466,12 @@ behavior, unknown consumption fails the strict gate, and the fixture has no queu
 Two initial harness runs assumed a newly started thread already had a persisted rollout/turn list;
 those assumptions were corrected and the failure reports retained locally. No Desktop UI interaction
 or cold-task wakeup is claimed. The running receiver was not upgraded or restarted for this change.
+
+## Dashboard scope clarification (2026-09-10)
+
+The project virtual environment passed 22 dashboard/control tests in 2.780 seconds. The final
+read-only PTY canary passed 42 checks in 6.386 seconds, including narrow resize, route navigation,
+receiver outage/recovery, terminal restoration and no model/session calls. An auxiliary full-suite
+attempt under system Python encountered three missing-websockets errors; it is not a full-suite PASS.
+The change adds scope metadata and names delivery/work reports explicitly. No model/tool telemetry,
+new native delivery, Desktop validation or installed-runtime upgrade is claimed.

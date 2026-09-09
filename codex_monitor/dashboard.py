@@ -35,6 +35,20 @@ CHECKPOINT_LIMIT = 64 * 1024
 MAX_TEXT = 240
 
 
+_DASHBOARD_SCOPE = {
+    "event_delivery": "persisted_observations",
+    "request_lifecycle": "explicit_work_reports",
+    "model_telemetry": "not_collected",
+    "tool_telemetry": "not_collected",
+}
+
+
+def _dashboard_scope() -> dict[str, str]:
+    """Return the dashboard's machine-readable reporting boundary."""
+
+    return dict(_DASHBOARD_SCOPE)
+
+
 class DashboardError(RuntimeError):
     """A state inventory could not be read safely."""
 
@@ -609,6 +623,7 @@ class DashboardReader:
                 "ok": False,
                 "read_only": True,
                 "generated_at": now,
+                "scope": _dashboard_scope(),
                 "error": _safe(str(exc)),
                 "receiver": self._receiver(),
                 "connections": [],
@@ -617,11 +632,12 @@ class DashboardReader:
             "ok": True,
             "read_only": True,
             "generated_at": now,
+            "scope": _dashboard_scope(),
             "thread_filter": _safe(self.thread) if self.thread is not None else None,
             "receiver": self._receiver(),
             "connections": connections,
             "warnings": warnings,
-            "note": "Source health, worker activity and model activity are unknown; values shown are persisted observations and receipts.",
+            "note": "Dashboard scope: persisted event-delivery observations and explicit request lifecycle work reports; live model, tool, and external source telemetry are not collected.",
         }
 
 
@@ -738,11 +754,23 @@ def _collector_status(collector: dict[str, Any]) -> str:
 
 def _event_summary(value: dict[str, Any]) -> str:
     counts = value.get("counts") or {}
-    rendered = ", ".join(f"{count} {_event_state(key, technical=True)}" for key, count in sorted(counts.items())) or "No events"
+    rendered = ", ".join(f"{count} {_event_state(key, technical=True)}" for key, count in sorted(counts.items())) or "No delivery events"
     latest = value.get("latest")
     if latest:
         identifier = latest.get("delivery_id") or latest.get("request_id")
-        rendered += f"; latest {_event_state(latest.get('state'), technical=True)} {_safe(identifier)} ({_age_text(latest.get('age_seconds'))})"
+        rendered += f"; latest delivery {_event_state(latest.get('state'), technical=True)} {_safe(identifier)} ({_age_text(latest.get('age_seconds'))})"
+    return rendered
+
+
+def _work_report_summary(value: dict[str, Any]) -> str:
+    """Summarize explicit request lifecycle reports without calling them events."""
+
+    counts = value.get("counts") or {}
+    rendered = ", ".join(f"{count} {_event_state(key, technical=True)}" for key, count in sorted(counts.items())) or "No work reports"
+    latest = value.get("latest")
+    if latest:
+        identifier = latest.get("request_id")
+        rendered += f"; latest report {_event_state(latest.get('state'), technical=True)} {_safe(identifier)} ({_age_text(latest.get('age_seconds'))})"
     return rendered
 
 
@@ -758,11 +786,11 @@ def _event_state(value: Any, *, technical: bool = False) -> str:
         "received": "received",
         "acknowledged": "acknowledged",
     }
-    return known.get(str(value), _safe(value).replace("_", " ") if technical else "activity updated")
+    return known.get(str(value), _safe(value).replace("_", " ") if technical else "delivery updated")
 
 
 def _event_compact(value: dict[str, Any]) -> str:
-    """Summarize counts and recent activity without technical identifiers."""
+    """Summarize delivery observations without technical identifiers."""
 
     counts = value.get("counts") or {}
     rendered = ", ".join(f"{count} {_event_state(key)}" for key, count in sorted(counts.items()))
@@ -771,7 +799,7 @@ def _event_compact(value: dict[str, Any]) -> str:
         latest_state = _event_state(latest.get("state"))
         counted_states = {_event_state(key) for key in counts}
         recent = (
-            f"updated {_age_text(latest.get('age_seconds'))} ago"
+            f"delivery updated {_age_text(latest.get('age_seconds'))} ago"
             if latest_state in counted_states else
             f"{latest_state} {_age_text(latest.get('age_seconds'))} ago"
         )
@@ -868,7 +896,7 @@ def _derived_conversation_label(connection: dict[str, Any]) -> str:
 
 
 def _conversation_activity(connection: dict[str, Any]) -> str:
-    """Aggregate recent route activity into one human phrase."""
+    """Aggregate recent event-delivery observations into one human phrase."""
 
     counts: dict[str, int] = {}
     latest: dict[str, Any] | None = None
@@ -984,9 +1012,9 @@ def _detail_lines(connection: dict[str, Any], binding: dict[str, Any], color: bo
     )
     if binding.get("schema_error"):
         lines.append("    schema error: " + _safe(binding["schema_error"]))
-    lines.append("    events: " + _event_summary(binding.get("events", {})))
+    lines.append("    delivery events: " + _event_summary(binding.get("events", {})))
     requests = connection.get("requests") or {}
-    lines.append("    requests: " + (_event_summary(requests) if requests.get("available") else _safe(requests.get("reason", "unavailable"))))
+    lines.append("    work reports (request lifecycle): " + (_work_report_summary(requests) if requests.get("available") else _safe(requests.get("reason", "unavailable"))))
     collectors = [item for item in connection.get("collectors", []) if item.get("binding") == binding.get("name")]
     for collector in collectors:
         observation = collector.get("checkpoint", {}).get("last_observation") or {}
@@ -1055,6 +1083,7 @@ def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = Fa
                 )
             )
         )
+        lines.append("Scope: delivery + reported work · no live model/tool telemetry")
     if not rows:
         lines.append("  No bindings yet")
     if width >= 60:
@@ -1062,7 +1091,7 @@ def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = Fa
         connections_width = min(18, max(12, width // 6))
         lines.append(
             "      " + _fit("Conversation", conversation_width) +
-            _fit("Connections", connections_width) + "Recent activity"
+            _fit("Connections", connections_width) + "Delivery events"
         )
         lines.append(_paint("─" * width, 90, color))
     previous_project = None
@@ -1151,7 +1180,10 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
     context = _selection_context(snapshot, selected, selected_route, width, color)
     # Keep the title, receiver state and summary pinned. The conversation list
     # scrolls while the selected context and controls stay visible.
-    header_count = min(4 if detail and len(body) > 3 and body[3].startswith("Status:") else 3, len(body))
+    detail_header_count = 4 if detail and len(body) > 3 and body[3].startswith("Status:") else 3
+    if detail and len(body) > 4 and body[4].startswith("Scope:"):
+        detail_header_count = 5
+    header_count = min(detail_header_count, len(body))
     header = body[:header_count]
     table = body[header_count:]
     if height >= 20:
