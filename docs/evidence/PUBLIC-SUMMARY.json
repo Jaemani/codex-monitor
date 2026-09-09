@@ -2051,6 +2051,17 @@
         "Final caption polish reran controls; native interaction and sampler results apply to the preceding candidate.",
         "Already in-flight delivery may finish; no native cancellation or Desktop wakeup claim."
       ]
+    },
+    {
+      "local_report": "cm-doctor-consumer-canary.json",
+      "result": "PASS",
+      "scope": "native read-only readiness; isolated loaded owner and current Desktop shared queue",
+      "checks": 4,
+      "elapsed_seconds": 0.917,
+      "regression_tests": 15,
+      "desktop_ui_verified": false,
+      "cold_desktop_wakeup_fixed": false,
+      "initial_harness_failures": "Unmaterialized fixture lacked stored rollout and turns; corrected checks passed; originals retained locally."
     }
   ]
 }

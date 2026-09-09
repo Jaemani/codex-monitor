@@ -457,3 +457,12 @@ The final predicate wheel also passed `managed-predicate-canary.py --tui`
 without `--remote` in 55.757 seconds, using the ordinary shared-local CLI.
 Matched and recovered events rendered and were correlated once each by exact
 client ID; the subsequent user response passed. No command approval occurred.
+
+## Consumer readiness gate (2026-09-09)
+
+Fifteen doctor/CLI tests passed. A native check passed four assertions in 0.917 seconds: an isolated
+loaded owner passes the strict gate, the current Desktop shared queue keeps default compatibility
+behavior, unknown consumption fails the strict gate, and the fixture has no queued input or user turns.
+Two initial harness runs assumed a newly started thread already had a persisted rollout/turn list;
+those assumptions were corrected and the failure reports retained locally. No Desktop UI interaction
+or cold-task wakeup is claimed. The running receiver was not upgraded or restarted for this change.

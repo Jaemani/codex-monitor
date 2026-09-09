@@ -14,6 +14,9 @@ Busy conversations queue input for native processing; this is not a continuously
 Actual consumption requires the target to remain loaded in an owning Codex client. A running Desktop
 app or an enabled binding does not keep every saved task loaded. Unloaded targets retain queued input
 and do not self-start from a shared-local write. State this limitation for unattended or multi-task setups.
+For unattended setup, run `doctor --endpoint ENDPOINT --thread THREAD_ID --require-consumer`.
+Unknown consumer readiness fails this gate even when queue access works; report it as unverified,
+not as proof that the task is unloaded. A passing owner probe is a current observation, not a residency guarantee.
 For explicitly requested unattended CLI operation or owner reconnection, read
 [resident.md](references/resident.md). It uses a shared owner and deliberate subscriptions;
 the default Desktop owner path remains unavailable.
@@ -34,6 +37,22 @@ If the runtime is missing, read [installation.md](references/installation.md).
 For “this conversation,” use the exact thread ID from host context or `CODEX_THREAD_ID`. If unavailable,
 ask for the existing conversation ID; never pick the most recent thread. Inspect `monitor list --thread THREAD_ID`
 before changing managed monitors. A monitor name is scoped to its conversation; identical names in other conversations must remain untouched.
+
+## Assign the conversation group
+
+When attaching a source or creating a managed monitor, inspect `conversation list --thread THREAD_ID`
+in the same state directory. Preserve existing project/name metadata. For a new conversation whose
+project is established by the user or task context, save the group and a short role name:
+
+```text
+conversation set --thread THREAD_ID --project "My project" --name "Mobile"
+conversation list --thread THREAD_ID
+```
+
+Complete setup by verifying the saved group/name. All routes for the conversation share this metadata;
+`bind` and `monitor create` do not assign it automatically. Use the user's project identity, not a guess
+from route prefixes or the working directory. If the project is unknown, leave it Ungrouped and state
+that explicitly. Grouping does not create a parent agent or change the native conversation title.
 
 ## Set up a managed file monitor
 

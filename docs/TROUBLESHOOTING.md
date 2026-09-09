@@ -40,6 +40,21 @@ but there is no universal timeout after which replay is safe. Preserve the origi
 for one native consumption and the actual requested result. Any decision to open/load the exact task
 must respect its existing workflow; monitoring never silently resumes, starts or interrupts it.
 
+## Require a verified consumer during setup
+
+For unattended workflows, use the stricter read-only check against the exact target:
+
+```bash
+codex-monitor doctor --surface desktop --endpoint shared-local --thread THREAD_ID --require-consumer
+```
+
+The default probe checks queue compatibility. With `--require-consumer`, unknown consumer readiness
+returns exit code 2 even when the queue API works. Shared-local cannot observe the owning Desktop
+consumer, so this result means **unverified**, not proof that the task is unloaded or broken.
+An explicit owner endpoint with the exact thread loaded can pass this check. Passing establishes
+current ownership only; it does not prove future residency, producer health, UI behavior or task success.
+Use the [CLI owner lifecycle](OWNER-LIFECYCLE.md) for a supervised unattended configuration.
+
 ## Operational boundary
 
 For unattended response, provide a supported client/session owner that keeps the intended conversation

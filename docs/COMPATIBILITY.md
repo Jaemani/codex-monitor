@@ -80,6 +80,14 @@ The direct-socket notes below are historical. They do not show that `shared-loca
 
 ### Owner attachment follow-up (2026-09-09)
 
+A subsequent recheck still found CLI and Desktop binaries at 0.153.4, no default control socket,
+and a failed `local` doctor connection. The current Desktop conversation passed the shared-local
+queue probe, with consumer readiness explicitly unknown. Official App Server and remote-connection
+documentation still did not establish an external attachment API for the existing local Desktop owner.
+Computer Use again refused access to the Desktop app; no alternative UI automation was used.
+The optional `doctor --require-consumer` check now prevents an unknown consumer from passing an
+unattended setup gate. It is a diagnostic improvement, not a cold-task wakeup implementation.
+
 The installed Desktop bundle and CLI both report Codex 0.153.4. The Desktop child still has no
 `--listen` argument, and the official `local` doctor probe returns `ready:false` with no fallback.
 This is an owner-access boundary, not a demonstrated CLI/Desktop version mismatch.

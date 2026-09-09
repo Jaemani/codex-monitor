@@ -10,6 +10,19 @@ target thread to be loaded on their server.
 
 ## Incident findings and current limitations (2026-09-09)
 
+- Desktop follow-up: shared-local queue access passed for the current conversation, while the local
+  owner endpoint remained unavailable. CLI and bundled Desktop binaries still report 0.153.4.
+  Added optional `doctor --require-consumer`: unknown consumption cannot pass an unattended setup
+  check. Fifteen doctor/CLI tests passed; a native read-only check passed four assertions in 0.917
+  seconds using an isolated loaded owner and the current Desktop queue. No messages or model turns
+  were created. This does not fix unloaded Desktop wakeup. Desktop UI automation was refused again.
+  Two initial native harness runs exposed fixture assumptions (unmaterialized threads have no stored
+  rollout/turn list); corrected checks passed and initial reports remain local.
+
+- Setup guidance now includes explicit conversation group/name assignment and verification in the
+  skill entrypoint. The dashboard guide previously documented grouping, but the installed skill
+  omitted this setup step. Binding and managed-monitor creation still do not assign groups automatically.
+
 - Explicit project groups and stable conversation names are stored separately from routing IDs.
   The dashboard now stops/resumes the selected route and confirms removal; retired routes remain
   in the audit store but cannot accept fresh events or dispatch new claims. Native conversations

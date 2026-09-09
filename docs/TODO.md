@@ -10,6 +10,14 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Next: reliable everyday use
 
+- [x] **Optional consumer readiness gate.** `doctor --require-consumer` rejects unknown consumer
+  readiness while preserving the default queue probe. Shared-local cannot verify the Desktop owner;
+  this diagnostic does not complete the unloaded-conversation milestone below.
+
+- [x] **Group assignment in agent setup guidance.** Inspect existing metadata, assign a known project
+  and role for new conversations, and verify it before reporting setup complete. Unknown projects
+  remain explicitly Ungrouped; this is guidance, not automatic project inference.
+
 - [x] **Explicit project groups and conversation names.** Persist project/display metadata rather
   than inferring project identity from route prefixes. Group rows, distinguish duplicate labels,
   and leave unassigned conversations under Ungrouped. See [grouping](DASHBOARD.md).

@@ -27,7 +27,7 @@ from .replies import ReplyStore
 from .requests import RequestStore
 from .sessions import overview, display
 from .dashboard import run_dashboard
-from .doctor import probe_queue_target
+from .doctor import consumer_readiness_diagnostic, probe_queue_target
 from .resident import ResidentKeeper
 
 
@@ -182,6 +182,11 @@ def parser():
     doctor = commands.add_parser("doctor")
     doctor.add_argument("--endpoint", default="shared-local"); doctor.add_argument("--thread")
     doctor.add_argument("--surface", choices=["cli", "desktop"], default="cli")
+    doctor.add_argument(
+        "--require-consumer",
+        action="store_true",
+        help="fail unless an exact loaded consumer is verified",
+    )
     host = commands.add_parser("host"); host.add_argument("--port", type=int, default=8765)
     connect = commands.add_parser("connect")
     connect.add_argument("--endpoint"); connect.add_argument("--cwd", default=os.getcwd())
@@ -306,11 +311,22 @@ def main(argv=None):
                     delivery_guarantee = "queue target is readable; the owning local client consumer remains unverified"
                 else:
                     delivery_guarantee = "queue target is readable and loaded in this App Server"
-                output({"ready": bool(args.thread), "endpoint": args.endpoint, "requested_surface": args.surface,
-                        "level": ("shared-queue-ready" if args.endpoint == "shared-local" else "protocol-ready") if args.thread else "endpoint-only", "client_ui_verified": False,
-                        "loaded_thread_ids": loaded, "queue_api": {"ready": queue_ready, "method": "thread/queue/list"},
-                        "consumer_ready": consumer_ready, "delivery_guarantee": delivery_guarantee,
-                        "note": "The selected local client must use the same Codex storage; its own server consumes this queue." if args.endpoint == "shared-local" else "The selected client must be using this exact App Server and thread."})
+                result = {"ready": bool(args.thread), "endpoint": args.endpoint, "requested_surface": args.surface,
+                          "level": ("shared-queue-ready" if args.endpoint == "shared-local" else "protocol-ready") if args.thread else "endpoint-only", "client_ui_verified": False,
+                          "loaded_thread_ids": loaded, "queue_api": {"ready": queue_ready, "method": "thread/queue/list"},
+                          "consumer_ready": consumer_ready, "delivery_guarantee": delivery_guarantee,
+                          "note": "The selected local client must use the same Codex storage; its own server consumes this queue." if args.endpoint == "shared-local" else "The selected client must be using this exact App Server and thread."}
+                if args.require_consumer:
+                    diagnostic = consumer_readiness_diagnostic(
+                        consumer_ready,
+                        endpoint=args.endpoint,
+                        requested_surface=args.surface,
+                    )
+                    if diagnostic is not None:
+                        result.update(diagnostic)
+                        output(result)
+                        return 2
+                output(result)
                 return 0 if args.thread else 2
             except Exception as exc:
                 output({"ready": False, "requested_surface": args.surface, "endpoint": args.endpoint,

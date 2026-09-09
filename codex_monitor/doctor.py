@@ -14,6 +14,53 @@ SUPPORTED_QUEUE_BASELINE = "0.153.4"
 QUEUE_PROBE_METHOD = "thread/queue/list"
 
 
+def consumer_readiness_diagnostic(
+    consumer_ready: bool | str,
+    *,
+    endpoint: str,
+    requested_surface: str,
+) -> dict | None:
+    """Return bounded guidance when a caller requires a verified consumer.
+
+    Queue support and native consumption are separate facts.  In particular,
+    ``shared-local`` can prove that a queue target is readable while it cannot
+    prove that the owning client has the target loaded.  The diagnostic is
+    intentionally read-only: it tells the operator what to verify and does
+    not attempt to start, resume, or submit anything.
+    """
+
+    if consumer_ready is True:
+        return None
+    if consumer_ready == "unknown":
+        reason = (
+            "consumer readiness is unknown; shared-local queue support does not "
+            "verify an owning client"
+        )
+        next_step = (
+            "Shared-local cannot verify the consumer even after opening the task. "
+            "If a supported explicit App Server endpoint is available, probe that owner with "
+            "--thread and --require-consumer; otherwise verify consumption in "
+            "the client separately and keep unattended readiness unverified."
+        )
+    else:
+        reason = "consumer is not ready; no exact loaded owner was verified"
+        next_step = (
+            "Provide --thread for the exact loaded conversation on the selected "
+            "App Server, then rerun doctor --require-consumer."
+        )
+    return {
+        "ready": False,
+        "endpoint": endpoint,
+        "requested_surface": requested_surface,
+        "reason": reason,
+        "consumer_ready": consumer_ready,
+        "consumer_required": True,
+        "delivery_guarantee": "consumer readiness is required but not verified",
+        "next_step": next_step,
+        "read_only": True,
+    }
+
+
 def _is_unsupported_method(error: RpcError, method: str) -> bool:
     if error.code == -32601:
         return True
