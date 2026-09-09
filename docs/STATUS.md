@@ -38,6 +38,8 @@ target thread to be loaded on their server.
 - The final native rerun passed in **71.765 seconds**, including a **22.4-second** owner outage
   and the same four exact-once event/response checks across two tasks. The harness now distinguishes
   a temporary in-flight attempt reservation from a spent retry in settled pending state.
+- Implementation `86042e0` passed all four hosted macOS/Linux Python 3.11/3.14 regression and
+  packaging jobs: [CI run](https://github.com/Jaemani/codex-monitor/actions/runs/34316671221).
 
 - A reported Windows health-hook delivery failure was traced to a missing `thread/queue/list` API
   in Codex 0.147.0. An isolated official 0.147.0 macOS binary independently reproduced JSON-RPC

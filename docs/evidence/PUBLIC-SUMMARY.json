@@ -1667,6 +1667,12 @@
         "native_exact_responses_per_event": 1,
         "final_pass_after_cleanup": true,
         "harness_change": "allow temporary in-flight attempt reservation; judge settled pending state"
+      },
+      "hosted_ci": {
+        "implementation_commit": "86042e002eca4670128210dcf801229fe6507644",
+        "url": "https://github.com/Jaemani/codex-monitor/actions/runs/34316671221",
+        "result": "PASS",
+        "matrix": "macOS/Linux x Python 3.11/3.14; regression and packaging"
       }
     }
   ]
