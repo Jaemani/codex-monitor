@@ -52,6 +52,20 @@ resident process in addition to the receiver; see [setup and reconnect behavior]
 Default local Desktop does not yet have a verified owner connection for this lifecycle. A running
 Desktop app alone therefore cannot guarantee background processing of every saved conversation.
 
+### Start from Desktop, keep monitoring in CLI
+
+You can ask a Desktop assistant to configure **a local CLI monitoring task**. Desktop is where you
+request setup; a separate CLI owner and resident keep the selected task available. No SSH is required.
+Open its ordinary TUI to converse, inspect work, or answer approvals, and use `codex-monitor dashboard`
+to see registered monitoring routes without chat polling.
+
+This does **not** keep the requesting Desktop conversation loaded. Arbitrary unloaded Desktop tasks
+still cannot self-start from a shared queue write. Reusing a Desktop task in CLI requires a deliberate
+ownership transition; independent Desktop and CLI servers cannot both own it. A separate CLI task's
+responses do not automatically return to the Desktop requesting task.
+
+See [Desktop-to-CLI setup, example request, status checks and stop controls](docs/OWNER-LIFECYCLE.md#request-from-desktop-run-through-cli).
+
 ## Quick start
 
 Requires **Python 3.11+**, Codex CLI and a local CLI/Desktop conversation. The installer supports macOS and Linux and installs the Python `websockets` dependency.

@@ -8,6 +8,10 @@ writer does not load or start a conversation, resume a thread, start a turn,
 or interrupt a turn. Direct WebSocket, daemon, and SSH adapters require the
 target thread to be loaded on their server.
 
+Documentation update (2026-09-10): Desktop-requested CLI monitoring now has an explicit setup guide,
+ownership boundaries, user handoff commands, status semantics and scoped stop controls. The source
+and local skill guidance were updated. No runtime behavior or new Desktop verification is claimed.
+
 ## Incident findings and current limitations (2026-09-09)
 
 - Desktop follow-up: shared-local queue access passed for the current conversation, while the local

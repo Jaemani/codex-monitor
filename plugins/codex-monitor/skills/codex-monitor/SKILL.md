@@ -28,6 +28,13 @@ producer is missing, implement it within the authorized task or report the missi
 Do not silently substitute a recurring model automation. Change an existing schedule only within
 the user's requested scope; timed reminders remain a separate use case.
 
+
+A request made in Desktop may use a local CLI owner/resident for an explicitly selected monitoring
+conversation. Explain where execution will run; do not equate this with keeping the requesting Desktop
+conversation loaded. For this choice, read [resident.md](references/resident.md). A separate monitoring
+task needs explicit user authorization to create it; reusing a task requires resolving its existing
+owner without stealing locks. Responses in a separate CLI task are not automatically relayed back.
+
 ## Locate and inspect
 
 Run the bundled `scripts/monitor.py context` helper to locate the runtime, `CODEX_THREAD_ID`, and default

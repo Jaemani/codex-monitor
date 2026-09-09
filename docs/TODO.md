@@ -10,6 +10,9 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Next: reliable everyday use
 
+- [x] **Desktop-requested CLI operating guide.** Explain execution ownership, status checks, TUI access,
+  supervision, route controls and the remaining unloaded-Desktop boundary.
+
 - [x] **Optional consumer readiness gate.** `doctor --require-consumer` rejects unknown consumer
   readiness while preserving the default queue probe. Shared-local cannot verify the Desktop owner;
   this diagnostic does not complete the unloaded-conversation milestone below.
