@@ -64,9 +64,10 @@ The fixed header shows **Live** with a pulsing dot; wide screens also show snaps
 that the view is refreshing, not that every producer or Codex model is connected. Animation reuses
 the latest snapshot; it does not increase the configured read/probe frequency or invoke the model.
 
-The Graphite overview shows one row per conversation, with connection count and recent activity
+The compact Graphite overview shows one single-height row per conversation, with connection count and recent activity
 in aligned columns. Thin dividers, a subtle selection background and an emerald leading marker
-separate the list from the persistent selected-conversation context below it. The selected route
+separate the list from the selected-conversation context directly below it.
+Rows do not expand with terminal height; the selected background covers only its text row. The selected route
 is visible before Enter; changing presentation never changes its stored conversation identity.
 Managed monitors use their collector names instead of generated binding IDs. UUIDs, server addresses,
 receipt IDs and raw delivery states appear in `d` details. An em dash means no recorded event activity.

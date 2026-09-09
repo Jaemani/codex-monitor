@@ -981,8 +981,7 @@ def _detail_lines(connection: dict[str, Any], binding: dict[str, Any], color: bo
 
 def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = False,
                  selected: int = 0, selected_route: int = 0, detail: bool | str = False, live: bool = False,
-                 frame: bool = False, animate: bool = True, now: float | None = None,
-                 row_gap: int = 0) -> list[str]:
+                 frame: bool = False, animate: bool = True, now: float | None = None) -> list[str]:
     """Render the calm overview and optional technical details."""
 
     width = max(1, int(width or 1))
@@ -1067,11 +1066,6 @@ def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = Fa
         elif conversation_index != selected:
             line = line.rstrip()
         lines.append(line)
-        if conversation_index + 1 < len(connections):
-            padding = [""] * row_gap
-            if padding and conversation_index == selected and color:
-                padding[0] = "\x1b[48;5;236m\x1b[32m▌" + " " * (width - 1) + "\x1b[0m"
-            lines.extend(padding)
         if detail == "all":
             for binding in bindings:
                 lines.append("")
@@ -1121,24 +1115,17 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
 
     width = max(1, int(width or 1))
     height = max(2, int(height or 2))
-    conversation_total = len(snapshot.get("connections") or [])
-    roomy = height >= 34 and width >= 72 and not detail and snapshot.get("ok")
-    row_gap = min(2, max(0, (height - 17 - conversation_total) // max(1, conversation_total - 1))) if roomy else 0
     body = render_lines(snapshot, width, color=color, selected=selected, selected_route=selected_route, detail=detail,
-                        live=live, frame=frame, animate=animate, now=now, row_gap=row_gap)
+                        live=live, frame=frame, animate=animate, now=now)
     context = _selection_context(snapshot, selected, selected_route, width, color)
     # Keep the title, receiver state and summary pinned. The conversation list
     # scrolls while the selected context and controls stay visible.
     header_count = min(3, len(body))
     header = body[:header_count]
     table = body[header_count:]
-    if roomy:
-        header = [""] + header + [""]
-        # Give the column headings their own breathing room at full size.
-        if width >= 60 and len(table) >= 2:
-            table = table[:2] + [""] + table[2:]
-        context = [context[0], ""] + context[1:-1] + ["", context[-1]]
-    elif height < 16:
+    if height >= 20:
+        header.append("")
+    if height < 16:
         # Keep route identity and exit keys visible even in very short terminals.
         context = [context[3]] if len(context) >= 6 else context[1:2]
     header_count = len(header)
@@ -1165,7 +1152,6 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
             offset = min(maximum, selected_line - body_slots + 1)
     visible = header + table[offset:offset + body_slots]
     visible = visible[:available]
-    visible += [""] * (available - len(visible))
     conversation_total = len(snapshot.get("connections") or [])
     conversation_position = min(max(int(selected), 0), max(0, conversation_total - 1)) + 1 if conversation_total else 0
     footer = (
@@ -1183,7 +1169,11 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
         trailing = context + (["OPEN: " + notice] if notice else []) + [footer]
     else:
         trailing = context[:-1] + (["OPEN: " + notice] if notice else []) + [context[-1], footer]
-    return "\n".join(_clip(line, width) for line in (visible + trailing)[-height:])
+    # Keep context directly below the inventory; only the key hints are pinned
+    # to the bottom. Every conversation, including the selection, is one line.
+    content = visible + trailing[:-1]
+    content += [""] * max(0, height - len(content) - 1)
+    return "\n".join(_clip(line, width) for line in (content + trailing[-1:])[-height:])
 
 
 def _key(stdin: TextIO) -> str | None:

@@ -10,6 +10,13 @@ target thread to be loaded on their server.
 
 ## Incident findings and current limitations (2026-09-09)
 
+- Compact Graphite follow-up: removed bottom-only selection padding and automatic row expansion.
+  All rows now have one-line height; selected context follows the inventory directly. Dashboard
+  regression: 18 tests in 2.692 seconds. Installed PTY: 42 checks in 6.274 seconds; ordinary TUI
+  route selection, same-thread interaction and dashboard return: PASS in 20.073 seconds.
+  Global upgrade matched 21 modules, preserved sixteen bindings, ten receipts and credentials,
+  and returned the receiver ready.
+
 - Graphite dashboard, 2026-09-09: one row per conversation, adaptive spacing, emerald selection
   marker, full-width highlight and persistent route context. The source suite passed **194 tests
   in 53.730 seconds**; after the final footer fix, all 18 dashboard tests passed in 2.677 seconds.

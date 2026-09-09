@@ -52,3 +52,13 @@ The capture is a terminal-cell rendering with synthetic data, not an operational
 Native TUI interaction results are recorded separately in the testing and evidence documents.
 
 final result: passed
+
+## User-requested compact follow-up
+
+The user reported bottom-only selection padding. Removed adaptive row gaps and the extra
+highlighted blank line. Every conversation now occupies exactly one line; selected context follows
+the inventory immediately while keyboard hints remain at the bottom. The refreshed actual renderer
+capture in `.runtime/graphite-screen.png` was opened at 100 by 40 with the same fixture.
+This compact layout intentionally supersedes the original concept's vertical spacing.
+
+final result: passed

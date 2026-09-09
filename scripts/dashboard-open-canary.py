@@ -148,7 +148,7 @@ class Canary:
         """Return the bottom route context, keeping route identity separate from the row."""
 
         lines = []
-        for line in text.splitlines()[-8:]:
+        for line in text.splitlines():
             lower = line.lower()
             if not lower.strip().startswith("route "):
                 continue

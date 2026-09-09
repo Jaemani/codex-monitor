@@ -51,7 +51,7 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Compatibility and resilience
 
-- [x] **Graphite conversation overview.** One row per conversation, adaptive spacing, selected-row
+- [x] **Graphite conversation overview.** One compact row per conversation, uniform height, selected-row
   background and emerald marker, persistent route context, and Tab cycling between exact routes.
   Small terminals retain route and exit controls. The initial selection prefers an enabled explicit
   owner route; shared-local opening remains an explicit error. See [visual QA](../design-qa.md).
