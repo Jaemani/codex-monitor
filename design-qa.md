@@ -57,8 +57,11 @@ final result: passed
 
 The user reported bottom-only selection padding. Removed adaptive row gaps and the extra
 highlighted blank line. Every conversation now occupies exactly one line; selected context follows
-the inventory immediately while keyboard hints remain at the bottom. The refreshed actual renderer
+the inventory immediately with keyboard hints immediately underneath. The refreshed actual renderer
 capture in `.runtime/graphite-screen.png` was opened at 100 by 40 with the same fixture.
 This compact layout intentionally supersedes the original concept's vertical spacing.
 
 final result: passed
+
+The subsequent width correction caps the live panel at 96 columns and removes footer stretching.
+The refreshed 100 by 40 renderer capture was inspected; the whole panel stays together.

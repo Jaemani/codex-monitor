@@ -1113,7 +1113,7 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
                 notice: str | None = None) -> str:
     """Render a bounded viewport with a persistent header and compact table."""
 
-    width = max(1, int(width or 1))
+    width = min(96, max(1, int(width or 1)))
     height = max(2, int(height or 2))
     body = render_lines(snapshot, width, color=color, selected=selected, selected_route=selected_route, detail=detail,
                         live=live, frame=frame, animate=animate, now=now)
@@ -1169,10 +1169,8 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
         trailing = context + (["OPEN: " + notice] if notice else []) + [footer]
     else:
         trailing = context[:-1] + (["OPEN: " + notice] if notice else []) + [context[-1], footer]
-    # Keep context directly below the inventory; only the key hints are pinned
-    # to the bottom. Every conversation, including the selection, is one line.
+    # Keep the whole panel together instead of stretching to the terminal edges.
     content = visible + trailing[:-1]
-    content += [""] * max(0, height - len(content) - 1)
     return "\n".join(_clip(line, width) for line in (content + trailing[-1:])[-height:])
 
 

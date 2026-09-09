@@ -10,6 +10,12 @@ target thread to be loaded on their server.
 
 ## Incident findings and current limitations (2026-09-09)
 
+- Bounded compact panel: live width is capped at 96 columns; keyboard hints follow the content.
+  This prevents right-side indicators and the footer from drifting to distant terminal edges.
+  Dashboard tests: 18 passed in 2.700 seconds; global-installed PTY: 42 checks passed in
+  6.180 seconds. Sixteen bindings, ten receipts and credentials remained intact;
+  receiver readiness returned. No additional native-delivery claim is made for this layout-only fix.
+
 - Compact Graphite follow-up: removed bottom-only selection padding and automatic row expansion.
   All rows now have one-line height; selected context follows the inventory directly. Dashboard
   regression: 18 tests in 2.692 seconds. Installed PTY: 42 checks in 6.274 seconds; ordinary TUI

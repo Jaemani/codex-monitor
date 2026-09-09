@@ -1857,6 +1857,56 @@
           }
         }
       ]
+    },
+    {
+      "local_report": "codex-monitor-dashboard-bounded-pty.json",
+      "scope": "Global-installed bounded compact dashboard PTY",
+      "result": "PASS",
+      "elapsed_seconds": 6.18,
+      "checks": {
+        "managed_collector_is_visible": true,
+        "json_snapshot_is_read_only": true,
+        "json_snapshot_filters_thread": true,
+        "json_snapshot_contains_bindings": true,
+        "json_snapshot_excludes_other_thread": true,
+        "json_snapshot_contains_collector": true,
+        "json_snapshot_reports_receiver_ready": true,
+        "text_snapshot_contains_multiple_bindings": true,
+        "text_snapshot_contains_collector": true,
+        "text_snapshot_contains_conversation_inventory": true,
+        "text_snapshot_labels_configuration_states": true,
+        "text_snapshot_has_no_terminal_controls": true,
+        "text_snapshot_lines_fit_default_width": true,
+        "text_snapshot_has_persistent_header": true,
+        "no_color_snapshot_is_plain": true,
+        "color_snapshot_preserves_status_palette": true,
+        "unfiltered_json_contains_other_thread": true,
+        "missing_state_snapshot_fails_read_only": true,
+        "missing_state_remains_missing": true,
+        "live_dashboard_reports_receiver_ready": true,
+        "live_dashboard_renders_conversation_inventory": true,
+        "live_dashboard_renders_route_context": true,
+        "route_tab_cycles_binding": true,
+        "route_context_shows_binding": true,
+        "live_unfiltered_dashboard_reaches_other_thread": true,
+        "row_navigation_changes_selection": true,
+        "live_indicator_animates_independently": true,
+        "live_frames_render_current_header": true,
+        "snapshot_age_is_rendered": true,
+        "snapshot_age_changes_between_frames": true,
+        "live_color_attributes_are_present": true,
+        "live_renderer_avoids_full_screen_clear": true,
+        "narrow_resize_keeps_lines_bounded": true,
+        "narrow_resize_keeps_dashboard_visible": true,
+        "receiver_outage_is_visible": true,
+        "receiver_recovery_is_visible": true,
+        "q_process_cleaned_up": true,
+        "q_termios_restored": true,
+        "ctrl_c_process_cleaned_up": true,
+        "ctrl_c_termios_restored": true,
+        "dashboard_does_not_mutate_database": true,
+        "no_model_session_calls": true
+      }
     }
   ]
 }
