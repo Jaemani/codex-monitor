@@ -6,6 +6,22 @@ Raw reports, terminal buffers, conversation IDs and host paths remain local and 
 
 Key observations:
 
+- Graphite dashboard, 2026-09-09: one row per conversation, adaptive spacing, emerald selection
+  marker, full-width highlight and persistent route context. The source suite passed **194 tests
+  in 53.730 seconds**; after the final footer fix, all 18 dashboard tests passed in 2.677 seconds.
+  The final installed wheel passed **42 dashboard PTY checks in 6.119 seconds** and the ordinary
+  TUI multi-route open/follow-up/return canary in **19.930 seconds**. Tab cycled shared-local and
+  explicit owner routes; shared-local opening was rejected and the exact owner route opened.
+  Global installation matched all 21 modules, preserved sixteen bindings, nine receipts and
+  credentials, and returned the receiver ready. Existing open dashboards need to be restarted.
+  Visual comparison used synthetic conversation data; no new Desktop or event-delivery claim.
+
+  Local reports: `codex-monitor-dashboard-graphite-installed-pty.json` and
+  `codex-monitor-dashboard-graphite-installed-open-pass.json`. Two earlier native attempts remain
+  FAIL: the driver looked for the old selection marker, then treated a predicate result as screen
+  text. Both cleaned up their owned fixtures. The final driver checks the exact route context.
+  Wheel SHA-256: `c8573596bd965b088da578fc04ce37e19a4082e7471f91ced149afc13f11a0a6`.
+
 - Dashboard visual polish, 2026-09-09: 192 source tests passed in 54.064 seconds. The final wheel
   passed 39 dashboard PTY checks in 7.779 seconds and the same-thread native TUI open/follow-up/return
   canary in 20.091 seconds. Local reports: `codex-monitor-dashboard-polish-installed-pty.json`

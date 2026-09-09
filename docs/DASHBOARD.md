@@ -21,9 +21,10 @@ Use snapshot mode in scripts and redirected output.
 ## Controls
 
 - `q` or Ctrl-C: leave the dashboard. The receiver and monitors continue running.
-- `j` / `k` or down / up: select a binding and scroll the inventory.
+- `j` / `k` or down / up: select a conversation and scroll the inventory.
 - Home / End and Page Up / Page Down: navigate longer inventories.
-- `d`: toggle details for the selected binding.
+- Tab: cycle the selected conversation's connections; the selected route remains visible below.
+- `d`: toggle details for the selected connection.
 - Enter or `o`: open the selected conversation in the ordinary Codex TUI on its saved owner endpoint.
   Exit that TUI to return to the dashboard in the same terminal.
 - Resize the terminal to fit your workspace; the next render adapts to its dimensions.
@@ -34,7 +35,9 @@ for those actions after inspecting the relevant conversation and receipt.
 
 ## Open a conversation and interact
 
-Run `codex-monitor dashboard`, select a binding with the arrow keys, then press Enter. The dashboard
+Run `codex-monitor dashboard`, select a conversation with the arrow keys, then press Enter. For
+multiple connections, inspect the route shown below the list and use Tab to choose another.
+Selecting a conversation initially prefers an enabled explicit owner route. The dashboard
 temporarily hands the terminal to `codex --remote ENDPOINT resume THREAD_ID`. In that TUI you can
 read the conversation, watch new event responses, send messages and answer native approvals.
 The existing conversation ID and saved endpoint are retained; no replacement task is created.
@@ -57,21 +60,27 @@ the selected conversation's normal model and permissions.
 
 ## Reading the screen
 
-The fixed header shows **Live** with a pulsing dot and the snapshot age. This indicates
+The fixed header shows **Live** with a pulsing dot; wide screens also show snapshot age in the footer. This indicates
 that the view is refreshing, not that every producer or Codex model is connected. Animation reuses
 the latest snapshot; it does not increase the configured read/probe frequency or invoke the model.
 
-The overview emphasizes names and recent activity, grouped by conversation. Managed monitors use
-their collector names instead of generated binding IDs. UUIDs, server addresses, receipt IDs and
-raw delivery states appear in `d` details rather than occupying the main view. Selecting a friendly
-label still opens the exact stored conversation; the presentation never changes routing.
-Recent activity occupies a separate column on wider terminals; an em dash means no recorded event
-activity. Narrow layouts prioritize the name. Neither a dash nor a green dot means a model is idle.
+The Graphite overview shows one row per conversation, with connection count and recent activity
+in aligned columns. Thin dividers, a subtle selection background and an emerald leading marker
+separate the list from the persistent selected-conversation context below it. The selected route
+is visible before Enter; changing presentation never changes its stored conversation identity.
+Managed monitors use their collector names instead of generated binding IDs. UUIDs, server addresses,
+receipt IDs and raw delivery states appear in `d` details. An em dash means no recorded event activity.
+Narrow layouts prioritize names and the selected route. Neither a dash nor a green dot means a model
+is idle. Conversation labels are presentation hints derived from saved routes, not fetched native titles.
 
 - **Green dot:** binding enabled or receiver ready, according to the field.
 - **Red dot:** binding paused or receiver stopped.
 - **Amber dot:** old or unhealthy observations; inspect the details.
 - **Muted dot:** unavailable observations.
+
+A conversation row summarizes its routes: green means at least one route is enabled, red means all
+routes are paused, and a stale collector can make the summary amber. It is not a count of connected
+Codex clients. Inspect the selected route and details when a conversation mixes enabled and paused routes.
 
 Status cells use dots rather than ON/OFF labels. Without color, dot shapes and descriptive details
 provide the distinction. Use `--color auto|always|never`; auto honors `NO_COLOR`

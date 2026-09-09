@@ -13,8 +13,10 @@ the existing read-only dashboard PTY suite:
 ```
 
 The canary requires the development `pyte` extra and authenticated Codex 0.153.4. It uses Luna/xhigh
-on one disposable Unix-owner conversation, presses Enter in the dashboard, verifies a user follow-up
-in that same native history, exits the TUI with `/quit`, and checks dashboard return. It archives
+on one disposable Unix-owner conversation with both shared-local and explicit owner routes. It
+checks the preferred route, cycles routes with Tab, verifies safe rejection of shared-local opening,
+then opens the explicit route and verifies a user follow-up in that same native history. It exits
+the TUI with `/quit` and checks dashboard return. It archives
 the fixture and checks process/workspace cleanup before PASS. Pass `--dashboard-python` with an
 absolute installed Python path to exercise an installed dashboard instead of the source checkout.
 This is user-interaction evidence, not a new external-event, Desktop or production-service test.

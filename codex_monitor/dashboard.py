@@ -774,6 +774,149 @@ def _binding_rows(snapshot: dict[str, Any]) -> list[tuple[dict[str, Any], dict[s
     return rows
 
 
+def _preferred_route(connection: dict[str, Any]) -> int:
+    """Choose an explicit enabled owner route before shared/local fallbacks."""
+
+    bindings = connection.get("bindings") or []
+    ranked: list[tuple[int, int]] = []
+    for index, binding in enumerate(bindings):
+        endpoint = binding.get("endpoint")
+        explicit = isinstance(endpoint, str) and endpoint.startswith(("ws://", "wss://", "unix://"))
+        rank = (
+            0 if binding.get("enabled") is True and explicit else
+            1 if binding.get("enabled") is True else
+            2 if explicit else 3
+        )
+        ranked.append((rank, index))
+    return min(ranked, default=(0, 0))[1]
+
+
+def _conversation_status(connection: dict[str, Any]) -> str:
+    """Summarize route/collector health into one conversation dot."""
+
+    bindings = connection.get("bindings") or []
+    collector_states = [_collector_status(item) for item in connection.get("collectors") or []]
+    if "STALE" in collector_states:
+        return "STALE"
+    statuses = [_binding_status(binding) for binding in bindings]
+    if "ON" in statuses:
+        return "ON"
+    if statuses and all(value == "OFF" for value in statuses):
+        return "OFF"
+    return "UNKNOWN"
+
+
+def _conversation_label(connection: dict[str, Any]) -> str:
+    """Derive a stable human route label without rewriting identifiers."""
+
+    bindings = connection.get("bindings") or []
+    entries = [(_binding_label(connection, binding), binding) for binding in bindings]
+    nonmanaged = [label for label, binding in entries if "managed/file" not in (binding.get("sources") or [])]
+    labels = nonmanaged or [label for label, _ in entries]
+    labels = list(dict.fromkeys(label for label in labels if label))
+    if not labels:
+        return "Unnamed conversation"
+    source_ids = list(dict.fromkeys(
+        source for _, binding in entries
+        for source in (binding.get("sources") or [])
+        if source != "managed/file" and isinstance(source, str) and source
+    ))
+    for source in source_ids:
+        prefix = source.casefold() + "-"
+        remainders = [label[len(source) + 1:] for label in labels if label.casefold().startswith(prefix)]
+        if len(remainders) == len(labels) and all(remainders):
+            labels = remainders
+            break
+    if len(labels) == 1:
+        return labels[0]
+    generic = {"managed", "watch", "route", "binding", "connection"}
+    tokenized = [re.split(r"[\s:_/.-]+", label.strip()) for label in labels]
+    common: list[str] = []
+    for parts in zip(*tokenized):
+        if len({part.casefold() for part in parts}) != 1:
+            break
+        common.append(parts[0])
+    if common:
+        candidate = "-".join(common)
+        if len(candidate) >= 3 and candidate.casefold() not in generic:
+            return candidate
+    return f"{labels[0]} + {len(labels) - 1} routes"
+
+
+def _conversation_activity(connection: dict[str, Any]) -> str:
+    """Aggregate recent route activity into one human phrase."""
+
+    counts: dict[str, int] = {}
+    latest: dict[str, Any] | None = None
+    for binding in connection.get("bindings") or []:
+        events = binding.get("events") or {}
+        for state, count in (events.get("counts") or {}).items():
+            try:
+                counts[state] = counts.get(state, 0) + int(count)
+            except (TypeError, ValueError):
+                continue
+        candidate = events.get("latest")
+        candidate_age = _number(candidate.get("age_seconds")) if candidate else None
+        latest_age = _number(latest.get("age_seconds")) if latest else None
+        if candidate and (
+            latest is None or
+            candidate_age is not None and (latest_age is None or candidate_age < latest_age)
+        ):
+            latest = candidate
+    if latest is None and not counts:
+        return "—"
+    if latest is not None:
+        state = latest.get("state")
+        count = counts.get(state, 1)
+        return f"{count} {_event_state(state)} · {_age_text(latest.get('age_seconds'))} ago"
+    state, count = max(counts.items(), key=lambda item: item[1])
+    return f"{count} {_event_state(state)}"
+
+
+def _conversation_summary(connection: dict[str, Any]) -> str:
+    """Describe the selected conversation's routes without exposing endpoints."""
+
+    bindings = connection.get("bindings") or []
+    source_names: list[str] = []
+    file_monitors = 0
+    for binding in bindings:
+        sources = binding.get("sources") or []
+        if "managed/file" in sources:
+            file_monitors += 1
+        for source in sources:
+            if source != "managed/file" and source not in source_names:
+                source_names.append(_safe(source).replace("_", " "))
+    parts = [name.upper() if len(name) <= 3 else name.title() for name in source_names]
+    if file_monitors:
+        parts.append(f"{file_monitors} file monitor" + ("s" if file_monitors != 1 else ""))
+    if not parts:
+        return f"{len(bindings)} connection" + ("s" if len(bindings) != 1 else "")
+    return " + ".join(parts)
+
+
+def _selected_binding_index(snapshot: dict[str, Any], selected: int, selected_route: int) -> int:
+    connections = snapshot.get("connections") or []
+    if selected < 0 or selected >= len(connections):
+        raise DashboardError("selected conversation is out of range")
+    bindings = connections[selected].get("bindings") or []
+    if not bindings:
+        raise DashboardError("selected conversation has no routes")
+    route = selected_route % len(bindings)
+    target = bindings[route]
+    rows = _binding_rows(snapshot)
+    for index, (connection, binding, _) in enumerate(rows):
+        if connection is connections[selected] and binding is target:
+            return index
+    raise DashboardError("selected route is no longer visible; refresh the dashboard")
+
+
+def _cycle_route(connection: dict[str, Any], selected_route: int) -> int:
+    """Advance the selected conversation route for Tab navigation."""
+
+    total = len(connection.get("bindings") or [])
+    return (selected_route + 1) % total if total else 0
+
+
 def _refresh_line(snapshot: dict[str, Any], now: float) -> str:
     timestamp = _number(snapshot.get("generated_at"))
     if timestamp is None:
@@ -797,7 +940,8 @@ def _binding_label(connection: dict[str, Any], binding: dict[str, Any]) -> str:
 def _fit(text: Any, width: int) -> str:
     """Fit a trusted display cell while preserving any approved SGR."""
 
-    value = _clip(_safe(text), max(0, width))
+    raw = str(text)
+    value = _clip(raw if _ANSI_SGR.search(raw) else _safe(raw), max(0, width))
     visible = sum(_cell_width(char) for char in _ANSI_SGR.sub("", value))
     return value + " " * max(0, width - visible)
 
@@ -836,18 +980,19 @@ def _detail_lines(connection: dict[str, Any], binding: dict[str, Any], color: bo
 
 
 def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = False,
-                 selected: int = 0, detail: bool | str = False, live: bool = False,
-                 frame: bool = False, animate: bool = True, now: float | None = None) -> list[str]:
+                 selected: int = 0, selected_route: int = 0, detail: bool | str = False, live: bool = False,
+                 frame: bool = False, animate: bool = True, now: float | None = None,
+                 row_gap: int = 0) -> list[str]:
     """Render the calm overview and optional technical details."""
 
     width = max(1, int(width or 1))
     now = time.time() if now is None else now
     pulse = "●" if (frame or not animate) else "○"
-    title = (
-        f"codex-monitor  Live {_paint(pulse, 36, color)}"
-        if live else "codex-monitor  Snapshot"
-    )
-    lines = [title]
+    title_right = f"{_paint(pulse, 36, color)} Live" if live else "Snapshot"
+    title_left = _paint("codex-monitor", 1, color)
+    title_gap = max(2, width - len(_ANSI_SGR.sub("", title_left)) - len(_ANSI_SGR.sub("", title_right)))
+    lines = [title_left + " " * title_gap + title_right]
+    lines.append(_paint("─" * width, 90, color))
     receiver = snapshot.get("receiver") or {}
     receiver_state = _receiver_status(receiver)
     if detail:
@@ -857,15 +1002,15 @@ def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = Fa
             "unknown"
         )
         readiness = "ready" if receiver.get("ready") else "not ready"
-        receiver_line = f"{_status_dot(receiver_state, color)} Receiver · process {process} · status probe {readiness}"
+        receiver_text = f"{_status_dot(receiver_state, color)} Receiver · process {process} · status probe {readiness}"
         if receiver.get("health"):
-            receiver_line += " · health " + _safe(receiver.get("health"))
+            receiver_text += " · health " + _safe(receiver.get("health"))
         if receiver.get("reason"):
-            receiver_line += " · " + _safe(receiver.get("reason"))
+            receiver_text += " · " + _safe(receiver.get("reason"))
     else:
-        receiver_line = f"{_status_dot(receiver_state, color)} Receiver · {_refresh_line(snapshot, now)}"
-    lines.append(receiver_line)
+        receiver_text = f"{_status_dot(receiver_state, color)} Receiver"
     if not snapshot.get("ok"):
+        lines.append(receiver_text)
         lines.append("ERROR: " + _safe(snapshot.get("error"), max(1, width - 7)))
         lines.append("The state inventory will be retried while the dashboard is running.")
         return [_clip(line, width) for line in lines]
@@ -875,7 +1020,9 @@ def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = Fa
     rows = _binding_rows(snapshot)
     connection_word = "connection" if len(rows) == 1 else "connections"
     conversation_word = "conversation" if len(connections) == 1 else "conversations"
-    lines.append(f"{len(connections)} {conversation_word} · {len(rows)} {connection_word}")
+    summary = f"{len(connections)} {conversation_word}  /  {len(rows)} {connection_word}"
+    gap = max(2, width - len(summary) - len(_ANSI_SGR.sub("", receiver_text)))
+    lines.append(summary + " " * gap + receiver_text)
     if detail:
         lines.append(
             "Status: " + " ".join(
@@ -885,49 +1032,117 @@ def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = Fa
                 )
             )
         )
-    lines.append("Conversations")
     if not rows:
         lines.append("  No bindings yet")
-    for group_index, connection in enumerate(connections, 1):
-        lines.append("  " + _paint(f"Conversation {group_index}", 2, color))
+    if width >= 60:
+        conversation_width = min(40, max(20, width // 2))
+        connections_width = min(18, max(12, width // 6))
+        lines.append(
+            "      " + _fit("Conversation", conversation_width) +
+            _fit("Connections", connections_width) + "Recent activity"
+        )
+        lines.append(_paint("─" * width, 90, color))
+    for conversation_index, connection in enumerate(connections):
         bindings = connection.get("bindings") or []
-        for binding in bindings:
-            row_index = next(index for conn, item, index in rows if conn is connection and item is binding)
-            marker = _paint("▶", 36, color) if row_index == selected else " "
-            prefix = f"  {marker} {_status_dot(_binding_status(binding), color)} "
-            label = _binding_label(connection, binding)
-            activity = _event_compact(binding.get("events", {}))
-            if width >= 72:
-                label_width = min(32, max(18, width // 3))
-                activity_width = max(1, width - 6 - label_width - 2)
-                line = prefix + _fit(label, label_width) + "  " + _clip(activity, activity_width)
-            else:
-                line = prefix + label + " · " + activity
-            lines.append(line)
-            if detail == "all" or (detail and row_index == selected):
+        marker = _paint("▶", 36, color) if conversation_index == selected and not color else " "
+        label = _conversation_label(connection)
+        activity = _conversation_activity(connection)
+        if width >= 60:
+            bar = _paint("▌", 32, color) if conversation_index == selected else " "
+            prefix = f"{bar} {marker} {_status_dot(_conversation_status(connection), color)} "
+            label_display = _paint(label, 1, color)
+            activity_width = max(1, width - 6 - conversation_width - connections_width)
+            line = (
+                prefix + _fit(label_display, conversation_width) +
+                _fit(str(len(bindings)), connections_width) + _fit(activity, activity_width)
+            )
+        else:
+            line = (
+                f"{'▌' if conversation_index == selected else ' '} {marker} {_status_dot(_conversation_status(connection), color)} "
+                f"{_paint(label, 1, color)} · {len(bindings)} · {activity}"
+            )
+        if conversation_index == selected and color:
+            background = "\x1b[48;5;236m"
+            line = background + line.replace("\x1b[0m", "\x1b[0m" + background) + "\x1b[0m"
+        elif conversation_index != selected:
+            line = line.rstrip()
+        lines.append(line)
+        if conversation_index + 1 < len(connections):
+            padding = [""] * row_gap
+            if padding and conversation_index == selected and color:
+                padding[0] = "\x1b[48;5;236m\x1b[32m▌" + " " * (width - 1) + "\x1b[0m"
+            lines.extend(padding)
+        if detail == "all":
+            for binding in bindings:
                 lines.append("")
                 lines.extend(_detail_lines(connection, binding, color))
+        elif detail and conversation_index == selected and bindings:
+            route = selected_route % len(bindings)
+            lines.append("")
+            lines.extend(_detail_lines(connection, bindings[route], color))
     if snapshot.get("warnings"):
         lines.append("Warnings: " + "; ".join(_safe(value) for value in snapshot["warnings"]))
     return [_clip(line, width) for line in lines]
 
 
+def _selection_context(snapshot: dict[str, Any], selected: int, selected_route: int,
+                       width: int, color: bool) -> list[str]:
+    """Render the persistent selected conversation and route context."""
+
+    divider = _paint("─" * max(1, width), 90, color)
+    connections = snapshot.get("connections") or []
+    if selected < 0 or selected >= len(connections):
+        return [divider, "  No conversation selected", "  Enter to open selected route", divider]
+    connection = connections[selected]
+    bindings = connection.get("bindings") or []
+    if not bindings:
+        return [divider, "  " + _conversation_label(connection), "  No routes available", divider]
+    route = selected_route % len(bindings)
+    binding = bindings[route]
+    label = _conversation_label(connection)
+    route_label = _binding_label(connection, binding)
+    route_line = f"  Route {route + 1}/{len(bindings)} · {route_label}"
+    return [
+        divider,
+        "  " + _paint(label, 1, color),
+        "  " + _conversation_summary(connection),
+        route_line,
+        "  Enter to open selected route",
+        divider,
+    ]
+
+
 def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24, scroll: int = 0,
-                color: bool = False, selected: int = 0, detail: bool | str = False, live: bool = False,
+                color: bool = False, selected: int = 0, selected_route: int = 0,
+                detail: bool | str = False, live: bool = False,
                 frame: bool = False, animate: bool = True, now: float | None = None,
                 notice: str | None = None) -> str:
     """Render a bounded viewport with a persistent header and compact table."""
 
     width = max(1, int(width or 1))
     height = max(2, int(height or 2))
-    body = render_lines(snapshot, width, color=color, selected=selected, detail=detail,
-                        live=live, frame=frame, animate=animate, now=now)
-    # Keep the title, receiver state and legend pinned. The conversation list
-    # scrolls with the table so the controls remain visible on short screens.
+    conversation_total = len(snapshot.get("connections") or [])
+    roomy = height >= 34 and width >= 72 and not detail and snapshot.get("ok")
+    row_gap = min(2, max(0, (height - 17 - conversation_total) // max(1, conversation_total - 1))) if roomy else 0
+    body = render_lines(snapshot, width, color=color, selected=selected, selected_route=selected_route, detail=detail,
+                        live=live, frame=frame, animate=animate, now=now, row_gap=row_gap)
+    context = _selection_context(snapshot, selected, selected_route, width, color)
+    # Keep the title, receiver state and summary pinned. The conversation list
+    # scrolls while the selected context and controls stay visible.
     header_count = min(3, len(body))
     header = body[:header_count]
     table = body[header_count:]
-    footer_lines = 2 if notice else 1
+    if roomy:
+        header = [""] + header + [""]
+        # Give the column headings their own breathing room at full size.
+        if width >= 60 and len(table) >= 2:
+            table = table[:2] + [""] + table[2:]
+        context = [context[0], ""] + context[1:-1] + ["", context[-1]]
+    elif height < 16:
+        # Keep route identity and exit keys visible even in very short terminals.
+        context = [context[3]] if len(context) >= 6 else context[1:2]
+    header_count = len(header)
+    footer_lines = len(context) + (1 if notice else 0) + 1
     available = max(0, height - footer_lines)
     body_slots = max(0, available - header_count)
     maximum = max(0, len(table) - body_slots)
@@ -935,7 +1150,7 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
     # Selection is global across grouped conversation headers.  Keep the
     # highlighted row visible even when the table has many groups.
     selected_line = next(
-        (index for index, line in enumerate(table) if _ANSI_SGR.sub("", line).startswith("  ▶ ")),
+        (index for index, line in enumerate(table) if "▌" in _ANSI_SGR.sub("", line) or "▶" in _ANSI_SGR.sub("", line)),
         None,
     )
     if selected_line is not None and body_slots:
@@ -951,15 +1166,24 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
     visible = header + table[offset:offset + body_slots]
     visible = visible[:available]
     visible += [""] * (available - len(visible))
-    binding_total = len(_binding_rows(snapshot))
-    binding_position = min(max(int(selected), 0), max(0, binding_total - 1)) + 1 if binding_total else 0
+    conversation_total = len(snapshot.get("connections") or [])
+    conversation_position = min(max(int(selected), 0), max(0, conversation_total - 1)) + 1 if conversation_total else 0
     footer = (
-        f"Enter/o open · j/k select · d details · q quit · "
-        f"{binding_position}/{binding_total}"
+        f"↑↓ select · Tab route · Enter open · d details · q quit · "
+        f"{conversation_position}/{conversation_total}"
     )
-    if notice:
-        return "\n".join(visible + [_clip("OPEN: " + notice, width), _clip(footer, width)])
-    return "\n".join(visible + [_clip(footer, width)])
+    if width >= 90:
+        freshness = _refresh_line(snapshot, time.time() if now is None else now)
+        footer += " " * max(2, width - len(footer) - len(freshness)) + freshness
+    if width < 65:
+        footer = "↑↓ · Tab route · Enter · d · q"
+    if width < 36:
+        footer = "↑↓ Tab Enter d q"
+    if height < 16:
+        trailing = context + (["OPEN: " + notice] if notice else []) + [footer]
+    else:
+        trailing = context[:-1] + (["OPEN: " + notice] if notice else []) + [context[-1], footer]
+    return "\n".join(_clip(line, width) for line in (visible + trailing)[-height:])
 
 
 def _key(stdin: TextIO) -> str | None:
@@ -1105,6 +1329,7 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
     old = termios.tcgetattr(fd)
     scroll = 0
     selected = 0
+    selected_route = 0
     detail = False
     open_status: str | None = None
 
@@ -1134,6 +1359,9 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
         # probe therefore cannot freeze the 0.5 second live animation.
         snapshot = reader.snapshot()
         displayed_snapshot = snapshot
+        initial_connections = snapshot.get("connections") or []
+        if initial_connections:
+            selected_route = _preferred_route(initial_connections[0])
         poll_lock = threading.Lock()
         poll_running = False
         pending_snapshot: dict[str, Any] | None = None
@@ -1175,11 +1403,16 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
                 frame = not frame
                 next_frame = now_mono + (0.5 if animate else float(interval))
                 size = shutil.get_terminal_size((100, 24))
-                rows = _binding_rows(snapshot)
-                selected = min(max(selected, 0), max(0, len(rows) - 1))
+                connections = snapshot.get("connections") or []
+                selected = min(max(selected, 0), max(0, len(connections) - 1))
+                if connections and connections[selected].get("bindings"):
+                    selected_route %= len(connections[selected]["bindings"])
+                else:
+                    selected_route = 0
                 rendered = render_text(
                     snapshot, width=size.columns, height=size.lines, scroll=scroll,
-                    color=color_enabled, selected=selected, detail=detail, live=True,
+                    color=color_enabled, selected=selected, selected_route=selected_route,
+                    detail=detail, live=True,
                     frame=frame, animate=animate, notice=open_status,
                 )
                 _draw_frame(stdout, rendered)
@@ -1195,25 +1428,37 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
             value = _key(stdin)
             if value in ("q", "Q", "\x03"):
                 return 0
-            rows = _binding_rows(displayed_snapshot)
+            connections = displayed_snapshot.get("connections") or []
             if value in ("j", "down"):
-                selected = min(selected + 1, max(0, len(rows) - 1))
+                selected = min(selected + 1, max(0, len(connections) - 1))
+                selected_route = _preferred_route(connections[selected]) if connections else 0
             elif value in ("k", "up"):
                 selected = max(0, selected - 1)
+                selected_route = _preferred_route(connections[selected]) if connections else 0
             elif value == "pageup":
-                selected = max(0, selected - max(1, size.lines - 2))
+                selected = max(0, selected - max(1, size.lines - 8))
+                selected_route = _preferred_route(connections[selected]) if connections else 0
             elif value == "pagedown":
-                selected = min(max(0, len(rows) - 1), selected + max(1, size.lines - 2))
+                selected = min(max(0, len(connections) - 1), selected + max(1, size.lines - 8))
+                selected_route = _preferred_route(connections[selected]) if connections else 0
             elif value == "home":
                 selected = 0
+                selected_route = _preferred_route(connections[selected]) if connections else 0
             elif value == "end":
-                selected = max(0, len(rows) - 1)
+                selected = max(0, len(connections) - 1)
+                selected_route = _preferred_route(connections[selected]) if connections else 0
+            elif value == "\t":
+                bindings = connections[selected].get("bindings") or [] if connections else []
+                if bindings:
+                    selected_route = _cycle_route(connections[selected], selected_route)
             elif value == "d":
                 detail = not detail
             elif value in ("\r", "\n", "o", "O"):
                 try:
                     open_status = _launch_selected(
-                        reader, displayed_snapshot, selected, suspend_dashboard, restore_dashboard
+                        reader, displayed_snapshot,
+                        _selected_binding_index(displayed_snapshot, selected, selected_route),
+                        suspend_dashboard, restore_dashboard,
                     )
                 except DashboardError as exc:
                     open_status = str(exc)

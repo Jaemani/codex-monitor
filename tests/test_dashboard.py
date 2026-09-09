@@ -16,8 +16,12 @@ from codex_monitor.dashboard import (
     DashboardReader,
     _binding_rows,
     _color_enabled,
+    _conversation_label,
+    _cycle_route,
     _launch_selected,
+    _preferred_route,
     _ro_connect,
+    _selected_binding_index,
     render_text,
 )
 from codex_monitor.lock import ProcessLock
@@ -101,7 +105,7 @@ class DashboardTest(unittest.TestCase):
         rendered = render_text(snapshot, width=36, height=5, scroll=1)
         self.assertNotIn("\x1b", rendered)
         self.assertLessEqual(max(map(len, rendered.splitlines())), 36)
-        self.assertIn("Enter/o", rendered)
+        self.assertIn("Enter", rendered)
         self.assertNotIn("bad", rendered)
         details = render_text(snapshot, width=100, height=12, detail=True)
         self.assertIn("bad", details)
@@ -129,10 +133,12 @@ class DashboardTest(unittest.TestCase):
         }
         compact = render_text(snapshot, width=120, height=20, color=True, live=True, frame=True, now=1_001)
         self.assertIn("Live", compact)
-        self.assertIn("Updated 1s ago", compact)
-        self.assertIn("Conversation 1", compact)
-        self.assertIn("1 conversation · 3 connections", compact)
-        self.assertIn("—", compact)
+        self.assertIn("1 conversation  /  3 connections", compact)
+        self.assertIn("Conversation", compact)
+        self.assertIn("Connections", compact)
+        self.assertIn("Recent activity", compact)
+        self.assertIn("1 conversation  /  3 connections", compact)
+        self.assertIn("1 pending", compact)
         self.assertNotIn("ON", compact)
         self.assertNotIn("OFF", compact)
         self.assertNotIn("UNKNOWN", compact)
@@ -140,8 +146,7 @@ class DashboardTest(unittest.TestCase):
         self.assertNotIn("shared-local", compact)
         self.assertNotIn("thread-a", compact)
         self.assertIn("\x1b[32m", compact)
-        self.assertIn("\x1b[31m", compact)
-        self.assertIn("\x1b[90m", compact)
+        self.assertIn("\x1b[48;5;236m", compact)
 
         details = render_text(snapshot, width=120, height=20, color=False, detail=True, selected=0, now=1_001)
         self.assertIn("uuid-on", details)
@@ -159,9 +164,19 @@ class DashboardTest(unittest.TestCase):
             "requests": {"available": False, "reason": "none"},
             "collectors": [],
         } for index in range(10)]
-        last_details = render_text(many, width=100, height=8, color=False, detail=True, selected=9, now=1_001)
-        self.assertIn("Conversation 10", last_details)
+        last_details = render_text(many, width=100, height=20, color=False, detail=True, selected=9, now=1_001)
+        self.assertIn("Route 1/1 · binding-9", last_details)
         self.assertIn("Details: binding-9", last_details)
+        short = render_text(many, width=100, height=8, color=False, selected=9, now=1_001)
+        self.assertLessEqual(len(short.splitlines()), 8)
+        self.assertIn("Route 1/1 · binding-9", short)
+        self.assertIn("Enter open", short)
+        for width in (24, 36):
+            narrow = render_text(many, width=width, height=8, selected=9)
+            self.assertLessEqual(len(narrow.splitlines()), 8)
+            self.assertTrue(all(len(line) <= width for line in narrow.splitlines()))
+            self.assertIn("q", narrow.splitlines()[-1])
+            self.assertIn("binding-9", narrow)
 
     def test_compact_render_uses_human_managed_name_and_hides_generated_binding_id(self):
         snapshot = {
@@ -191,6 +206,71 @@ class DashboardTest(unittest.TestCase):
         rendered = render_text(snapshot, width=100, height=12, color=False, live=True, now=1_001)
         self.assertIn("deploy-check", rendered)
         self.assertNotIn("managed-0123456789abcdef", rendered)
+
+    def test_conversation_rows_cycle_routes_and_launch_the_visible_route(self):
+        snapshot = {
+            "ok": True,
+            "read_only": True,
+            "generated_at": 1_000,
+            "receiver": {"process_alive": True, "ready": True, "status_checked": True},
+            "connections": [{
+                "thread": "thread-a",
+                "bindings": [
+                    {"name": "local", "enabled": True, "endpoint": "shared-local", "sources": ["build"],
+                     "identity_exact": True, "events": {"counts": {}, "latest": None}},
+                    {"name": "mobile", "enabled": True, "endpoint": "wss://owner.example:8765", "sources": ["mobile"],
+                     "identity_exact": True, "events": {"counts": {"accepted": 1}, "latest": {"state": "accepted", "age_seconds": 2}}},
+                    {"name": "backup", "enabled": False, "endpoint": "unix:///tmp/codex.sock", "sources": ["backup"],
+                     "identity_exact": True, "events": {"counts": {}, "latest": None}},
+                ],
+                "events": {},
+                "requests": {"available": False, "reason": "none"},
+                "collectors": [],
+            }],
+        }
+        connection = snapshot["connections"][0]
+        preferred = _preferred_route(connection)
+        self.assertEqual(preferred, 1)
+        self.assertEqual(_preferred_route({"bindings": [
+            {"enabled": True, "endpoint": "shared-local"},
+            {"enabled": False, "endpoint": "wss://owner.example:8765"},
+        ]}), 0)
+        self.assertEqual(_cycle_route(connection, preferred), 2)
+        self.assertEqual(_cycle_route(connection, 2), 0)
+        rendered = render_text(snapshot, width=90, height=18, selected=0, selected_route=preferred, live=True)
+        self.assertIn("Route 2/3 · mobile", rendered)
+        self.assertIn("1 sent to Codex", rendered)
+        self.assertIn("▌", rendered)
+        self.assertNotIn("wss://owner.example:8765", rendered)
+        self.assertNotIn("\x1b", rendered)
+        calls = []
+
+        def runner(command, **kwargs):
+            calls.append((command, kwargs))
+            return subprocess.CompletedProcess(command, 0)
+
+        reader = mock.Mock()
+        reader.selected_binding.side_effect = lambda name, thread, endpoint: {
+            "name": name, "thread": thread, "endpoint": endpoint,
+        }
+        with mock.patch("codex_monitor.dashboard.server_token", return_value=None):
+            status = _launch_selected(
+                reader, snapshot, _selected_binding_index(snapshot, 0, preferred),
+                mock.Mock(), mock.Mock(), runner=runner,
+            )
+        self.assertEqual(status, "Codex exited successfully")
+        self.assertEqual(calls[0][0], ["codex", "--remote", "wss://owner.example:8765", "resume", "thread-a"])
+
+    def test_conversation_label_strips_only_a_matching_source_prefix(self):
+        connection = {
+            "bindings": [
+                {"name": "discord-uate-flow", "sources": ["discord-uate"]},
+                {"name": "discord-uate-flow-cli", "sources": ["discord-uate"]},
+            ],
+            "collectors": [],
+        }
+        self.assertEqual(_conversation_label(connection), "flow")
+        self.assertEqual(_conversation_label({"bindings": [{"name": "PM", "sources": ["pm"]}]}), "PM")
 
     def test_color_policy_honors_no_color_and_dumb_terminal(self):
         stream = io.StringIO()

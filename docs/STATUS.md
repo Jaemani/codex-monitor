@@ -10,6 +10,16 @@ target thread to be loaded on their server.
 
 ## Incident findings and current limitations (2026-09-09)
 
+- Graphite dashboard, 2026-09-09: one row per conversation, adaptive spacing, emerald selection
+  marker, full-width highlight and persistent route context. The source suite passed **194 tests
+  in 53.730 seconds**; after the final footer fix, all 18 dashboard tests passed in 2.677 seconds.
+  The final installed wheel passed **42 dashboard PTY checks in 6.119 seconds** and the ordinary
+  TUI multi-route open/follow-up/return canary in **19.930 seconds**. Tab cycled shared-local and
+  explicit owner routes; shared-local opening was rejected and the exact owner route opened.
+  Global installation matched all 21 modules, preserved sixteen bindings, nine receipts and
+  credentials, and returned the receiver ready. Existing open dashboards need to be restarted.
+  Visual comparison used synthetic conversation data; no new Desktop or event-delivery claim.
+
 - Dashboard visual polish replaces status labels with colored dots, uses managed monitor names,
   aligns recent activity and moves technical IDs/endpoints to details. The compact header reports
   counts and refresh age; receiver diagnostics remain visible in the pinned header when details

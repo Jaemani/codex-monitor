@@ -102,16 +102,17 @@ From a second terminal, with the receiver running:
 codex-monitor dashboard
 ```
 
-The fixed **LIVE VIEW** indicator pulses while the view refreshes. **Green ON**, **red OFF** and
-**amber STALE/UNKNOWN** distinguish configuration and observed health. Rows are grouped by
-conversation; select one and press `d` for details. Use `--no-animate` or `--color never` when preferred.
+The **Live** dot pulses while the view refreshes. Green, red and amber status dots distinguish
+configuration and observed health. Use `--no-animate` or `--color never` when preferred.
 
-Select a conversation's binding with the arrow keys and press **Enter** to open its ordinary Codex
+Select a conversation with the arrow keys and press **Enter** to open its ordinary Codex
 TUI. Read events and responses, send messages, or answer approvals; exit the TUI to return to the
 dashboard. Opening uses the binding's explicit shared owner endpoint and the same conversation ID.
 `shared-local` bindings need an explicit owner endpoint before they can be opened this way.
 
-The main view shows names, status dots and recent activity. Press **d** for technical details such
+The Graphite view shows one row per conversation, status dots, connection counts and recent activity.
+The selected route appears below the list; use **Tab** to cycle routes before opening it.
+Press **d** for technical details such
 as conversation IDs, owner endpoints and receipt states. Green/red dots describe the displayed
 binding or receiver; they do not imply that an agent is currently generating or has finished work.
 

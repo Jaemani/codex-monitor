@@ -15,7 +15,7 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
   Custom prefixes require an explicit command directory. Foreign commands and modified owned links
   are preserved; shell configuration is unchanged. Plugin-only installation still requires runtime setup.
 - [x] **Graphical connection overview.** Conversation-grouped rows, selected details, green/red/amber
-  status labels and a persistent animated live header replace repeated diagnostics in the main view.
+  status dots and a persistent animated live header replace repeated diagnostics in the main view.
   Color and animation can be disabled. Live refresh is distinct from producer/model health; monitor
   grouping does not invent agent ancestry. See [dashboard guide](DASHBOARD.md).
 
@@ -50,6 +50,11 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 - [ ] **P2 — Add an external adapter after conversation-scoped collector lifecycle is verified.** Authenticate the producer, filter relevant changes, preserve stable event IDs, and implement explicit source-scoped replies.
 
 ## Compatibility and resilience
+
+- [x] **Graphite conversation overview.** One row per conversation, adaptive spacing, selected-row
+  background and emerald marker, persistent route context, and Tab cycling between exact routes.
+  Small terminals retain route and exit controls. The initial selection prefers an enabled explicit
+  owner route; shared-local opening remains an explicit error. See [visual QA](../design-qa.md).
 
 - [x] **Calmer dashboard presentation.** Status dots, readable managed names, aligned activity,
   compact counts and explicit technical details passed installed PTY and same-thread TUI checks.

@@ -3,10 +3,11 @@
 
 The canary creates one disposable Unix App Server and one ordinary Codex TUI
 conversation, closes the TUI, and exposes that exact conversation through a
-read-only dashboard binding.  It presses Enter on the selected dashboard row,
-checks a user follow-up in the same native history, quits the opened TUI, and
-checks that the dashboard returns.  It never contacts an existing service or
-conversation and archives its temporary thread before reporting PASS.
+shared-local route plus an explicit owner route. It cycles the displayed route
+context with Tab, presses Enter only on the explicit owner route, checks a user
+follow-up in the same native history, quits the opened TUI, and checks that the
+dashboard returns. It never contacts an existing service or conversation and
+archives its temporary thread before reporting PASS.
 """
 
 from __future__ import annotations
@@ -33,6 +34,8 @@ MODEL = "gpt-5.6-luna"
 REASONING = "xhigh"
 INITIAL_MARKER = "DASHBOARD_OPEN_INITIAL"
 FOLLOWUP_MARKER = "DASHBOARD_OPEN_FOLLOWUP"
+SHARED_BINDING = "shared-local"
+OWNER_BINDING = "open-thread"
 
 
 def import_tui_helpers():
@@ -125,9 +128,40 @@ class Canary:
         return (
             "codex-monitor" in lower
             and binding.lower() in lower
-            and any(label in lower for label in ("conversations", "bindings", "monitors"))
-            and "▶" in text
+            and any(label in lower for label in ("conversation", "bindings", "monitors"))
+            and ("▶" in text or "▌" in text)
         )
+
+    @staticmethod
+    def dashboard_conversation_visible(text: str) -> bool:
+        """Recognize one selected conversation in the graphical dashboard."""
+
+        lower = text.lower()
+        return (
+            "codex-monitor" in lower
+            and any(label in lower for label in ("conversation", "bindings", "monitors"))
+            and ("▶" in text or "▌" in text)
+        )
+
+    @staticmethod
+    def route_context(text: str, bindings: tuple[str, ...]) -> str:
+        """Return the bottom route context, keeping route identity separate from the row."""
+
+        lines = []
+        for line in text.splitlines()[-8:]:
+            lower = line.lower()
+            if not lower.strip().startswith("route "):
+                continue
+            if not any(binding.lower() in lower for binding in bindings):
+                continue
+            lines.append(line.strip())
+        return "\n".join(lines)
+
+    @staticmethod
+    def active_route(text: str, bindings: tuple[str, ...]) -> str | None:
+        context = Canary.route_context(text, bindings)
+        matches = [binding for binding in bindings if binding.lower() in context.lower()]
+        return matches[0] if len(matches) == 1 else (context or None)
 
     @staticmethod
     def history(rpc: Rpc, thread: str) -> list[dict[str, Any]]:
@@ -317,8 +351,9 @@ class Canary:
         self.monitor = Monitor(self.state, lambda _endpoint: (_ for _ in ()).throw(
             AssertionError("dashboard canary must not dispatch")
         ))
-        self.monitor.bind("open-thread", self.thread, self.endpoint, ["dashboard-canary"])
-        self.step("dashboard_binding_created", binding="open-thread")
+        self.monitor.bind(SHARED_BINDING, self.thread, SHARED_BINDING, ["dashboard-canary-shared"])
+        self.monitor.bind(OWNER_BINDING, self.thread, self.endpoint, ["dashboard-canary-owner"])
+        self.step("dashboard_bindings_created", bindings=[SHARED_BINDING, OWNER_BINDING])
 
         dashboard_command = [
             self.args.dashboard_python or sys.executable,
@@ -338,10 +373,45 @@ class Canary:
         self.step("dashboard_started", dashboard_pid=self.dashboard.pid)
         self.wait_for(
             self.dashboard,
-            lambda: self.dashboard_inventory_visible(self.dashboard.text(), "open-thread"),
-            "dashboard selected binding",
+            lambda: self.dashboard_conversation_visible(self.dashboard.text())
+            and bool(self.route_context(self.dashboard.text(), (SHARED_BINDING, OWNER_BINDING))),
+            "dashboard selected conversation",
         )
-        self.check("dashboard_selected_exact_thread", True, thread=self.thread)
+        route_names = (SHARED_BINDING, OWNER_BINDING)
+        self.check(
+            "dashboard_defaults_to_explicit_owner_route",
+            self.active_route(self.dashboard.text(), route_names) == OWNER_BINDING,
+            route=self.active_route(self.dashboard.text(), route_names),
+        )
+        owner_context = self.route_context(self.dashboard.text(), route_names)
+        self.dashboard.send("\t")
+        self.wait_for(
+            self.dashboard,
+            lambda: self.active_route(self.dashboard.text(), route_names) == SHARED_BINDING
+            and self.route_context(self.dashboard.text(), route_names) != owner_context,
+            "dashboard shared-local route selection",
+        )
+        self.check("dashboard_tab_cycles_alternative_binding", self.active_route(self.dashboard.text(), route_names) == SHARED_BINDING)
+        self.dashboard.send("\r")
+        self.wait_for(
+            self.dashboard,
+            lambda: "open:" in self.dashboard.text().lower()
+            and self.active_route(self.dashboard.text(), route_names) == SHARED_BINDING,
+            "shared-local route rejection",
+        )
+        self.check("shared_local_route_open_is_rejected", "open:" in self.dashboard.text().lower())
+        self.dashboard.send("\t")
+        self.wait_for(
+            self.dashboard,
+            lambda: self.active_route(self.dashboard.text(), route_names) == OWNER_BINDING,
+            "dashboard explicit owner route selection",
+        )
+        self.check(
+            "dashboard_selects_explicit_owner_route",
+            self.active_route(self.dashboard.text(), route_names) == OWNER_BINDING,
+            route=self.active_route(self.dashboard.text(), route_names),
+        )
+        self.check("dashboard_selected_exact_thread", True, thread=self.thread, route=OWNER_BINDING)
 
         self.trust_sent = False
         self.dashboard.send("\r")
@@ -349,7 +419,7 @@ class Canary:
         self.wait_for(
             self.dashboard,
             lambda: self.screen_is_idle(self.dashboard)
-            and "codex-monitor dashboard" not in self.dashboard.text().lower(),
+            and not self.dashboard_conversation_visible(self.dashboard.text()),
             "opened ordinary TUI",
         )
         self.check("dashboard_opened_existing_tui", True)
@@ -406,7 +476,8 @@ class Canary:
         self.step("opened_tui_exit_pressed", command="/quit")
         self.wait_for(
             self.dashboard,
-            lambda: self.dashboard_inventory_visible(self.dashboard.text(), "open-thread"),
+            lambda: self.dashboard_conversation_visible(self.dashboard.text())
+            and self.active_route(self.dashboard.text(), route_names) == OWNER_BINDING,
             "dashboard returned after TUI exit",
         )
         self.check("dashboard_returned_after_tui_exit", True)
