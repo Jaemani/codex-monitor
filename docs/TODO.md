@@ -51,6 +51,10 @@ Prioritize [conversation-scoped monitoring levels](MONITOR-LEVELS.md). Local fil
 
 ## Compatibility and resilience
 
+- [x] **Dashboard-to-TUI interaction.** Enter/o opens the selected binding's existing conversation
+  on its explicit owner endpoint and returns after TUI exit. Source and installed ordinary-TUI
+  runs verified same-thread history and user interaction; regression covers routing, identity
+  changes, authentication and terminal restoration. Shared-local owner discovery remains separate.
 - [ ] **Large-history resident recovery.** Registration now omits saved turns from resume
   responses with `excludeTurns: true`. Verify recovery on the reported deployment before closing
   the incident; the suspected WebSocket frame limit has not been confirmed by a measured response

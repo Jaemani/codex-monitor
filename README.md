@@ -25,7 +25,9 @@ flowchart LR
     R --> Q[Official Codex conversation queue]
     Q --> C[Existing CLI or Desktop conversation]
     U[You] <--> C
-    D[Read-only terminal dashboard] -. observes local state and receiver .-> R
+    D[Terminal dashboard] -. observes local state and receiver .-> R
+    D -->|Enter: open selected CLI conversation| T[Ordinary Codex TUI on saved owner]
+    T <--> C
 ```
 
 | Component | What it does | When it runs |
@@ -35,7 +37,7 @@ flowchart LR
 | Receiver | Authenticates, persists, deduplicates and routes events | One long-lived local process; can serve multiple conversations |
 | CLI resident (explicit owner mode) | Retains selected conversation subscriptions and restores them after connection loss | Separate foreground process alongside the shared App Server; no model polling |
 | Codex conversation | Reads events and performs the authorized work alongside user input | Native Codex processing; busy conversations queue events |
-| Dashboard | Reads monitor state and checks receiver readiness | While its terminal is open; closing it does not stop monitoring |
+| Dashboard | Reads monitor state and checks receiver readiness; Enter opens the selected CLI conversation | Refreshes without model calls; explicit TUI interaction follows normal Codex behavior |
 
 **You normally run one receiver, your usual Codex client, and optionally the dashboard.** A Discord integration also needs a Gateway producer and reply adapter. It does not need an always-running model or a separate relay conversation.
 
@@ -103,6 +105,11 @@ codex-monitor dashboard
 The fixed **LIVE VIEW** indicator pulses while the view refreshes. **Green ON**, **red OFF** and
 **amber STALE/UNKNOWN** distinguish configuration and observed health. Rows are grouped by
 conversation; select one and press `d` for details. Use `--no-animate` or `--color never` when preferred.
+
+Select a conversation's binding with the arrow keys and press **Enter** to open its ordinary Codex
+TUI. Read events and responses, send messages, or answer approvals; exit the TUI to return to the
+dashboard. Opening uses the binding's explicit shared owner endpoint and the same conversation ID.
+`shared-local` bindings need an explicit owner endpoint before they can be opened this way.
 
 Use `--once` for a snapshot, `--once --json` for structured output, or `--thread "$THREAD_ID"` to filter a conversation. The display refreshes observations without calling Codex or the model. See [dashboard controls and status meanings](docs/DASHBOARD.md).
 

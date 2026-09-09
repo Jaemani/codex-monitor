@@ -1,7 +1,9 @@
 import io
 import json
+import os
 from pathlib import Path
 import sqlite3
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -9,7 +11,15 @@ from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest import mock
 
-from codex_monitor.dashboard import DashboardReader, _color_enabled, _ro_connect, render_text
+from codex_monitor.dashboard import (
+    DashboardError,
+    DashboardReader,
+    _binding_rows,
+    _color_enabled,
+    _launch_selected,
+    _ro_connect,
+    render_text,
+)
 from codex_monitor.lock import ProcessLock
 from codex_monitor.monitor import Monitor
 from codex_monitor import cli
@@ -151,6 +161,122 @@ class DashboardTest(unittest.TestCase):
         self.assertFalse(_color_enabled("auto", stream, {"TERM": "xterm-256color", "NO_COLOR": "1"}))
         self.assertFalse(_color_enabled("never", stream, {"TERM": "xterm-256color"}))
         self.assertTrue(_color_enabled("always", stream, {"TERM": "dumb", "NO_COLOR": "1"}))
+
+    def _set_binding_endpoint(self, endpoint):
+        db = sqlite3.connect(self.root / "monitor.sqlite3")
+        try:
+            db.execute("UPDATE bindings SET endpoint=? WHERE name=?", (endpoint, "work"))
+            db.commit()
+        finally:
+            db.close()
+
+    def test_selected_binding_launches_exact_thread_endpoint_with_auth_and_restores_terminal(self):
+        self._set_binding_endpoint("ws://127.0.0.1:8765")
+        snapshot = DashboardReader(self.root).snapshot()
+        calls = []
+
+        def runner(command, **kwargs):
+            calls.append((command, kwargs))
+            return subprocess.CompletedProcess(command, 0)
+
+        lifecycle = []
+
+        def suspend():
+            lifecycle.append("suspend")
+
+        def restore():
+            lifecycle.append("restore")
+
+        with mock.patch.dict(os.environ, {"CODEX_MONITOR_SERVER_TOKEN": "existing-token"}, clear=False), \
+                mock.patch("codex_monitor.dashboard.server_token", return_value="test-only-credential"):
+            status = _launch_selected(
+                DashboardReader(self.root), snapshot, 0, suspend, restore, runner=runner
+            )
+
+        self.assertEqual(status, "Codex exited successfully")
+        self.assertEqual(lifecycle, ["suspend", "restore"])
+        self.assertEqual(len(calls), 1)
+        command, kwargs = calls[0]
+        self.assertEqual(command, [
+            "codex", "--remote-auth-token-env", "CODEX_MONITOR_SERVER_TOKEN",
+            "--remote", "ws://127.0.0.1:8765", "resume", "thread-a",
+        ])
+        self.assertIs(kwargs["shell"], False)
+        self.assertEqual(kwargs["env"]["CODEX_MONITOR_SERVER_TOKEN"], "test-only-credential")
+        self.assertNotIn("test-only-credential", command)
+
+    def test_selected_binding_rejects_stale_display_identity_before_runner(self):
+        self._set_binding_endpoint("ws://127.0.0.1:8765")
+        snapshot = DashboardReader(self.root).snapshot()
+        self._set_binding_endpoint("ws://127.0.0.1:8766")
+        runner = mock.Mock()
+        with self.assertRaisesRegex(DashboardError, "identity changed"):
+            _launch_selected(DashboardReader(self.root), snapshot, 0, mock.Mock(), mock.Mock(), runner=runner)
+        runner.assert_not_called()
+
+    def test_selected_binding_restores_terminal_after_child_interrupt(self):
+        self._set_binding_endpoint("ws://127.0.0.1:8765")
+        snapshot = DashboardReader(self.root).snapshot()
+        lifecycle = []
+
+        def runner(*_args, **_kwargs):
+            lifecycle.append("runner")
+            raise KeyboardInterrupt
+
+        status = _launch_selected(
+            DashboardReader(self.root), snapshot,
+            0,
+            lambda: lifecycle.append("suspend"),
+            lambda: lifecycle.append("restore"),
+            runner=runner,
+        )
+        self.assertEqual(status, "Codex interrupted")
+        self.assertEqual(lifecycle, ["suspend", "runner", "restore"])
+
+    def test_selected_binding_rejects_unsafe_identity_collision(self):
+        db = sqlite3.connect(self.root / "monitor.sqlite3")
+        try:
+            db.execute(
+                "INSERT INTO bindings(name,thread,endpoint,sources) VALUES(?,?,?,?)",
+                ("unsafe\x1b", "thread-a", "ws://127.0.0.1:8765", '["build"]'),
+            )
+            db.execute(
+                "INSERT INTO bindings(name,thread,endpoint,sources) VALUES(?,?,?,?)",
+                ("unsafe ", "thread-a", "ws://127.0.0.1:8766", '["build"]'),
+            )
+            db.commit()
+        finally:
+            db.close()
+        snapshot = DashboardReader(self.root).snapshot()
+        rows = [
+            (index, binding)
+            for index, (_, binding, _) in enumerate(_binding_rows(snapshot))
+            if binding["name"] == "unsafe "
+        ]
+        unsafe_index = next(index for index, binding in rows if binding["endpoint"].endswith(":8765"))
+        with self.assertRaisesRegex(DashboardError, "identity is unsafe"):
+            _launch_selected(DashboardReader(self.root), snapshot, unsafe_index, mock.Mock(), mock.Mock(), runner=mock.Mock())
+
+    def test_selected_binding_rejects_unsupported_endpoints(self):
+        for endpoint in ("shared-local", "local", "ssh://owner", "ws://owner.example:8765", "ws://127.0.0.1:bad"):
+            with self.subTest(endpoint=endpoint):
+                self._set_binding_endpoint(endpoint)
+                snapshot = DashboardReader(self.root).snapshot()
+                runner = mock.Mock()
+                with self.assertRaises(DashboardError):
+                    _launch_selected(DashboardReader(self.root), snapshot, 0, mock.Mock(), mock.Mock(), runner=runner)
+                runner.assert_not_called()
+
+    def test_open_failure_notice_keeps_shared_local_reason_visible(self):
+        snapshot = DashboardReader(self.root).snapshot()
+        rendered = render_text(
+            snapshot,
+            width=80,
+            height=8,
+            notice="shared-local has no owner address; configure an explicit owner endpoint",
+        )
+        self.assertIn("shared-local has no owner address; configure an explicit owner endpoint", rendered)
+        self.assertLessEqual(len(rendered.splitlines()), 8)
 
     def _status_server(self, status=200, body=None, location=None):
         seen = []

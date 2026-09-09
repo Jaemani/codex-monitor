@@ -15,6 +15,7 @@ from pathlib import Path
 import select
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -24,8 +25,10 @@ import unicodedata
 from datetime import datetime
 from typing import Any, TextIO
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+
+from .session import server_token
 
 
 READ_TIMEOUT = 0.35
@@ -37,6 +40,39 @@ MAX_TEXT = 240
 
 class DashboardError(RuntimeError):
     """A state inventory could not be read safely."""
+
+
+def _open_endpoint(endpoint: Any) -> str:
+    """Validate one stored owner endpoint for an explicit TUI resume."""
+
+    if (
+        not isinstance(endpoint, str) or not endpoint or
+        any(ord(char) < 32 or 0x7F <= ord(char) <= 0x9F for char in endpoint)
+    ):
+        raise DashboardError("selected binding has an invalid owner endpoint")
+    if endpoint in {"shared-local", "local"}:
+        raise DashboardError("shared-local has no owner address; configure an explicit owner endpoint")
+    if endpoint.startswith("unix://"):
+        path = endpoint.removeprefix("unix://")
+        if not path.startswith("/") or not path[1:] or "\x00" in path:
+            raise DashboardError("selected binding uses a non-absolute Unix owner endpoint")
+        return endpoint
+    try:
+        parsed = urlsplit(endpoint)
+        hostname = parsed.hostname
+        parsed.port  # Force malformed and out-of-range ports to fail here.
+    except ValueError as exc:
+        raise DashboardError("selected binding has a malformed owner endpoint") from exc
+    if (
+        parsed.scheme not in {"ws", "wss"} or not parsed.netloc or not hostname or
+        any(char.isspace() for char in endpoint) or parsed.netloc.endswith(":")
+    ):
+        raise DashboardError("selected binding endpoint is not a supported ws/wss or absolute Unix owner")
+    if parsed.username or parsed.password or parsed.fragment:
+        raise DashboardError("selected binding endpoint cannot contain credentials or a fragment")
+    if parsed.scheme == "ws" and hostname.lower() not in {"127.0.0.1", "localhost", "::1"}:
+        raise DashboardError("insecure ws owner endpoints must use loopback")
+    return endpoint
 
 
 def _safe(value: Any, limit: int = MAX_TEXT) -> str:
@@ -330,6 +366,43 @@ class DashboardReader:
         self.thread = thread
         self.clock = clock
 
+    def selected_binding(self, name: str, thread: str, displayed_endpoint: str) -> dict[str, str]:
+        """Re-read one exact binding from the read-only database before launch."""
+
+        if (
+            not isinstance(name, str) or not isinstance(thread, str) or
+            not isinstance(displayed_endpoint, str) or not name or not thread
+        ):
+            raise DashboardError("selected conversation identity is invalid")
+        if (
+            any(ord(char) < 32 or 0x7F <= ord(char) <= 0x9F for char in name + thread) or
+            thread.startswith("-")
+        ):
+            raise DashboardError("selected conversation identity is unsafe")
+        db = _ro_connect(self.root / "monitor.sqlite3")
+        try:
+            tables = _tables(db)
+            if "bindings" not in tables:
+                raise DashboardError("monitor database is missing the bindings table")
+            row = db.execute(
+                "SELECT name,thread,endpoint FROM bindings WHERE name=? AND thread=?",
+                (name, thread),
+            ).fetchone()
+            if row is None:
+                raise DashboardError("selected binding no longer exists")
+            if (
+                row["name"] != name or
+                row["thread"] != thread or
+                row["endpoint"] != displayed_endpoint
+            ):
+                raise DashboardError("selected binding identity changed; refresh the dashboard")
+            endpoint = _open_endpoint(row["endpoint"])
+            return {"name": row["name"], "thread": row["thread"], "endpoint": endpoint}
+        except sqlite3.Error as exc:
+            raise DashboardError(f"cannot re-read selected binding ({type(exc).__name__})") from exc
+        finally:
+            db.close()
+
     def _monitor_inventory(self, now: float, deadline: float | None = None) -> tuple[list[dict[str, Any]], list[str]]:
         db = _ro_connect(self.root / "monitor.sqlite3")
         try:
@@ -356,6 +429,12 @@ class DashboardReader:
                     "name": _safe(row["name"]),
                     "thread": _safe(row["thread"]),
                     "endpoint": _safe(row["endpoint"]),
+                    # Reject display-safe/truncated identities before they
+                    # can be resolved to a different stored binding.
+                    "identity_exact": all(
+                        _safe(row[field]) == row[field]
+                        for field in ("name", "thread", "endpoint")
+                    ),
                     "sources": source_list,
                     "enabled": bool(row["enabled"]) if "enabled" in binding_columns else None,
                     "schema_error": source_error,
@@ -781,7 +860,8 @@ def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = Fa
 
 def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24, scroll: int = 0,
                 color: bool = False, selected: int = 0, detail: bool | str = False, live: bool = False,
-                frame: bool = False, animate: bool = True, now: float | None = None) -> str:
+                frame: bool = False, animate: bool = True, now: float | None = None,
+                notice: str | None = None) -> str:
     """Render a bounded viewport with a persistent header and compact table."""
 
     width = max(1, int(width or 1))
@@ -793,7 +873,8 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
     header_count = min(3, len(body))
     header = body[:header_count]
     table = body[header_count:]
-    available = max(1, height - 1)
+    footer_lines = 2 if notice else 1
+    available = max(0, height - footer_lines)
     body_slots = max(0, available - header_count)
     maximum = max(0, len(table) - body_slots)
     offset = min(max(int(scroll), 0), maximum)
@@ -820,6 +901,8 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
         f"q/Ctrl-C quit · j/k scroll/select · d details · "
         f"{offset + 1}-{min(offset + len(table), len(table))}/{len(table)}"
     )
+    if notice:
+        return "\n".join(visible + [_clip("OPEN: " + notice, width), _clip(footer, width)])
     return "\n".join(visible + [_clip(footer, width)])
 
 
@@ -850,6 +933,57 @@ def _key(stdin: TextIO) -> str | None:
         b"\x1b[A": "up", b"\x1b[B": "down", b"\x1b[5~": "pageup",
         b"\x1b[6~": "pagedown", b"\x1b[H": "home", b"\x1b[F": "end",
     }.get(bytes(sequence))
+
+
+def _launch_selected(
+    reader: DashboardReader,
+    snapshot: dict[str, Any],
+    selected: int,
+    suspend,
+    restore,
+    *,
+    runner=subprocess.run,
+) -> str:
+    """Resume the exact selected saved conversation and return an honest status."""
+
+    rows = _binding_rows(snapshot)
+    if not rows:
+        raise DashboardError("no conversation binding is selected")
+    if selected < 0 or selected >= len(rows):
+        raise DashboardError("selected conversation is out of range")
+    connection, displayed_binding, _ = rows[selected]
+    if displayed_binding.get("identity_exact") is not True:
+        raise DashboardError("selected binding identity is unsafe; refresh the dashboard")
+    binding = reader.selected_binding(
+        displayed_binding.get("name"), connection.get("thread"), displayed_binding.get("endpoint")
+    )
+    command = ["codex", "--remote", binding["endpoint"], "resume", binding["thread"]]
+    environment = os.environ.copy()
+    try:
+        token = server_token()
+    except Exception as exc:
+        raise DashboardError(f"cannot prepare remote authentication ({type(exc).__name__})") from exc
+    if token is not None:
+        environment["CODEX_MONITOR_SERVER_TOKEN"] = token
+        # Keep --remote adjacent to its endpoint. Inserting options between
+        # them makes the Codex CLI parse the auth flag as the endpoint.
+        command[1:1] = ["--remote-auth-token-env", "CODEX_MONITOR_SERVER_TOKEN"]
+    suspend()
+    try:
+        completed = runner(command, shell=False, env=environment, check=False)
+    except OSError as exc:
+        return f"open failed: {type(exc).__name__}"
+    except KeyboardInterrupt:
+        # SIGINT can interrupt wait() in this process after reaching the
+        # foreground child. Restore cbreak/alternate-screen state and resume
+        # the dashboard instead of treating it as a dashboard quit.
+        return "Codex interrupted"
+    finally:
+        restore()
+    return (
+        "Codex exited successfully" if completed.returncode == 0
+        else f"Codex exited with status {completed.returncode}"
+    )
 
 
 def _color_enabled(mode: str, stream: TextIO, environ: dict[str, str] | None = None) -> bool:
@@ -911,17 +1045,39 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
         raise ValueError("live dashboard requires a TTY; use dashboard --once for non-interactive output")
     import termios
     import tty
-    old = termios.tcgetattr(stdin.fileno())
+    fd = stdin.fileno()
+    old = termios.tcgetattr(fd)
     scroll = 0
     selected = 0
     detail = False
+    open_status: str | None = None
+
+    def suspend_dashboard() -> None:
+        """Return the terminal to the user's shell state for the child TUI."""
+
+        termios.tcsetattr(fd, termios.TCSAFLUSH, old)
+        stdout.write("\x1b[?25h\x1b[0m\x1b[?1049l")
+        stdout.flush()
+
+    def restore_dashboard() -> None:
+        """Re-enter dashboard cbreak/alternate-screen state after the child."""
+
+        # A child is free to leave the inherited terminal in raw mode or with
+        # queued navigation bytes. Restore the dashboard's known baseline and
+        # flush that input before applying cbreak again.
+        termios.tcsetattr(fd, termios.TCSAFLUSH, old)
+        tty.setcbreak(fd)
+        stdout.write("\x1b[?1049h\x1b[?25l")
+        stdout.flush()
+
     try:
-        tty.setcbreak(stdin.fileno())
+        tty.setcbreak(fd)
         stdout.write("\x1b[?1049h\x1b[?25l")
         # The first snapshot is synchronous so a healthy state appears
         # immediately.  Later reads run in a daemon worker; a slow status
         # probe therefore cannot freeze the 0.5 second live animation.
         snapshot = reader.snapshot()
+        displayed_snapshot = snapshot
         poll_lock = threading.Lock()
         poll_running = False
         pending_snapshot: dict[str, Any] | None = None
@@ -968,10 +1124,14 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
                 rendered = render_text(
                     snapshot, width=size.columns, height=size.lines, scroll=scroll,
                     color=color_enabled, selected=selected, detail=detail, live=True,
-                    frame=frame, animate=animate,
+                    frame=frame, animate=animate, notice=open_status,
                 )
                 _draw_frame(stdout, rendered)
                 stdout.flush()
+                # Keep activation tied to the inventory the user actually
+                # saw. A poll may finish between this draw and the next key
+                # read, but it must not retarget Enter/o.
+                displayed_snapshot = snapshot
             wait = min(.1, max(0.0, next_frame - now_mono), max(0.0, next_poll - now_mono))
             ready, _, _ = select.select([stdin], [], [], wait)
             if not ready:
@@ -979,7 +1139,7 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
             value = _key(stdin)
             if value in ("q", "Q", "\x03"):
                 return 0
-            rows = _binding_rows(snapshot)
+            rows = _binding_rows(displayed_snapshot)
             if value in ("j", "down"):
                 selected = min(selected + 1, max(0, len(rows) - 1))
             elif value in ("k", "up"):
@@ -994,6 +1154,14 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
                 selected = max(0, len(rows) - 1)
             elif value == "d":
                 detail = not detail
+            elif value in ("\r", "\n", "o", "O"):
+                try:
+                    open_status = _launch_selected(
+                        reader, displayed_snapshot, selected, suspend_dashboard, restore_dashboard
+                    )
+                except DashboardError as exc:
+                    open_status = str(exc)
+                next_frame = 0.0
             else:
                 continue
             # Keep the selected row visible while preserving the old scroll
@@ -1006,6 +1174,6 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
         # Discard dashboard navigation left in the input queue before giving
         # control back to the shell. On macOS TCSADRAIN also leaves PENDIN set
         # when switching from cbreak to canonical input.
-        termios.tcsetattr(stdin.fileno(), termios.TCSAFLUSH, old)
+        termios.tcsetattr(fd, termios.TCSAFLUSH, old)
         stdout.write("\x1b[?25h\x1b[0m\x1b[?1049l")
         stdout.flush()

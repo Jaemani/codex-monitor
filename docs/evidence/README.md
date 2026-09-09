@@ -6,6 +6,16 @@ Raw reports, terminal buffers, conversation IDs and host paths remain local and 
 
 Key observations:
 
+- Dashboard open, 2026-09-09: source native PASS in 25.878 seconds; installed-wheel native PASS
+  in 18.634 seconds. Enter opened the selected existing ordinary TUI, one user follow-up and response
+  remained in the same native history, and `/quit` returned to the dashboard. Owned thread archival,
+  process exit and workspace removal passed. Local reports: `codex-monitor-dashboard-open.json`
+  and `codex-monitor-dashboard-open-installed.json`. Final regression: 191 tests in 51.146 seconds;
+  installed dashboard PTY: 39 checks in 7.728 seconds. Wheel SHA-256:
+  `80f15b1b09c546d301f3f4835793a959b63684302bff62839bf86b519cd92af9`.
+  Global upgrade matched all 21 modules, preserved twelve bindings/seven receipts/credentials and
+  returned the receiver ready. No operational owner/resident restart or Desktop wakeup was tested.
+
 - Metadata-only resident resume, 2026-09-09: 185 regression tests passed in 51.917 seconds;
   an isolated ordinary-TUI source resident run passed in 72.701 seconds with two tasks,
   reconnect, a 23.0-second owner outage and four events with one native input/response each.

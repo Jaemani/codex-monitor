@@ -1,5 +1,24 @@
 # Test design and results
 
+## Dashboard to ordinary Codex TUI
+
+The open action must preserve the selected conversation ID and explicit owner endpoint, pass
+credentials through the environment, reject changed or unsafe bindings, and restore the terminal
+after child exit or failure. Snapshot refreshes must never launch Codex. Validate separately from
+the existing read-only dashboard PTY suite:
+
+```bash
+.venv/bin/python scripts/dashboard-open-canary.py --run \
+  --report /tmp/codex-monitor-dashboard-open.json
+```
+
+The canary requires the development `pyte` extra and authenticated Codex 0.153.4. It uses Luna/xhigh
+on one disposable Unix-owner conversation, presses Enter in the dashboard, verifies a user follow-up
+in that same native history, exits the TUI with `/quit`, and checks dashboard return. It archives
+the fixture and checks process/workspace cleanup before PASS. Pass `--dashboard-python` with an
+absolute installed Python path to exercise an installed dashboard instead of the source checkout.
+This is user-interaction evidence, not a new external-event, Desktop or production-service test.
+
 ## CLI resident lifecycle
 
 Unit tests cover explicit registration, incompatible queue targets, isolated per-task failures,

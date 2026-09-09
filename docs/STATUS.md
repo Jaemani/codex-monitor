@@ -10,6 +10,15 @@ target thread to be loaded on their server.
 
 ## Incident findings and current limitations (2026-09-09)
 
+- Dashboard Enter/o now opens the selected existing conversation in the ordinary Codex TUI using
+  its saved explicit owner endpoint. `/quit` returns to the dashboard. Refreshes remain read-only;
+  shared-local routes cannot infer an owner, and changed/unsafe identities are rejected. The source
+  native run passed in **25.878 seconds**; the installed-wheel run passed in **18.634 seconds** with
+  same-thread user follow-up, dashboard return and owned-fixture cleanup. Final regression:
+  **191 tests in 51.146 seconds**; installed dashboard PTY: **39 checks in 7.728 seconds**.
+  The wheel was installed globally and all 21 modules matched. Receiver readiness returned after
+  upgrade, preserving twelve bindings, seven receipts and credentials. Other owner/resident services
+  were not restarted. This adds no Desktop wakeup or original-incident recovery claim.
 - Desktop owner-access recheck: both installed client binaries report 0.153.4, the Desktop child
   exposes no observed listener, and `doctor --endpoint local --surface desktop` still fails.
   Official async hooks do not start a turn on completion; MCP/settings/Remote documentation supplies
