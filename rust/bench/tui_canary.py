@@ -54,6 +54,8 @@ def main():
         if terminal:
             terminal.pump(.05)
             screen = terminal.text().lower()
+            if "permission overrides are not supported" in screen:
+                raise RuntimeError("remote resume rejected permission overrides")
             if "would you like to run the following command" in screen or "approve this command" in screen:
                 raise RuntimeError("unexpected approval; no approval sent")
             if not trusted and str(work).lower() in screen and ("yes, i trust" in screen or "yes, continue" in screen):
@@ -148,7 +150,7 @@ def main():
         stop(receiver)
         receiver = start_receiver()
         send_event("RUST_TUI_RESTART_EVENT")
-        terminal = helper.Terminal(base + ["resume", thread])
+        terminal = helper.Terminal(["codex", "--remote", owner.endpoint, "--no-alt-screen", "resume", thread])
         wait(lambda: "RUST_TUI_RESTART_EVENT" in terminal.text(), "same_thread_reopen_history")
         terminal.close()
         terminal = None
@@ -160,33 +162,40 @@ def main():
         rpc = Rpc(owner.endpoint)
         wait(lambda: thread in rpc.call("thread/loaded/list", {})["data"], "resident_reconnected_after_owner_restart", 30)
         send_event("RUST_OWNER_RESTART_EVENT")
-        terminal = helper.Terminal(base + ["resume", thread])
+        terminal = helper.Terminal(["codex", "--remote", owner.endpoint, "--no-alt-screen", "resume", thread])
         wait(lambda: "RUST_OWNER_RESTART_EVENT" in terminal.text(), "owner_restart_event_visible_in_same_tui")
         report["result"] = "PASS"
     except Exception as error:
         report["result"] = "FAIL"
         report["error"] = str(error)
     finally:
-        if terminal:
-            args.report.with_suffix(".terminal.txt").write_text(terminal.text())
-            terminal.close()
-        stop(resident)
-        stop(receiver)
-        if rpc and thread:
+        cleanup_errors = []
+        def cleanup(label, action):
             try:
+                action()
+            except Exception as error:
+                cleanup_errors.append(f"{label}: {error}")
+        if terminal:
+            cleanup("terminal capture", lambda: args.report.with_suffix(".terminal.txt").write_text(terminal.text()))
+            cleanup("terminal close", terminal.close)
+        cleanup("resident stop", lambda: stop(resident))
+        cleanup("receiver stop", lambda: stop(receiver))
+        if rpc and thread:
+            def archive():
                 rpc.call("thread/archive", {"threadId": thread})
                 report["checks"]["owned_thread_archived"] = True
-            except Exception as error:
-                report["result"] = "FAIL"
-                report["cleanup_error"] = str(error)
+            cleanup("thread archive", archive)
         if rpc:
-            rpc.close()
+            cleanup("rpc close", rpc.close)
         if owner:
-            owner.close()
+            cleanup("owner close", owner.close)
         for log in logs:
-            log.close()
-        tmp.cleanup()
+            cleanup("log close", log.close)
+        cleanup("temporary state", tmp.cleanup)
         report["checks"]["temporary_state_removed"] = not work.exists()
+        if cleanup_errors:
+            report["result"] = "FAIL"
+            report["cleanup_errors"] = cleanup_errors
         save()
     print(json.dumps(report), flush=True)
     return 0 if report["result"] == "PASS" else 1

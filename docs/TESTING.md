@@ -1,5 +1,42 @@
 # Test design and results
 
+## Full candidate verification: 2026-09-12
+
+Rust runtime: `c8a1a28`, with the subsequent TUI-driver compatibility/cleanup fix.
+The Python checkout included the pending dashboard-readiness correction; its
+208-test result must not be attributed to the unchanged published Python source.
+
+| Surface | Result | Scope |
+|---|---|---|
+| macOS Rust | 29 passed; fmt, strict Clippy and release build passed | Disposable contracts; no model |
+| Docker Debian arm64 Rust 1.97.1 | 29 passed; release build passed | Native Linux container, isolated source copy |
+| macOS Python 3.14 | 208 passed in 61.902 s | Full checkout regression suite |
+| Docker Debian arm64 Python 3.11 | 208 passed in 59.624 s | Clean dependency installation and copied checkout |
+| Matched Python/Rust functional harness | 61 checks each passed | HTTP, predicates, lifecycle, paths and isolation; fake/unavailable owner |
+| Ordinary Codex 0.154.0 TUI, Rust release | 19 checks passed in 35.754 s | Visible event, user follow-up, closed TUI, receiver restart, owner restart/resubscribe, same-task reopening, cleanup |
+| Python dashboard PTY | 42 display + 22 control checks passed | Monitor UI, not native conversation consumption |
+| Rust dashboard PTY | Passed | Queue-only Enter guidance, pause/resume, clean exit |
+| Installed Python wheel | 17 isolation + 32 request + 17 predicate checks passed | Child hang/SIGKILL, lifecycle, 60-second predicate soak; no model |
+| Packaging/publication | Passed on macOS and Docker Linux | Archive construction and clean wheel installation; no release published |
+| TUI cleanup regressions | 3 passed | Exited-child handling, signal fallback and descriptor cleanup |
+
+The first Rust TUI attempt failed on remote resume: Codex 0.154.0 rejects
+permission overrides when resuming an existing remote task. Reopening now keeps
+its existing permissions. The old cleanup path also raised `PermissionError`
+while signaling an exited child and prevented the final report; it now reaps
+before signaling, closes the descriptor reliably and runs independent cleanup
+steps before saving a failure. The failed run was retained, its owned processes
+terminated and its disposable task archived. The corrected run passed.
+
+Three installed-wheel canaries initially rejected an editable checkout as
+intended. They were rerun successfully with a clean environment containing the
+new archive's wheel. This environment correction is not a product defect.
+
+These results do not establish Desktop cold-task wakeup, Windows/WSL, SSH,
+OS reboot/sleep, Rust installer/migration parity or a new one-hour outage result.
+The 60-second predicate soak is Python evidence. Raw reports remain outside Git.
+
+
 ## Dashboard groups and monitor controls
 
 ```bash

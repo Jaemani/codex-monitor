@@ -1,5 +1,15 @@
 # Status and remaining verification
 
+Full candidate verification (2026-09-12): macOS and Docker Linux both passed
+29 Rust contracts and 208 Python checkout regressions. Matched functional checks
+passed 61 cases per runtime. The Rust release passed 19 real Codex 0.154.0 TUI
+checks after correcting the canary's remote-resume permission flags and cleanup.
+Installed-wheel process/predicate/request and monitor dashboard checks passed.
+See [the dated matrix](TESTING.md#full-candidate-verification-2026-09-12) for exact
+scope, initial failures, pending Python changes and excluded acceptance gates.
+No installed service or default runtime was replaced.
+
+
 Rust candidate update (2026-09-12): CLI requests now expose history and durable
 status notifications, with automatic expiry, replay deduplication, per-request
 ordering and capacity deferral. Paused routes do not block unrelated notices;

@@ -30,6 +30,11 @@ when its remaining acceptance criteria pass. Update the corresponding issue and 
 
 ## Rust candidate evaluation
 
+- [x] **Full candidate sweep (2026-09-12).** macOS/Docker Rust and Python suites,
+  matched functional contracts, installed wheel canaries and ordinary Codex
+  0.154.0 Rust TUI passed. Fixed test-driver remote-resume flags and failure
+  cleanup; platform/endurance/adoption gaps remain. See TESTING.md.
+
 - [ ] **Authentication-aware operational health.** Dashboard conversation dots
   must not equate enabled routes or accepted queue entries with working Codex
   authentication. Fresh owner/model error telemetry, honest failure/unknown

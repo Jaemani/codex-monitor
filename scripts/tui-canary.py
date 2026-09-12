@@ -60,10 +60,15 @@ class Terminal:
         os.write(self.fd, text.encode())
 
     def close(self):
+        if getattr(self, "_closed", False):
+            return
         try:
+            # Reap an exited child before signaling its former process group.
+            if os.waitpid(self.pid, os.WNOHANG)[0]:
+                return
             try:
                 os.killpg(self.pid, signal.SIGTERM)
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):
                 os.kill(self.pid, signal.SIGTERM)
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
@@ -73,15 +78,17 @@ class Terminal:
             else:
                 try:
                     os.killpg(self.pid, signal.SIGKILL)
-                except ProcessLookupError:
+                except (ProcessLookupError, PermissionError):
                     os.kill(self.pid, signal.SIGKILL)
                 os.waitpid(self.pid, 0)
         except (ProcessLookupError, ChildProcessError):
             pass
-        try:
-            os.close(self.fd)
-        except OSError:
-            pass
+        finally:
+            self._closed = True
+            try:
+                os.close(self.fd)
+            except OSError:
+                pass
 
 
 class RemoteServer:
