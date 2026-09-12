@@ -31,6 +31,22 @@ performs a catch-up sample after registration. Two consecutive changes pass
 before the 30-second fallback. No new comparative memory result is claimed for
 this revision; earlier measurements below retain their original scope.
 
+## Resource recheck: 2026-09-12
+
+The frozen `c8a1a28` release executable passed matched 0/10-watch observations
+with a 2-second fallback interval and 10-second idle/change phases. At 10 watches,
+Python/Rust median idle process-tree RSS was 53,216/41,616 KiB (21.8% lower for
+Rust); changed-phase sampled peak was 103,440/42,448 KiB (59.0% lower). Both
+produced exactly 10 events and 10 changed checkpoints. Rust idle DB/WAL sizes
+stayed unchanged and no idle event was generated. Whole-run waited CPU was
+8.055/0.091 seconds. Zero-watch Rust median idle RSS was 10,368 KiB.
+
+These are short, host-specific observations after build/test processes finished,
+not long-duration guarantees, precise physical memory totals or full parity.
+The follow-up ordinary Codex 0.154.0 TUI passed after a test-driver resume fix;
+see the dated [full test matrix](TESTING.md#full-candidate-verification-2026-09-12).
+The candidate still lacks request HTTP, operational-health and distribution parity.
+
 ## What changed structurally
 
 | Area | Python baseline | Rust candidate |

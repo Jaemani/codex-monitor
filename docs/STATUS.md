@@ -1,7 +1,8 @@
 # Status and remaining verification
 
 Full candidate verification (2026-09-12): macOS and Docker Linux both passed
-29 Rust contracts and 208 Python checkout regressions. Matched functional checks
+29 Rust contracts and 208 Python checkout regressions. The final macOS rerun
+passed all 211 tests including three new cleanup regressions. Matched functional checks
 passed 61 cases per runtime. The Rust release passed 19 real Codex 0.154.0 TUI
 checks after correcting the canary's remote-resume permission flags and cleanup.
 Installed-wheel process/predicate/request and monitor dashboard checks passed.

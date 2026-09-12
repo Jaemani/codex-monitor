@@ -10,7 +10,7 @@ The Python checkout included the pending dashboard-readiness correction; its
 |---|---|---|
 | macOS Rust | 29 passed; fmt, strict Clippy and release build passed | Disposable contracts; no model |
 | Docker Debian arm64 Rust 1.97.1 | 29 passed; release build passed | Native Linux container, isolated source copy |
-| macOS Python 3.14 | 208 passed in 61.902 s | Full checkout regression suite |
+| macOS Python 3.14 | Final 211 passed in 55.399 s | Full checkout suite including three new cleanup regressions; initial 208 also passed |
 | Docker Debian arm64 Python 3.11 | 208 passed in 59.624 s | Clean dependency installation and copied checkout |
 | Matched Python/Rust functional harness | 61 checks each passed | HTTP, predicates, lifecycle, paths and isolation; fake/unavailable owner |
 | Ordinary Codex 0.154.0 TUI, Rust release | 19 checks passed in 35.754 s | Visible event, user follow-up, closed TUI, receiver restart, owner restart/resubscribe, same-task reopening, cleanup |
