@@ -28,6 +28,10 @@ when its remaining acceptance criteria pass. Update the corresponding issue and 
 | [#14](https://github.com/Jaemani/codex-monitor/issues/14) | Rust runtime adoption | Isolated candidate; matched evaluation and parity gates pending |
 | [#13](https://github.com/Jaemani/codex-monitor/issues/13) | Matched Claude benchmark | Planned; current comparison is documentation-based |
 
+- [x] **Dashboard duration and transient notices (2026-09-13).** Use whole
+  paired elapsed-time units; clear previous action/open notices on navigation
+  in both dashboards. Python route/row behavior passed real PTY regression.
+
 ## Rust candidate evaluation
 
 - [x] **Isolated binary distribution and macOS service lifecycle (2026-09-12).**

@@ -608,11 +608,19 @@ class Canary:
             route_after = self.active_route(routed, route_bindings)
             self.check("route_tab_cycles_binding", route_before != route_after or context_before != self.route_context(routed, route_bindings))
             self.check("route_context_shows_binding", route_after is not None)
+            terminal.send("\r")
+            terminal.wait_for(lambda text: "OPEN:" in text, 3, "queue-only open notice")
+            terminal.send("\t")
+            terminal.wait_for(lambda text: "OPEN:" not in text, 3, "route clears open notice")
+            self.check("route_navigation_clears_open_notice", True)
+            terminal.send("\r")
+            terminal.wait_for(lambda text: "OPEN:" in text, 3, "second open notice")
             terminal.send("\x1b[H")
             at_home = terminal.wait_for(
-                lambda text: "gamma" in text.lower() and bool(self.route_context(text)),
+                lambda text: "gamma" in text.lower() and bool(self.route_context(text)) and "OPEN:" not in text,
                 2, "dashboard other-thread row",
             )
+            self.check("row_navigation_clears_open_notice", "OPEN:" not in at_home)
             self.check("live_unfiltered_dashboard_reaches_other_thread", "gamma" in at_home.lower())
             self.check(
                 "row_navigation_changes_selection",

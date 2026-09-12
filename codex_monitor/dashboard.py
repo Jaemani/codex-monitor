@@ -131,12 +131,12 @@ def _age_text(value: Any) -> str:
     if age < 1:
         return "<1s"
     if age < 60:
-        return f"{age:.0f}s"
+        return f"{int(age)}s"
     if age < 3600:
-        return f"{age / 60:.1f}m"
+        return f"{int(age) // 60}m {int(age) % 60}s"
     if age < 86400:
-        return f"{age / 3600:.1f}h"
-    return f"{age / 86400:.1f}d"
+        return f"{int(age) // 3600}h {int(age) % 3600 // 60}m"
+    return f"{int(age) // 86400}d {int(age) % 86400 // 3600}h"
 
 
 def _read_limited(path: Path, limit: int) -> bytes:
@@ -1785,6 +1785,9 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
                     open_status = str(exc)
                 next_frame = 0.0
                 continue
+            if value in ("j", "down", "k", "up", "pageup", "pagedown", "home", "end", "\t"):
+                open_status = None
+                notice_kind = "OPEN"
             if value in ("j", "down"):
                 selected = min(selected + 1, max(0, len(connections) - 1))
                 selected_route = _preferred_route(connections[selected]) if connections else 0

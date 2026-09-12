@@ -1,5 +1,12 @@
 # Status and remaining verification
 
+Dashboard usability correction (2026-09-13): elapsed time uses whole paired
+units (`3d 2h`, `5h 12m`, `1m 1s`) instead of decimal days/hours. Navigation
+clears prior route/action notices in Python and Rust. The original stale open
+notice was reproduced in a PTY before the fix; 23 Python dashboard tests and
+44 amended live dashboard PTY checks pass afterward. The corrected wheel was
+installed locally; existing dashboards need reopening to load the change.
+
 Operational recovery and candidate work (2026-09-12): two already-loaded CLI
 routes were reconnected from shared-local to their existing explicit owner
 without changing task IDs, source allowlists or receipt identities. Six configured

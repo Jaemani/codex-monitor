@@ -15,6 +15,7 @@ from codex_monitor.dashboard import (
     DashboardError,
     DashboardReader,
     _binding_rows,
+    _age_text,
     _color_enabled,
     _conversation_label,
     _conversation_status,
@@ -31,6 +32,13 @@ from codex_monitor import cli
 
 
 class DashboardTest(unittest.TestCase):
+    def test_duration_uses_whole_larger_and_smaller_units(self):
+        for seconds, expected in [(3 * 86400 + 2 * 3600, "3d 2h"),
+                                  (86400, "1d 0h"), (3661, "1h 1m"),
+                                  (61, "1m 1s"), (59, "59s"), (0.2, "<1s")]:
+            with self.subTest(seconds=seconds):
+                self.assertEqual(_age_text(seconds), expected)
+
     def test_enabled_route_is_not_proof_of_codex_readiness(self):
         connection = {"bindings": [{"enabled": True, "events": {
             "counts": {"accepted": 1}, "latest": {"state": "accepted"}

@@ -453,16 +453,19 @@ pub async fn dashboard(
         }
         match key.code {
             KeyCode::Down | KeyCode::Char('j') => {
+                notice.clear();
                 selection_valid = true;
                 selection = (selection + 1).min(rows.len().saturating_sub(1));
                 route = 0;
             }
             KeyCode::Up | KeyCode::Char('k') => {
+                notice.clear();
                 selection_valid = true;
                 selection = selection.saturating_sub(1);
                 route = 0;
             }
             KeyCode::Tab => {
+                notice.clear();
                 selection_valid = true;
                 route = route.wrapping_add(1);
             }
