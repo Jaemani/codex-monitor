@@ -126,24 +126,26 @@ From a second terminal, with the receiver running:
 codex-monitor dashboard
 ```
 
-The **Live** dot pulses while the view refreshes. Green, red and amber status dots distinguish
-configuration and observed health. Use `--no-animate` or `--color never` when preferred.
+**Auto-refresh** means the view periodically reads observations; it is not a connection heartbeat.
+The updated age refers to the snapshot, not the latest event. Status dots describe observed
+health independently. Use `--color never` for plain symbols.
 
 Select a conversation with the arrow keys and press **Enter** to open its ordinary Codex
 TUI. Read events and responses, send messages, or answer approvals; exit the TUI to return to the
 dashboard. Opening uses the binding's explicit shared owner endpoint and the same conversation ID.
 `shared-local` bindings need an explicit owner endpoint before they can be opened this way.
 
-The Graphite view shows one row per conversation, status dots, connection counts and recent delivery observations.
+The Graphite view shows one row per conversation, status dots, active/paused route counts and recent delivery observations.
 The selected route appears below the list; use **Tab** to cycle routes before opening it.
 Project groups and stable display names distinguish similar agents across projects. **p** stops
 the selected monitor route, **r** resumes it, and **x**, then **y**, removes it while preserving
 the Codex conversation. See [groups and controls](docs/DASHBOARD.md).
-Press **d** for technical details such
-as conversation IDs, owner endpoints and receipt states. Green/red dots describe the displayed
+Press **d** for the route inspector: browse every registered route with **Tab** or **[ / ]**,
+including paused routes. Inspect source/file paths, collector state, delivery history,
+receipts and TUI availability. **Page Up / Page Down** scroll long details. **q** closes only the dashboard. Green/red dots describe the displayed
 binding or receiver; they do not imply that an agent is currently generating or has finished work.
 
-Use `--once` for a snapshot, `--once --json` for structured output, or `--thread "$THREAD_ID"` to filter a conversation. The display refreshes observations without calling Codex or the model. See [dashboard controls and status meanings](docs/DASHBOARD.md).
+Use `--once` for a snapshot, `--once --json` for structured output, or `--thread "$THREAD_ID"` to filter a conversation. The display refreshes observations using bounded read-only owner probes without creating model turns. See [dashboard controls and status meanings](docs/DASHBOARD.md).
 
 The inventory covers bindings in the selected local state, not every Codex agent or every host. External producer health stays **unknown** until a supported observation exists. A running receiver, an accepted event and a completed work request are different facts. Native consumption remains an explicit `inspect DELIVERY_ID` check.
 

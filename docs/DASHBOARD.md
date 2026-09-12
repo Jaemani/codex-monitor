@@ -2,7 +2,7 @@
 
 The dashboard is a separate terminal view of one local codex-monitor state directory. It reads
 configured conversations, managed collector observations, delivery receipts and explicit request
-reports. Refreshes do not call the Codex App Server, create model turns or change monitoring
+reports. Refreshes use bounded read-only probes for explicit Codex owners; they do not create model turns or change monitoring
 configuration. Explicit keyboard actions can stop, resume or remove the selected monitor route. Enter launches
 the ordinary Codex TUI for the selected conversation.
 
@@ -22,7 +22,8 @@ Use snapshot mode in scripts and redirected output.
 
 The dashboard observes **event delivery**, managed collector observations and explicit request work
 reports. It does not collect live model/tool execution, token usage, cost or inferred completion
-percentages. `Delivery events` names the compact column; details separate delivery from work reports.
+percentages. `Recent delivery` shows recorded queue delivery, not completed agent work. Active/paused
+counts refer to registered event routes, not live sockets or running agents.
 JSON snapshots include a `scope` object describing this boundary, including on read failures. A scope
 field describes what the view can report, not whether a producer or consumer is currently healthy.
 
@@ -31,8 +32,9 @@ field describes what the view can report, not whether a producer or consumer is 
 - `q` or Ctrl-C: leave the dashboard. The receiver and monitors continue running.
 - `j` / `k` or down / up: select a conversation and scroll the inventory.
 - Home / End and Page Up / Page Down: navigate longer inventories.
-- Tab: cycle the selected conversation's connections; the selected route remains visible below.
-- `d`: toggle details for the selected connection.
+- Tab or `]` / `[`: browse the next/previous route, including paused entries.
+- `d`: open/close the route inspector with a scrolling window of every registered route.
+  Page Up / Page Down scroll long details while the inspector is open.
 - `p`: stop monitoring on the selected connection.
 - `r`: resume monitoring on that connection.
 - `x`, then `y`: remove the selected connection. Any other key cancels the confirmation.
@@ -44,8 +46,8 @@ field describes what the view can report, not whether a producer or consumer is 
 The dashboard preserves the terminal's input settings on normal exit. Refreshes remain read-only;
 only deliberate control keys change monitoring. Controls apply to the route shown below the list,
 not every route in the conversation or project. Use Tab to choose the intended route first.
-The conversation dot can stay green when another route remains enabled; use `d` to inspect the
-selected route status. The action notice names the route that changed.
+Do not infer authentication or completed work from an enabled route; use `d` to inspect
+the selected route and its observed owner status. The action notice names the route that changed.
 For managed file monitors, stop/resume also updates the collector lifecycle. For external sources,
 resume re-enables intake and delivery; it does not restart a separate producer process or load an
 unloaded native conversation. Stopping or removing monitoring does not terminate a Codex turn, archive the conversation or erase
@@ -99,11 +101,11 @@ the selected conversation's normal model and permissions.
 
 ## Reading the screen
 
-The fixed header shows **Live** with a pulsing dot; wide screens also show snapshot age in the footer. This indicates
-that the view is refreshing, not that every producer or Codex model is connected. Animation reuses
-the latest snapshot; it does not increase the configured read/probe frequency or invoke the model.
+The fixed header shows **Auto-refresh** without a pulse; wide screens also show snapshot age
+in the footer. This describes inventory refresh, not producer or model connectivity.
+Refreshes do not invoke the model.
 
-The compact Graphite overview shows one single-height row per conversation, with connection count and recent activity
+The compact Graphite overview shows one single-height row per conversation, with active/paused route counts and recent delivery
 in aligned columns. Thin dividers, a subtle selection background and an emerald leading marker
 separate the list from the selected-conversation context directly below it.
 Rows do not expand with terminal height; the selected background covers only its text row.
@@ -176,3 +178,18 @@ future features. OS-timed probes can already feed failure events using the [heal
 
 Validation is recorded in [TESTING.md](TESTING.md). A dashboard PTY test verifies this terminal view,
 not a Codex CLI conversation or Desktop event-delivery flow.
+
+## Reading the route inspector
+
+One conversation can receive events through many routes. The overview separates active
+and paused registrations; paused entries remain inspectable and are not running agents.
+The detail window follows Tab or bracket navigation through the entire list, showing
+file/external type, registration state and the selected route's source or watched path.
+Long paths wrap; Page Up / Page Down reveal overflow. Delivery history and receipt IDs
+remain separate from explicit work reports. Queue acceptance does not establish consumption
+or task completion. A queue-only route explains why Enter cannot open a TUI.
+
+Auto-refresh is a static label. Snapshot age measures the last inventory read; the latest
+receipt age measures an event observation. Neither means the model is running. Amber
+means an observed attention/stale condition, not a heartbeat animation. Closing this view
+with `q` leaves the receiver and monitoring active.

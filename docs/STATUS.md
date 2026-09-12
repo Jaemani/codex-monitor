@@ -1,5 +1,12 @@
 # Status and remaining verification
 
+Dashboard route inspector (2026-09-13): overview separates active/paused registrations
+and recent delivery. Details browse every route, show source/file, owner/collector
+observations, delivery history and receipt IDs, with wrapped text and scrolling.
+Auto-refresh is static and separate from health; queue-only routes explain TUI limits.
+Existing routes and operational state are not changed by this display update.
+
+
 Dashboard usability correction (2026-09-13): elapsed time uses whole paired
 units (`3d 2h`, `5h 12m`, `1m 1s`) instead of decimal days/hours. Navigation
 clears prior route/action notices in Python and Rust. The original stale open

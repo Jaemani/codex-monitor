@@ -590,3 +590,14 @@ ready, disconnected and shared-local observations are exercised without
 start/resume/model calls. A mixed set of active routes cannot hide a failed or
 unverified route behind a healthy sibling. Strict Clippy and formatting pass.
 The ordinary TUI run above preceded this final display-only aggregation change.
+
+## Route inspector usability (2026-09-13)
+
+Python dashboard regressions passed 24 tests, including a 34-route inventory,
+last-route selection, long-path wrapping and bounded short-terminal scrolling.
+The real dashboard PTY passed 46 checks, including the route inspector,
+scrolling to TUI availability, return to overview and removal of prior open
+notices on navigation. The control PTY passed 22 checks. The built wheel was
+installed and matched the source dashboard hash; receiver readiness passed.
+No operational routes were paused, deleted or replayed by these UI changes.
+Auto-refresh is now static; its test asserts it does not impersonate a health pulse.

@@ -309,7 +309,7 @@ class Canary:
 
         header = "\n".join(text.lower().splitlines()[:3])
         return "codex-monitor" in header and any(
-            marker in header for marker in ("live", "snapshot", "last refreshed", "updated")
+            marker in header for marker in ("auto-refresh", "snapshot", "last refreshed", "updated")
         )
 
     @staticmethod
@@ -622,6 +622,15 @@ class Canary:
             )
             self.check("row_navigation_clears_open_notice", "OPEN:" not in at_home)
             self.check("live_unfiltered_dashboard_reaches_other_thread", "gamma" in at_home.lower())
+            terminal.send("d")
+            inspected = terminal.wait_for(lambda text: "Registered event routes" in text and "Selected:" in text, 3, "route inspector")
+            self.check("details_show_route_inventory", "active" in inspected and "paused" in inspected)
+            terminal.send("\x1b[6~")
+            inspected = terminal.wait_for(lambda text: "TUI unavailable" in text, 3, "scroll inspector")
+            self.check("details_explain_tui_unavailability", "TUI unavailable" in inspected)
+            terminal.send("d")
+            terminal.wait_for(lambda text: self.dashboard_header(text), 3, "return from inspector")
+
             self.check(
                 "row_navigation_changes_selection",
                 self.selected_row(before_navigation) is not None
@@ -661,12 +670,12 @@ class Canary:
         pulse_text = bytes(terminal.raw).decode("utf-8", errors="replace")
         title_pulses = set(re.findall(r"codex-monitor[^\r\n]*([●○])[^\r\n]*Live", pulse_text))
         self.check(
-            "live_indicator_animates_independently",
-            {"●", "○"} <= title_pulses,
+            "refresh_indicator_does_not_fake_health_pulses",
+            not title_pulses and "Auto-refresh" in pulse_text,
         )
         self.check(
             "live_frames_render_current_header",
-            pulse_text.count("codex-monitor") >= 2 and "Live" in pulse_text,
+            pulse_text.count("codex-monitor") >= 2 and "Auto-refresh" in pulse_text,
         )
         rendered_ages = set(re.findall(r"Updated ([^\r\n\x1b]+?) ago", pulse_text))
         self.check("snapshot_age_is_rendered", bool(rendered_ages))

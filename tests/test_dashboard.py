@@ -32,6 +32,24 @@ from codex_monitor import cli
 
 
 class DashboardTest(unittest.TestCase):
+    def test_route_inspector_browses_all_entries_and_wraps_long_paths(self):
+        bindings = [{"name": f"watch-{i}", "enabled": i == 0, "endpoint": "shared-local",
+                     "sources": ["managed/file"], "events": {"counts": {}}} for i in range(34)]
+        snapshot = {"ok": True, "connections": [{"thread": "task", "bindings": bindings,
+                    "collectors": [{"binding": "watch-33", "name": "watch-33",
+                    "path": "/very/long/" + "nested/" * 20 + "result.json"}]}]}
+        panel = render_text(snapshot, width=80, height=30, detail=True, selected_route=33)
+        self.assertIn("1 active / 33 paused", panel)
+        self.assertIn("30–34/34", panel)
+        self.assertIn("Selected: watch-33", panel)
+        self.assertIn("result.json", panel)
+        self.assertIn("TUI unavailable", panel)
+        short = render_text(snapshot, width=40, height=8, detail=True, selected_route=33, detail_scroll=100)
+        self.assertLessEqual(len(short.splitlines()), 8)
+        self.assertIn("q quit", short)
+        self.assertTrue(all(len(line) <= 40 for line in short.splitlines()))
+
+
     def test_duration_uses_whole_larger_and_smaller_units(self):
         for seconds, expected in [(3 * 86400 + 2 * 3600, "3d 2h"),
                                   (86400, "1d 0h"), (3661, "1h 1m"),
@@ -197,12 +215,12 @@ class DashboardTest(unittest.TestCase):
             }],
         }
         compact = render_text(snapshot, width=120, height=20, color=True, live=True, frame=True, now=1_001)
-        self.assertIn("Live", compact)
-        self.assertIn("1 conversation  /  3 connections", compact)
+        self.assertIn("Auto-refresh", compact)
+        self.assertIn("1 conversation  /  3 registered routes", compact)
         self.assertIn("Conversation", compact)
-        self.assertIn("Connections", compact)
-        self.assertIn("Delivery events", compact)
-        self.assertIn("1 conversation  /  3 connections", compact)
+        self.assertIn("Active / paused", compact)
+        self.assertIn("Recent delivery", compact)
+        self.assertIn("1 conversation  /  3 registered routes", compact)
         self.assertIn("1 pending", compact)
         self.assertNotIn("ON", compact)
         self.assertNotIn("OFF", compact)
@@ -214,11 +232,11 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("\x1b[48;5;236m", compact)
 
         details = render_text(snapshot, width=120, height=20, color=False, detail=True, selected=0, now=1_001)
-        self.assertIn("uuid-on", details)
-        self.assertIn("Details: on-binding", details)
-        self.assertIn("endpoint shared-local", details)
-        self.assertIn("Scope: delivery + reported work · no live model/tool telemetry", details)
-        self.assertIn("Status: ● enabled ○ paused ◐ stale · unavailable", details)
+        self.assertIn("Latest: pending", details)
+        self.assertIn("Selected: on-binding", details)
+        self.assertIn("shared-local", details)
+        self.assertIn("Queue delivery does not confirm completed work", details)
+        self.assertIn("1 active / 2 paused", details)
         self.assertNotIn("\x1b", details)
 
         many = dict(snapshot)
@@ -231,12 +249,12 @@ class DashboardTest(unittest.TestCase):
             "collectors": [],
         } for index in range(10)]
         last_details = render_text(many, width=100, height=20, color=False, detail=True, selected=9, now=1_001)
-        self.assertIn("Route 1/1 · binding-9", last_details)
-        self.assertIn("Details: binding-9", last_details)
+        self.assertIn("showing 1–1/1", last_details)
+        self.assertIn("Selected: binding-9", last_details)
         short = render_text(many, width=100, height=8, color=False, selected=9, now=1_001)
         self.assertLessEqual(len(short.splitlines()), 8)
         self.assertIn("Route 1/1 · binding-9", short)
-        self.assertIn("Enter open", short)
+        self.assertIn("Enter TUI", short)
         for width in (24, 36):
             narrow = render_text(many, width=width, height=8, selected=9)
             self.assertLessEqual(len(narrow.splitlines()), 8)
@@ -267,8 +285,8 @@ class DashboardTest(unittest.TestCase):
             }],
         }
         details = render_text(snapshot, width=120, height=20, color=False, detail=True, now=1_001)
-        self.assertIn("delivery events: No delivery events", details)
-        self.assertIn("work reports (request lifecycle): 1 completed; latest report completed request-1", details)
+        self.assertIn("Delivery history: none", details)
+        self.assertIn("Work reports: 1 completed; latest report completed request-1", details)
         self.assertNotIn("requests: ", details)
 
     def test_compact_render_uses_human_managed_name_and_hides_generated_binding_id(self):
