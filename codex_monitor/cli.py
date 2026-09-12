@@ -124,6 +124,12 @@ def parser():
     bind.add_argument("name"); bind.add_argument("--thread", required=True)
     bind.add_argument("--source", action="append", required=True)
     bind.add_argument("--endpoint", default="shared-local")
+    rebind = commands.add_parser("rebind", help="reconnect an existing external route to the same task")
+    rebind.add_argument("name")
+    rebind.add_argument("--thread", required=True)
+    rebind.add_argument("--from-endpoint", required=True)
+    rebind.add_argument("--endpoint", required=True)
+
     conversation = commands.add_parser("conversation", help="group and label an attached conversation")
     conversation_commands = conversation.add_subparsers(dest="conversation_action", required=True)
     metadata_set = conversation_commands.add_parser("set")
@@ -458,6 +464,8 @@ def main(argv=None):
                 value = monitor.managed_remove(thread, args.name)
             value["receiver_running"] = process_alive(root / "serve.lock")
             output(value)
+        elif args.command == "rebind":
+            output(monitor.rebind(args.name, args.thread, args.from_endpoint, args.endpoint))
         elif args.command in ("bind", "attach"):
             if MANAGED_SOURCE in args.source:
                 raise ValueError("reserved managed source cannot be registered externally")

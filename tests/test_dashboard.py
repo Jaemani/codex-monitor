@@ -17,6 +17,7 @@ from codex_monitor.dashboard import (
     _binding_rows,
     _color_enabled,
     _conversation_label,
+    _conversation_status,
     _cycle_route,
     _launch_selected,
     _preferred_route,
@@ -30,6 +31,54 @@ from codex_monitor import cli
 
 
 class DashboardTest(unittest.TestCase):
+    def test_enabled_route_is_not_proof_of_codex_readiness(self):
+        connection = {"bindings": [{"enabled": True, "events": {
+            "counts": {"accepted": 1}, "latest": {"state": "accepted"}
+        }}]}
+        self.assertEqual(_conversation_status(connection), "UNKNOWN")
+
+    def test_delivery_failure_overrides_enabled_route(self):
+        connection = {"bindings": [{"enabled": True, "events": {
+            "counts": {"dead": 1}, "latest": {"state": "dead", "error": "authentication required"}
+        }}, {"enabled": True}]}
+        self.assertEqual(_conversation_status(connection), "ERROR")
+
+    def test_owner_probe_is_injected_for_explicit_routes_and_can_be_disabled(self):
+        calls = []
+
+        def probe(endpoint, thread):
+            calls.append((endpoint, thread))
+            return {
+                "endpoint": endpoint,
+                "thread": thread,
+                "status": "ready-to-receive",
+                "state": "ready-to-receive",
+                "ready": True,
+                "transport_reachable": True,
+                "thread_loaded": True,
+                "account": {"status": "present", "present": True,
+                            "credential_validation": "unverified"},
+                "credential_validation": "unverified",
+                "model_execution": "unverified",
+                "reason": "owner transport reachable and conversation loaded",
+            }
+
+        db = sqlite3.connect(self.root / "monitor.sqlite3")
+        try:
+            db.execute("UPDATE bindings SET endpoint=? WHERE name=?", ("ws://127.0.0.1:8767", "work"))
+            db.commit()
+        finally:
+            db.close()
+        snapshot = DashboardReader(self.root, owner_probe=probe).snapshot()
+        health = snapshot["connections"][0]["bindings"][0]["owner_health"]
+        self.assertEqual(health["status"], "ready-to-receive")
+        self.assertEqual(calls, [("ws://127.0.0.1:8767", "thread-a")])
+        self.assertEqual(_conversation_status(snapshot["connections"][0]), "ON")
+        calls.clear()
+        disabled = DashboardReader(self.root, owner_health=False, owner_probe=probe).snapshot()
+        self.assertEqual(disabled["connections"][0]["bindings"][0]["owner_health"]["status"], "unverified")
+        self.assertEqual(calls, [])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

@@ -224,3 +224,20 @@ Monitor state belongs outside the managed runtime. If `CODEX_MONITOR_HOME` point
 - Release archives and wheels are local inputs. If a trusted artifact is unavailable, obtain it from the project owner; do not install an unrelated registry package as a substitute.
 
 The service guard inspects the current user's standard macOS `~/Library/LaunchAgents/com.codex.monitor.*.plist` files. It does not discover services installed by another account or service manager. Stop those explicitly before changing or removing their runtime.
+
+## Reconnect an existing external route
+
+Verify that the same saved task is loaded on the intended owner with `doctor`
+before changing a route. Rebinding preserves the route name, source allowlist,
+paused state and receipts; it never resumes a task or replays an event.
+
+```sh
+codex-monitor doctor --endpoint ws://127.0.0.1:8767 --thread THREAD_ID
+codex-monitor rebind ROUTE --thread THREAD_ID \
+  --from-endpoint shared-local --endpoint ws://127.0.0.1:8767
+```
+
+The exact previous endpoint and task must match. Rebinding refuses retired or
+managed routes and any in-flight/uncertain delivery. Settle or inspect those
+receipts first; do not recreate a route to bypass the guard. A writer conflict
+requires resolving the existing owner, not forcibly taking over its task.

@@ -157,6 +157,24 @@ class Monitor:
                        (name, thread, endpoint, compact(sources)))
         return {"name": name, "thread": thread, "endpoint": endpoint, "sources": sources}
 
+    def rebind(self, name, thread, previous_endpoint, endpoint):
+        """Move an external route to the same task's verified owner without replay."""
+        endpoint = validate_endpoint(endpoint)
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM bindings WHERE name=?", (name,)).fetchone()
+            if row is None or row["thread"] != thread or row["endpoint"] != previous_endpoint:
+                raise IngressError("route identity changed; inspect before reconnecting", 409)
+            if row["removed"]:
+                raise IngressError("binding has been retired", 409)
+            if db.execute("SELECT 1 FROM managed_watches WHERE binding=?", (name,)).fetchone():
+                raise IngressError("managed routes require their monitor lifecycle workflow", 409)
+            if db.execute("SELECT 1 FROM events WHERE binding=? AND state IN ('submitting','uncertain')", (name,)).fetchone():
+                raise IngressError("in-flight or uncertain input must settle before reconnecting", 409)
+            db.execute("UPDATE bindings SET endpoint=? WHERE name=?", (endpoint, name))
+        return {"binding": name, "thread": thread, "previous_endpoint": previous_endpoint,
+                "endpoint": endpoint, "replayed": False}
+
     @staticmethod
     def _metadata_text(value, field):
         if not isinstance(value, str):

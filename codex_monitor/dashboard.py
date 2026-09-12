@@ -6,6 +6,7 @@ user action invokes Monitor; opening a conversation launches the native TUI.
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import os
@@ -25,11 +26,14 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
+from .owner_health import OwnerHealthCache, probe_owner
 from .session import server_token
 
 
 READ_TIMEOUT = 0.35
 STATUS_TIMEOUT = 0.75
+OWNER_HEALTH_TIMEOUT = 0.45
+OWNER_HEALTH_BUDGET = 3.0
 STATUS_BODY_LIMIT = 64 * 1024
 CHECKPOINT_LIMIT = 64 * 1024
 MAX_TEXT = 240
@@ -371,13 +375,166 @@ def receiver_process_alive(path: Path) -> bool:
     return _receiver_lock_probe(path) is True
 
 
-class DashboardReader:
-    """Build one bounded, read-only state inventory."""
+def _unverified_owner(endpoint: Any, *, reason: str) -> dict[str, Any]:
+    """Describe a route whose owner cannot be probed without opening stdio."""
 
-    def __init__(self, root: str | os.PathLike[str], *, thread: str | None = None, clock=time.time):
+    return {
+        "endpoint": _safe(endpoint),
+        "status": "unverified",
+        "state": "unverified",
+        "ready": False,
+        "transport_reachable": None,
+        "thread_loaded": None,
+        "account": {
+            "status": "unverified",
+            "present": None,
+            "credential_validation": "unverified",
+        },
+        "credential_validation": "unverified",
+        "model_execution": "unverified",
+        "reason": reason,
+    }
+
+
+def _dashboard_owner_probe(endpoint: str, thread: str) -> dict[str, Any]:
+    """Probe with the same optional token source used by the explicit opener."""
+
+    try:
+        token = server_token()
+    except Exception:
+        # Do not expose invalid token-file paths or token contents in a
+        # dashboard snapshot. The owner probe remains an authentication fact.
+        return {
+            "endpoint": _safe(endpoint),
+            "thread": _safe(thread),
+            "status": "auth-required",
+            "state": "auth-required",
+            "ready": False,
+            "transport_reachable": None,
+            "thread_loaded": None,
+            "account": {"status": "unverified", "present": None,
+                        "credential_validation": "unverified"},
+            "credential_validation": "unverified",
+            "model_execution": "unverified",
+            "reason": "authentication required",
+        }
+    return probe_owner(endpoint, thread, token=token, timeout=OWNER_HEALTH_TIMEOUT)
+
+
+class DashboardReader:
+    """Build one bounded, read-only state inventory.
+
+    Owner health is deliberately injectable so inventory tests can remain
+    local and deterministic.  ``owner_health=False`` disables the explicit
+    owner probe; it never changes the persisted delivery inventory.
+    """
+
+    def __init__(
+        self,
+        root: str | os.PathLike[str],
+        *,
+        thread: str | None = None,
+        clock=time.time,
+        owner_health: bool = True,
+        owner_probe=None,
+    ):
         self.root = Path(root).expanduser().resolve()
         self.thread = thread
         self.clock = clock
+        self._owner_health = bool(owner_health)
+        if owner_probe is False:
+            self._owner_health = False
+            owner_probe = None
+        self._owner_cache = (
+            OwnerHealthCache(probe=owner_probe or _dashboard_owner_probe)
+            if self._owner_health else None
+        )
+
+    def _attach_owner_health(self, connections: list[dict[str, Any]]) -> None:
+        """Attach cached owner observations without creating local runtimes."""
+
+        deadline = time.monotonic() + OWNER_HEALTH_BUDGET
+        endpoint_observations: dict[str, dict[str, Any]] = {}
+        for connection in connections:
+            thread = connection.get("thread")
+            for binding in connection.get("bindings") or []:
+                endpoint = binding.get("endpoint")
+                if not self._owner_health or self._owner_cache is None:
+                    binding["owner_health"] = _unverified_owner(
+                        endpoint,
+                        reason="owner probe disabled",
+                    )
+                    continue
+                if not isinstance(thread, str) or not thread:
+                    binding["owner_health"] = _unverified_owner(
+                        endpoint,
+                        reason="conversation identity is unavailable",
+                    )
+                    continue
+                if not isinstance(endpoint, str) or not binding.get("identity_exact"):
+                    binding["owner_health"] = _unverified_owner(
+                        endpoint,
+                        reason="route identity is not exact",
+                    )
+                    continue
+                if endpoint in {"shared-local", "local"}:
+                    binding["owner_health"] = _unverified_owner(
+                        endpoint,
+                        reason="shared-local/local owner is not explicitly probeable",
+                    )
+                    continue
+                if not endpoint.startswith(("ws://", "wss://", "unix://")):
+                    binding["owner_health"] = _unverified_owner(
+                        endpoint,
+                        reason="owner endpoint is not a supported WebSocket transport",
+                    )
+                    continue
+                if time.monotonic() >= deadline:
+                    binding["owner_health"] = _unverified_owner(
+                        endpoint,
+                        reason="owner probe budget exhausted",
+                    )
+                    continue
+                try:
+                    observed = endpoint_observations.get(endpoint)
+                    if observed is None:
+                        observed = self._owner_cache.get(endpoint, thread)
+                        endpoint_observations[endpoint] = observed
+                    elif isinstance(observed.get("loaded_threads"), list):
+                        # One endpoint probe already fetched the bounded loaded
+                        # list. Reuse that observation for sibling routes and
+                        # avoid reconnecting once per thread every refresh.
+                        observed = copy.deepcopy(observed)
+                        loaded = set(observed.get("loaded_threads") or ())
+                        observed["thread"] = thread
+                        observed["thread_loaded"] = thread in loaded
+                        if observed["status"] in {"ready-to-receive", "unloaded"}:
+                            if thread in loaded:
+                                observed.update(
+                                    status="ready-to-receive",
+                                    state="ready-to-receive",
+                                    ready=True,
+                                    reason="owner transport reachable and conversation loaded",
+                                )
+                            else:
+                                observed.update(
+                                    status="unloaded",
+                                    state="unloaded",
+                                    ready=False,
+                                    reason="conversation is not loaded by this owner",
+                                )
+                        observed.pop("thread_read", None)
+                    else:
+                        observed = copy.deepcopy(observed)
+                        observed["thread"] = thread
+                    binding["owner_health"] = observed
+                except Exception:
+                    # An injected probe is test/application code; retain the
+                    # dashboard's bounded read-only contract if it fails.
+                    binding["owner_health"] = _unverified_owner(
+                        endpoint,
+                        reason="owner probe unavailable",
+                    )
 
     def selected_binding(self, name: str, thread: str, displayed_endpoint: str) -> dict[str, str]:
         """Re-read one exact binding from the read-only database before launch."""
@@ -526,11 +683,15 @@ class DashboardReader:
                         item["display_suffix"] = item["thread"][-8:] if len(set(suffixes)) == len(suffixes) else item["thread"]
             for value in result:
                 value["requests"] = _request_inventory(self.root, value["thread"], now, deadline)
-            return result, []
+            inventory = result
         except sqlite3.Error as exc:
             raise DashboardError(f"monitor database is corrupt or unreadable ({type(exc).__name__})") from exc
         finally:
             db.close()
+        # Network probes run after the SQLite snapshot is closed. This keeps a
+        # slow or unavailable owner from holding a read transaction open.
+        self._attach_owner_health(inventory)
+        return inventory, []
 
     def _receiver(self) -> dict[str, Any]:
         lock_path = self.root / "serve.lock"
@@ -637,7 +798,7 @@ class DashboardReader:
             "receiver": self._receiver(),
             "connections": connections,
             "warnings": warnings,
-            "note": "Dashboard scope: persisted event-delivery observations and explicit request lifecycle work reports; live model, tool, and external source telemetry are not collected.",
+            "note": "Dashboard scope: persisted event-delivery observations, explicit request lifecycle work reports, and bounded read-only explicit-owner readiness probes; live model, tool, and external source telemetry are not collected.",
         }
 
 
@@ -701,13 +862,14 @@ def _paint(text: Any, code: int | None, color: bool) -> str:
 
 
 _STATUS_DOTS = {
+    "ERROR": ("●", 31),
     "ON": ("●", 32),
     "OFF": ("●", 31),
     "STALE": ("●", 33),
     "UNKNOWN": ("●", 90),
 }
-_STATUS_PLAIN_DOTS = {"ON": "●", "OFF": "○", "STALE": "◐", "UNKNOWN": "·"}
-_STATUS_WORDS = {"ON": "enabled", "OFF": "paused", "STALE": "stale", "UNKNOWN": "unavailable"}
+_STATUS_PLAIN_DOTS = {"ERROR": "!", "ON": "●", "OFF": "○", "STALE": "◐", "UNKNOWN": "·"}
+_STATUS_WORDS = {"ERROR": "error", "ON": "enabled", "OFF": "paused", "STALE": "stale", "UNKNOWN": "unavailable"}
 
 
 def _status_dot(value: str, color: bool) -> str:
@@ -737,6 +899,20 @@ def _binding_status(binding: dict[str, Any]) -> str:
         return "ON"
     if enabled is False:
         return "OFF"
+    return "UNKNOWN"
+
+
+def _owner_health_status(binding: dict[str, Any]) -> str:
+    """Map an owner observation to the existing compact row vocabulary."""
+
+    health = binding.get("owner_health") or {}
+    status = health.get("status") or health.get("state")
+    if status == "auth-required":
+        return "ERROR"
+    if status in {"unavailable", "unloaded"}:
+        return "STALE"
+    if status == "ready-to-receive":
+        return "ON"
     return "UNKNOWN"
 
 
@@ -835,17 +1011,34 @@ def _preferred_route(connection: dict[str, Any]) -> int:
 
 
 def _conversation_status(connection: dict[str, Any]) -> str:
-    """Summarize route/collector health into one conversation dot."""
+    """Report known faults without treating enabled delivery as model readiness."""
 
     bindings = connection.get("bindings") or []
+    for binding in bindings:
+        events = binding.get("events") or {}
+        latest = events.get("latest") or {}
+        counts = events.get("counts") or {}
+        if counts.get("dead", 0) or latest.get("error") or binding.get("schema_error"):
+            return "ERROR"
+    if any((binding.get("events") or {}).get("counts", {}).get("uncertain", 0)
+           for binding in bindings):
+        return "STALE"
     collector_states = [_collector_status(item) for item in connection.get("collectors") or []]
     if "STALE" in collector_states:
         return "STALE"
+    owner_states = [_owner_health_status(binding) for binding in bindings]
+    if "ERROR" in owner_states:
+        return "ERROR"
     statuses = [_binding_status(binding) for binding in bindings]
-    if "ON" in statuses:
-        return "ON"
     if statuses and all(value == "OFF" for value in statuses):
         return "OFF"
+    if "ON" in owner_states:
+        return "ON"
+    if "STALE" in owner_states:
+        return "STALE"
+    # Queue acceptance and a live collector say nothing about authentication or
+    # successful model execution. Explicit owner observations are attached
+    # separately and only establish readiness to receive.
     return "UNKNOWN"
 
 
@@ -898,6 +1091,17 @@ def _derived_conversation_label(connection: dict[str, Any]) -> str:
 def _conversation_activity(connection: dict[str, Any]) -> str:
     """Aggregate recent event-delivery observations into one human phrase."""
 
+    owner_states = [
+        (binding.get("owner_health") or {}).get("status")
+        for binding in connection.get("bindings") or []
+    ]
+    if "auth-required" in owner_states:
+        return "Owner authentication required"
+    if "unavailable" in owner_states:
+        return "Owner unavailable"
+    if "unloaded" in owner_states:
+        return "Conversation unloaded from owner"
+
     counts: dict[str, int] = {}
     latest: dict[str, Any] | None = None
     for binding in connection.get("bindings") or []:
@@ -915,8 +1119,14 @@ def _conversation_activity(connection: dict[str, Any]) -> str:
             candidate_age is not None and (latest_age is None or candidate_age < latest_age)
         ):
             latest = candidate
+    if counts.get("dead", 0):
+        return f"{counts['dead']} delivery failed"
+    if latest and latest.get("error"):
+        return "Delivery error · see details"
     if latest is None and not counts:
-        return "—"
+        if "ready-to-receive" in owner_states:
+            return "Ready to receive · model execution unverified"
+        return "Codex readiness unverified"
     if latest is not None:
         state = latest.get("state")
         count = counts.get(state, 1)
@@ -1013,8 +1223,39 @@ def _detail_lines(connection: dict[str, Any], binding: dict[str, Any], color: bo
     if binding.get("schema_error"):
         lines.append("    schema error: " + _safe(binding["schema_error"]))
     lines.append("    delivery events: " + _event_summary(binding.get("events", {})))
+    latest = (binding.get("events") or {}).get("latest") or {}
+    if latest.get("error"):
+        lines.append("    delivery error: " + _safe(latest["error"]))
+    legacy_owner_line = "owner_health" not in binding
+    if not legacy_owner_line:
+        owner = binding["owner_health"]
+        owner_status = _safe(owner.get("status") or owner.get("state"))
+        owner_reason = owner.get("reason")
+        owner_line = f"    Codex owner: {owner_status}"
+        if owner.get("transport_reachable") is True:
+            owner_line += " · transport reachable"
+        if owner.get("thread_loaded") is True:
+            owner_line += " · conversation loaded"
+        if owner_reason:
+            owner_line += " · " + _safe(owner_reason)
+        lines.append(owner_line)
+        account = owner.get("account") or {}
+        if account.get("status") in {"present", "absent"}:
+            lines.append(
+                "    account observation: " + _safe(account.get("status")) +
+                " · credential validation unverified"
+            )
+        thread_read = owner.get("thread_read") or {}
+        if thread_read.get("status"):
+            lines.append("    thread status observed: " + _safe(thread_read.get("status")))
     requests = connection.get("requests") or {}
     lines.append("    work reports (request lifecycle): " + (_work_report_summary(requests) if requests.get("available") else _safe(requests.get("reason", "unavailable"))))
+    if legacy_owner_line:
+        # Keep hand-built snapshots and older callers honest without changing
+        # their compact detail layout.
+        lines.append("    Codex authentication and model readiness: unverified")
+    else:
+        lines.append("    model execution: unverified (dashboard does not poll turns)")
     collectors = [item for item in connection.get("collectors", []) if item.get("binding") == binding.get("name")]
     for collector in collectors:
         observation = collector.get("checkpoint", {}).get("last_observation") or {}
