@@ -33,6 +33,68 @@ fn padded(s: &str, width: usize) -> String {
         " ".repeat(width.saturating_sub(unicode_width::UnicodeWidthStr::width(s.as_str())))
     )
 }
+fn endpoint_can_open(endpoint: &str) -> bool {
+    endpoint.starts_with("ws://")
+        || endpoint.starts_with("wss://")
+        || (endpoint.starts_with("unix:///") && endpoint.len() > "unix:///".len())
+}
+fn enter_hint(endpoint: &str) -> &'static str {
+    if endpoint_can_open(endpoint) {
+        "Enter open"
+    } else if endpoint == "shared-local" {
+        "Cannot attach; owner address needed"
+    } else {
+        "Cannot open; owner endpoint needed"
+    }
+}
+fn enter_notice(endpoint: &str) -> Option<&'static str> {
+    if endpoint_can_open(endpoint) {
+        None
+    } else if endpoint == "shared-local" {
+        Some("Cannot attach queue-only route; owner address required")
+    } else {
+        Some("Cannot open route; explicit ws/wss/Unix owner endpoint required")
+    }
+}
+fn route_identity(row: &Value, route: usize) -> Option<(&str, &str, &str)> {
+    let binding = row["routes"]
+        .as_array()
+        .and_then(|routes| routes.get(route % routes.len().max(1)))?;
+    Some((
+        row["thread"].as_str()?,
+        binding["name"].as_str()?,
+        binding["endpoint"].as_str()?,
+    ))
+}
+fn restore_selection(
+    rows: &[Value],
+    identity: Option<(&str, &str, &str)>,
+    selection: &mut usize,
+    route: &mut usize,
+) {
+    let Some((thread, name, endpoint)) = identity else {
+        *selection = (*selection).min(rows.len().saturating_sub(1));
+        *route = 0;
+        return;
+    };
+    for (index, row) in rows.iter().enumerate() {
+        if row["thread"] != thread {
+            continue;
+        }
+        *selection = index;
+        *route = row["routes"]
+            .as_array()
+            .and_then(|routes| {
+                routes
+                    .iter()
+                    .position(|binding| binding["name"] == name && binding["endpoint"] == endpoint)
+            })
+            .unwrap_or(0);
+        return;
+    }
+    *selection = (*selection).min(rows.len().saturating_sub(1));
+    *route = 0;
+}
 fn groups(snapshot: &Value, filter: Option<&str>) -> Vec<Value> {
     let mut map: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     for b in snapshot["bindings"].as_array().into_iter().flatten() {
@@ -97,8 +159,33 @@ fn render(
     tick: bool,
 ) -> String {
     let (width, height) = terminal::size().unwrap_or((96, 24));
-    let width = (width as usize).min(96);
-    let height = height as usize;
+    render_sized(
+        snapshot,
+        rows,
+        selection,
+        route,
+        detail,
+        notice,
+        animate,
+        tick,
+        width as usize,
+        height as usize,
+    )
+}
+#[allow(clippy::too_many_arguments)]
+fn render_sized(
+    snapshot: &Value,
+    rows: &[Value],
+    selection: usize,
+    route: usize,
+    detail: bool,
+    notice: &str,
+    animate: bool,
+    tick: bool,
+    width: usize,
+    height: usize,
+) -> String {
+    let width = width.min(96);
     let mut lines = vec![
         format!(
             "  codex-monitor   {} live   ·   Rust",
@@ -157,8 +244,16 @@ fn render(
             lines.push("  Scope: delivery state; no live model/tool telemetry".into());
         }
     }
+    let selected_enter_hint = rows
+        .get(selection)
+        .and_then(|row| row["routes"].as_array())
+        .and_then(|routes| routes.get(route % routes.len().max(1)))
+        .and_then(|binding| binding["endpoint"].as_str())
+        .map(enter_hint)
+        .unwrap_or("Enter unavailable; no route");
+    lines.push(format!("  {}", selected_enter_hint));
     lines.push(format!("  {}", clean(notice, 90)));
-    lines.push("  ↑↓ select · Tab route · Enter open · p pause · r resume · x remove".into());
+    lines.push("  ↑↓ select · Tab route · p pause · r resume · x remove".into());
     lines.push("  d details · q quit".into());
     lines
         .into_iter()
@@ -225,14 +320,39 @@ pub async fn dashboard(
     let mut detail = false;
     let mut notice = String::new();
     let mut deleting: Option<String> = None;
+    let mut selection_valid = true;
     let mut refresh = Instant::now();
     let mut tick = false;
     let mut previous_frame = String::new();
     loop {
         if refresh.elapsed() >= interval {
+            let previous_selection = rows
+                .get(selection)
+                .and_then(|row| route_identity(row, route))
+                .map(|(thread, name, endpoint)| {
+                    (thread.to_owned(), name.to_owned(), endpoint.to_owned())
+                });
             snapshot = runtime::snapshot(&store, &cfg, &root).await?;
             rows = groups(&snapshot, thread.as_deref());
-            selection = selection.min(rows.len().saturating_sub(1));
+            restore_selection(
+                &rows,
+                previous_selection.as_ref().map(|(thread, name, endpoint)| {
+                    (thread.as_str(), name.as_str(), endpoint.as_str())
+                }),
+                &mut selection,
+                &mut route,
+            );
+            let restored = rows
+                .get(selection)
+                .and_then(|row| route_identity(row, route));
+            if previous_selection
+                .as_ref()
+                .is_some_and(|(t, n, e)| restored != Some((t.as_str(), n.as_str(), e.as_str())))
+            {
+                selection_valid = false;
+                deleting = None;
+                notice = "Selected route changed; use arrows or Tab to select again".into();
+            }
             refresh = Instant::now();
         }
         let frame = render(
@@ -293,16 +413,24 @@ pub async fn dashboard(
         }
         match key.code {
             KeyCode::Down | KeyCode::Char('j') => {
+                selection_valid = true;
                 selection = (selection + 1).min(rows.len().saturating_sub(1));
                 route = 0;
             }
             KeyCode::Up | KeyCode::Char('k') => {
+                selection_valid = true;
                 selection = selection.saturating_sub(1);
                 route = 0;
             }
-            KeyCode::Tab => route = route.wrapping_add(1),
+            KeyCode::Tab => {
+                selection_valid = true;
+                route = route.wrapping_add(1);
+            }
             KeyCode::Char('d') => detail = !detail,
             KeyCode::Char('p') | KeyCode::Char('r') | KeyCode::Char('x') | KeyCode::Enter => {
+                if !selection_valid {
+                    continue;
+                }
                 let Some(row) = rows.get(selection) else {
                     continue;
                 };
@@ -322,6 +450,10 @@ pub async fn dashboard(
                     continue;
                 }
                 if key.code == KeyCode::Enter {
+                    if let Some(message) = enter_notice(text(b, "endpoint")?) {
+                        notice = message.into();
+                        continue;
+                    }
                     let current = store.bindings()?;
                     let found = current.as_array().context("routes")?.iter().find(|v| {
                         v["name"] == b["name"]
@@ -361,4 +493,95 @@ pub async fn dashboard(
     }
     drop(guard);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn snapshot(endpoint: &str) -> Value {
+        json!({
+            "bindings": [{
+                "name": "route",
+                "thread": "thread",
+                "endpoint": endpoint,
+                "enabled": true,
+                "removed": false
+            }],
+            "conversations": [],
+            "receiver": {"ready": false}
+        })
+    }
+
+    fn rendered_hint(endpoint: &str, width: usize) -> String {
+        let snapshot = snapshot(endpoint);
+        let rows = groups(&snapshot, None);
+        render_sized(&snapshot, &rows, 0, 0, false, "", false, false, width, 24)
+    }
+
+    #[test]
+    fn shared_local_route_explains_that_enter_needs_an_owner() {
+        let rendered = rendered_hint("shared-local", 40);
+
+        assert!(rendered.contains("Cannot attach; owner address needed"));
+        assert!(!rendered.contains("Enter open"));
+        assert_eq!(
+            enter_notice("shared-local"),
+            Some("Cannot attach queue-only route; owner address required")
+        );
+    }
+
+    #[test]
+    fn explicit_owner_route_keeps_enter_open_affordance() {
+        let rendered = rendered_hint("ws://127.0.0.1:4500", 40);
+
+        assert!(rendered.contains("Enter open"));
+        assert!(!rendered.contains("owner address required"));
+        assert_eq!(enter_notice("ws://127.0.0.1:4500"), None);
+    }
+
+    #[test]
+    fn unsupported_route_does_not_claim_to_open() {
+        let rendered = rendered_hint("ssh://owner", 40);
+
+        assert!(rendered.contains("Cannot open; owner endpoint needed"));
+        assert!(!rendered.contains("Enter open"));
+        assert_eq!(
+            enter_notice("ssh://owner"),
+            Some("Cannot open route; explicit ws/wss/Unix owner endpoint required")
+        );
+    }
+
+    #[test]
+    fn refresh_restores_the_selected_route_identity_after_reordering() {
+        let first = json!({
+            "thread": "thread",
+            "routes": [
+                {"name": "queue", "endpoint": "shared-local"},
+                {"name": "owner", "endpoint": "ws://127.0.0.1:4500"}
+            ]
+        });
+        let second = json!({
+            "thread": "thread",
+            "routes": [
+                {"name": "owner", "endpoint": "ws://127.0.0.1:4500"},
+                {"name": "queue", "endpoint": "shared-local"}
+            ]
+        });
+        let identity = route_identity(&first, 1);
+        let mut selection = 0;
+        let mut route = 1;
+
+        restore_selection(
+            std::slice::from_ref(&second),
+            identity,
+            &mut selection,
+            &mut route,
+        );
+
+        assert_eq!(selection, 0);
+        assert_eq!(route, 0);
+        assert_eq!(route_identity(&second, route), identity);
+    }
 }

@@ -102,6 +102,17 @@ async fn native_notify_wakes_a_long_interval_watch() {
     let native_wake = tokio::time::timeout(Duration::from_secs(4), wake.notified())
         .await
         .is_ok();
+    let second_wake = if native_wake {
+        // A second change must arrive through the ongoing native subscription,
+        // not merely the catch-up sample performed during registration.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        fs::write(&path, b"changed-again").unwrap();
+        tokio::time::timeout(Duration::from_secs(4), wake.notified())
+            .await
+            .is_ok()
+    } else {
+        false
+    };
     stop.cancel();
     task.await.unwrap().unwrap();
     unsafe {
@@ -116,6 +127,10 @@ async fn native_notify_wakes_a_long_interval_watch() {
         native_wake,
         "native notify did not wake before 30-second fallback"
     );
+    assert!(
+        second_wake,
+        "native subscription stopped after first change"
+    );
     let status = store.status().unwrap();
-    assert_eq!(status["events"]["pending"].as_i64(), Some(1));
+    assert_eq!(status["events"]["pending"].as_i64(), Some(2));
 }

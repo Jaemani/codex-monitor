@@ -229,3 +229,223 @@ fn retryable_completion_is_backed_off_before_the_next_claim() {
     assert!(event["next_at"].as_f64().unwrap() > event["updated"].as_f64().unwrap());
     assert!(store.claim().unwrap().is_none());
 }
+
+#[test]
+fn request_replay_pause_fifo_and_settlement() {
+    let (_dir, store) = store();
+    store
+        .bind("route", "thread", "local", &["source".into()])
+        .unwrap();
+    let receipt = store.ingest("route", &envelope("parent")).unwrap();
+    let id = receipt["delivery_id"].as_str().unwrap();
+    store
+        .request_create("thread", "source", "job", id, &json!({}), None)
+        .unwrap();
+    store.claim().unwrap().unwrap();
+    store.finish(id, "accepted", Some("parent"), None).unwrap();
+    store
+        .request_update(
+            "thread",
+            "source",
+            "job",
+            "start",
+            "in_progress",
+            Some(0),
+            None,
+        )
+        .unwrap();
+    for expected in [None, Some(0)] {
+        assert_eq!(
+            store
+                .request_update(
+                    "thread",
+                    "source",
+                    "job",
+                    "start",
+                    "in_progress",
+                    expected,
+                    None
+                )
+                .unwrap()["duplicate"],
+            true
+        );
+    }
+    assert!(
+        store
+            .request_update(
+                "thread",
+                "source",
+                "job",
+                "start",
+                "in_progress",
+                Some(1),
+                None
+            )
+            .is_err()
+    );
+    store
+        .request_update("thread", "source", "job", "done", "completed", None, None)
+        .unwrap();
+    store.route_action("route", "pause").unwrap();
+    let before = store.request_get("thread", "source", "job").unwrap();
+    assert_eq!(store.request_maintenance(32).unwrap(), 0);
+    assert_eq!(
+        store.request_get("thread", "source", "job").unwrap(),
+        before
+    );
+    store.route_action("route", "resume").unwrap();
+    assert_eq!(store.request_maintenance(32).unwrap(), 1);
+    assert_eq!(store.request_maintenance(32).unwrap(), 0);
+    let first = store.claim().unwrap().unwrap();
+    store
+        .finish(
+            first["id"].as_str().unwrap(),
+            "accepted",
+            Some("first"),
+            None,
+        )
+        .unwrap();
+    assert_eq!(store.request_maintenance(32).unwrap(), 1);
+    let second = store.claim().unwrap().unwrap();
+    store
+        .finish(
+            second["id"].as_str().unwrap(),
+            "dead",
+            None,
+            Some("authentication required"),
+        )
+        .unwrap();
+    let request = store.request_get("thread", "source", "job").unwrap();
+    assert_eq!(request["history"].as_array().unwrap().len(), 2);
+    assert_eq!(request["notifications"][0]["state"], "accepted");
+    assert_eq!(request["notifications"][1]["state"], "failed");
+    assert!(store.request_get("other", "source", "job").is_err());
+}
+
+#[test]
+fn expiry_is_durable_and_paused_routes_do_not_starve_others() {
+    let (dir, store) = store();
+    for i in 0..6 {
+        let route = format!("route-{i}");
+        store
+            .bind(&route, "thread", "local", &["source".into()])
+            .unwrap();
+        let receipt = store.ingest(&route, &envelope("parent")).unwrap();
+        store
+            .request_create(
+                "thread",
+                "source",
+                &format!("job-{i}"),
+                receipt["delivery_id"].as_str().unwrap(),
+                &json!({}),
+                Some(0.0),
+            )
+            .unwrap();
+        if i < 5 {
+            store.route_action(&route, "pause").unwrap();
+        }
+    }
+    assert_eq!(store.request_maintenance(6).unwrap(), 6);
+    assert_eq!(store.request_maintenance(1).unwrap(), 1);
+    let request = store.request_get("thread", "source", "job-5").unwrap();
+    assert!(request["notifications"][0]["delivery_id"].is_string());
+    drop(store);
+    let store = Store::open(&dir.path().join("rust.sqlite3")).unwrap();
+    assert_eq!(store.request_maintenance(32).unwrap(), 0);
+    assert_eq!(
+        store.request_get("thread", "source", "job-5").unwrap(),
+        request
+    );
+    store.route_action("route-0", "remove").unwrap();
+    assert_eq!(
+        store.request_get("thread", "source", "job-0").unwrap()["notifications"][0]["state"],
+        "failed"
+    );
+}
+
+#[test]
+fn quiet_maintenance_does_not_write_and_expired_delivery_settles_notice() {
+    let (dir, store) = store();
+    store
+        .bind("route", "thread", "local", &["source".into()])
+        .unwrap();
+    let receipt = store.ingest("route", &envelope("parent")).unwrap();
+    let id = receipt["delivery_id"].as_str().unwrap();
+    store
+        .request_create("thread", "source", "job", id, &json!({}), None)
+        .unwrap();
+    let db = rusqlite::Connection::open(dir.path().join("rust.sqlite3")).unwrap();
+    let version = || {
+        db.query_row("PRAGMA data_version", [], |r| r.get::<_, i64>(0))
+            .unwrap()
+    };
+    let before = version();
+    for _ in 0..10 {
+        assert_eq!(store.request_maintenance(32).unwrap(), 0);
+    }
+    assert_eq!(version(), before, "idle maintenance committed a write");
+    store.claim().unwrap().unwrap();
+    store.finish(id, "accepted", Some("parent"), None).unwrap();
+    store
+        .request_update(
+            "thread",
+            "source",
+            "job",
+            "start",
+            "in_progress",
+            None,
+            None,
+        )
+        .unwrap();
+    store.request_maintenance(32).unwrap();
+    db.execute("UPDATE events SET created=0 WHERE state='pending'", [])
+        .unwrap();
+    assert!(store.claim().unwrap().is_none());
+    assert_eq!(
+        store.request_get("thread", "source", "job").unwrap()["notifications"][0]["state"],
+        "failed"
+    );
+}
+
+#[test]
+fn request_notice_waits_for_capacity_without_losing_transition() {
+    let (dir, store) = store();
+    store
+        .bind("route", "thread", "local", &["source".into()])
+        .unwrap();
+    let receipt = store.ingest("route", &envelope("parent")).unwrap();
+    store
+        .request_create(
+            "thread",
+            "source",
+            "job",
+            receipt["delivery_id"].as_str().unwrap(),
+            &json!({}),
+            None,
+        )
+        .unwrap();
+    for i in 1..120 {
+        store
+            .ingest("route", &envelope(&format!("fill-{i}")))
+            .unwrap();
+    }
+    store
+        .request_update("thread", "source", "job", "done", "completed", None, None)
+        .unwrap();
+    assert_eq!(store.request_maintenance(32).unwrap(), 1);
+    let request = store.request_get("thread", "source", "job").unwrap();
+    assert_eq!(request["state"], "completed");
+    assert!(request["notifications"][0]["delivery_id"].is_null());
+    assert_eq!(request["notifications"][0]["state"], "pending");
+    assert_eq!(store.request_maintenance(32).unwrap(), 0);
+    let db = rusqlite::Connection::open(dir.path().join("rust.sqlite3")).unwrap();
+    db.execute("UPDATE events SET created=created-61", [])
+        .unwrap();
+    db.execute("UPDATE request_notifications SET next_at=0", [])
+        .unwrap();
+    assert_eq!(store.request_maintenance(32).unwrap(), 1);
+    assert!(
+        store.request_get("thread", "source", "job").unwrap()["notifications"][0]["delivery_id"]
+            .is_string()
+    );
+}

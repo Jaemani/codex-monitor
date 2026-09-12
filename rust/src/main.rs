@@ -257,6 +257,15 @@ enum Request {
         #[arg(long)]
         source: Option<String>,
     },
+    /// Inspect one request, its transitions and notification delivery records.
+    Show {
+        #[arg(long)]
+        thread: String,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        id: String,
+    },
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Source {
@@ -703,6 +712,7 @@ async fn run(cli: Cli) -> Result<()> {
                 detail.as_deref(),
             )?,
             Request::List { thread, source } => store.requests(&thread, source.as_deref())?,
+            Request::Show { thread, source, id } => store.request_get(&thread, &source, &id)?,
         }),
         Command::Reply {
             delivery_id,

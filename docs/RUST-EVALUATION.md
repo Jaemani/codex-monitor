@@ -7,6 +7,30 @@ Date: 2026-09-10. Branch: `codex/rust-runtime`. Tracking:
 the installed Python runtime yet.** Lower resource use is useful evidence, but it
 does not close missing workflow or platform coverage.
 
+## Follow-up verification: 2026-09-12
+
+Twenty-nine Rust checks pass; formatting and Clippy with warnings denied pass.
+The Rust CLI now supports request inspection with transition history and durable
+notifications. Local tests cover explicit/implicit revision replay, automatic
+expiry across receiver restart, paused-route isolation, per-request ordering,
+removal, expired delivery, rate-limit deferral and idle maintenance without DB
+writes. Status notifications use the existing inbox; maintenance does not call a
+model. HTTP request parity is still absent.
+
+A live pseudo-terminal check exercised dashboard rendering, queue-only Enter
+without launching Codex, pause/resume and clean exit. Owner-address routes retain
+Enter open; refreshed route identity is preserved, and a replaced selection must
+be explicitly selected again before an action. This is monitor UI validation,
+not a new real Codex conversation acceptance run.
+
+The macOS long-interval symlink test initially failed repeatedly. Registering the
+literal symlink parent could miss subsequent native events even though sampling
+resolved its path correctly. The collector now registers the worker-resolved
+parent too, shares registration counts, releases aliases on pause/removal and
+performs a catch-up sample after registration. Two consecutive changes pass
+before the 30-second fallback. No new comparative memory result is claimed for
+this revision; earlier measurements below retain their original scope.
+
 ## What changed structurally
 
 | Area | Python baseline | Rust candidate |

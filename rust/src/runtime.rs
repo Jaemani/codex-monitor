@@ -228,7 +228,7 @@ async fn ingest(
 async fn status(State(app): State<App>, h: HeaderMap) -> Result<Json<Value>, ApiError> {
     admin(&app, &h)?;
     Ok(Json(
-        json!({"ready":true,"runtime":"rust","delivery":app.store.status().map_err(storage_error)?,"collector":collector::stats(),"capabilities":{"managed_file_monitor":true,"managed_json_predicates":true,"reply_outbox":true,"request_lifecycle":false},"consumer_ready":"unknown","generated_at":now()}),
+        json!({"ready":true,"runtime":"rust","delivery":app.store.status().map_err(storage_error)?,"collector":collector::stats(),"capabilities":{"managed_file_monitor":true,"managed_json_predicates":true,"reply_outbox":true,"request_lifecycle":false,"request_cli":true,"request_maintenance":true,"request_http":false},"consumer_ready":"unknown","generated_at":now()}),
     ))
 }
 async fn sessions(State(app): State<App>, h: HeaderMap) -> Result<Json<Value>, ApiError> {
@@ -317,6 +317,11 @@ pub async fn serve(
     let mut workers = tokio::task::JoinSet::new();
     workers.spawn(collector::run(store.clone(), wake.clone(), stop.clone()));
     workers.spawn(reconcile(store.clone(), pool.clone(), stop.clone()));
+    workers.spawn(request_maintenance(
+        store.clone(),
+        wake.clone(),
+        stop.clone(),
+    ));
     workers.spawn(dispatch(store, pool.clone(), wake, stop.clone()));
     let server_stop = stop.clone();
     workers.spawn(async move { http_server(listener, router, server_stop).await });
@@ -362,6 +367,29 @@ async fn http_server(
     }
     Ok(())
 }
+// This timer only examines local durable state. It never invokes a model or
+// creates an event for an unchanged request.
+async fn request_maintenance(
+    store: Store,
+    wake: Arc<Notify>,
+    stop: CancellationToken,
+) -> Result<()> {
+    let mut tick = tokio::time::interval(Duration::from_millis(500));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            _ = stop.cancelled() => return Ok(()),
+            _ = tick.tick() => {}
+        }
+        let batch_store = store.clone();
+        let processed =
+            tokio::task::spawn_blocking(move || batch_store.request_maintenance(32)).await??;
+        if processed > 0 {
+            wake.notify_one();
+        }
+    }
+}
+
 async fn dispatch(
     store: Store,
     pool: SessionPool,

@@ -784,6 +784,20 @@ async fn process_watch(
     Ok(())
 }
 
+fn release_registration(
+    native: &mut RecommendedWatcher,
+    registered: &mut HashMap<PathBuf, usize>,
+    path: &Path,
+) {
+    if let Some(count) = registered.get_mut(path) {
+        *count = count.saturating_sub(1);
+        if *count == 0 {
+            let _ = native.unwatch(path);
+            registered.remove(path);
+        }
+    }
+}
+
 /// Run the event-driven collector until `stop` is cancelled.
 pub async fn run(store: Store, wakeup: Arc<Notify>, stop: CancellationToken) -> Result<()> {
     let (event_sender, mut event_receiver) = mpsc::channel::<PathBuf>(EVENT_QUEUE_CAPACITY);
@@ -796,6 +810,7 @@ pub async fn run(store: Store, wakeup: Arc<Notify>, stop: CancellationToken) -> 
     .context("create file watcher")?;
     let mut runtimes: HashMap<String, Runtime> = HashMap::new();
     let mut registered: HashMap<PathBuf, usize> = HashMap::new();
+    let mut aliases: HashMap<String, PathBuf> = HashMap::new();
     let worker_pool = Arc::new(WorkerPool::new());
     let mut reload = time::interval(RELOAD_INTERVAL);
     reload.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
@@ -813,6 +828,21 @@ pub async fn run(store: Store, wakeup: Arc<Notify>, stop: CancellationToken) -> 
                 if let Some(result)=result {
                     let (id,mut finished)=result?;in_flight.remove(&id);
                     if let Some(current)=runtimes.get_mut(&id) && current.watch.as_ref().map(|w|w.epoch)==finished.watch.as_ref().map(|w|w.epoch) {
+                        // FSEvents may accept a symlink registration but stop reporting
+                        // changes through it. Register the worker-resolved parent too.
+                        let parent = finished.native_path.as_ref().map(|p| parent_for(p));
+                        if let Some(parent) = parent.filter(|p| finished.watch.as_ref().is_some_and(|w| *p != parent_for(&w.path)))
+                            && aliases.get(&id) != Some(&parent) {
+                            if let Some(old) = aliases.remove(&id) {
+                                release_registration(&mut native, &mut registered, &old);
+                            }
+                            if registered.contains_key(&parent) || native.watch(&parent, RecursiveMode::NonRecursive).is_ok() {
+                                *registered.entry(parent.clone()).or_default() += 1;
+                                aliases.insert(id.clone(), parent);
+                                // Cover changes between the sample and native registration.
+                                finished.dirty = true;
+                            }
+                        }
                         finished.dirty|=current.dirty;*current=finished;
                     }
                 }
@@ -839,6 +869,9 @@ pub async fn run(store: Store, wakeup: Arc<Notify>, stop: CancellationToken) -> 
                                 }
                             }
                     }
+                    if (!is_active || path_changed) && let Some(alias) = aliases.remove(&watch.id) {
+                        release_registration(&mut native, &mut registered, &alias);
+                    }
                     if is_active {
                         let parent = parent_for(&watch.path);
                         if path_changed || !was_active {
@@ -862,6 +895,9 @@ pub async fn run(store: Store, wakeup: Arc<Notify>, stop: CancellationToken) -> 
                                     *count = count.saturating_sub(1);
                                     if *count == 0 { let _ = native.unwatch(&parent); registered.remove(&parent); }
                                 }
+                        }
+                        if let Some(alias) = aliases.remove(&id) {
+                            release_registration(&mut native, &mut registered, &alias);
                         }
                         runtimes.remove(&id);
                     }

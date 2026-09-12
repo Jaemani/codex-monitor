@@ -30,6 +30,21 @@ when its remaining acceptance criteria pass. Update the corresponding issue and 
 
 ## Rust candidate evaluation
 
+- [ ] **Authentication-aware operational health.** Dashboard conversation dots
+  must not equate enabled routes or accepted queue entries with working Codex
+  authentication. Fresh owner/model error telemetry, honest failure/unknown
+  presentation and installed rollout remain to be completed. Receiver readiness
+  is a separate observation.
+
+- [x] **Request CLI and dashboard follow-up (2026-09-12).** Durable expiry,
+  ordered transition notifications, inspectable history and restart replay pass
+  local regressions. Live terminal checks cover queue-only Enter guidance and
+  pause/resume. Installed Python remains unchanged; broad UI acceptance remains.
+- [x] **Native alias subscription repair (2026-09-12).** Register the worker-resolved
+  parent as well as the configured parent; repeated symlink-path changes now wake
+  before the fallback interval on macOS.
+- [ ] **Request HTTP parity.** Add authenticated source-scoped request endpoints
+  and match Python request error, notification and lifecycle contracts. ([#14](https://github.com/Jaemani/codex-monitor/issues/14))
 - [x] **Remove resident health-test timing race.** Hold the simulated outage
   through observation, verify recovery without resuming again, and clean up the
   worker even after an assertion failure. Found by the candidate's hosted CI.
@@ -41,7 +56,7 @@ when its remaining acceptance criteria pass. Update the corresponding issue and 
 - [ ] **Rust adoption gate.** ([#14](https://github.com/Jaemani/codex-monitor/issues/14))
   Develop and measure the isolated `codex/rust-runtime` candidate. Preserve durable
   delivery and ordinary TUI behavior; compare settled Python/Rust workloads before
-  adopting it. Request notification/expiry/history, dashboard acceptance and
+  adopting it. Request HTTP parity, dashboard acceptance and
   distribution/upgrade parity remain required. See [evaluation](RUST-EVALUATION.md).
 
 ## Technical progression

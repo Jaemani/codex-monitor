@@ -38,6 +38,30 @@ The runtime refuses a Python state directory. Credentials and existing Python
 services are not automatically migrated. Sources added after startup require
 a receiver restart, as in the Python runtime.
 
+## Track a request from the CLI
+
+Use the delivery receipt returned by an event already accepted for the selected
+conversation and source. Request state is an explicit work report, not inferred
+from queue acceptance or model activity.
+
+```sh
+rust/target/release/codex-monitor-rs --state /tmp/monitor-rust request create \
+  --thread YOUR_THREAD_ID --source build --id build-42 --delivery DELIVERY_ID
+rust/target/release/codex-monitor-rs --state /tmp/monitor-rust request update \
+  --thread YOUR_THREAD_ID --source build --id build-42 \
+  --update-id build-42-started --status in_progress --expected-revision 0
+rust/target/release/codex-monitor-rs --state /tmp/monitor-rust request show \
+  --thread YOUR_THREAD_ID --source build --id build-42
+```
+
+An optional `--expires-at` on creation uses Unix seconds. The running receiver
+processes due expirations and pending transition notifications from local storage.
+Its timer does not poll a model. Creating a request, acknowledging it, unchanged
+state and replaying the same update do not create repeated notifications. Work
+transitions can create input for the original conversation; they are not automatic
+replies to the external sender. The request HTTP API is not yet implemented in
+Rust, so the broad `request_lifecycle` capability remains false.
+
 ## Execution structure
 
 ```mermaid
@@ -72,9 +96,10 @@ flowchart LR
 A faster partial implementation must not silently replace a complete workflow.
 The Rust candidate currently includes the receiver, durable inbox, managed
 collector, native transports, explicit resident/connect commands, reply outbox,
-conversation grouping and terminal controls. Request create/update/list are
-present, but the Python request notification outbox, expiry/history interfaces,
-service installation and upgrade/migration workflow are not yet ported.
+conversation grouping and terminal controls. Request create/update/list/show,
+transition history, durable status notifications and automatic expiry are present
+through the CLI. HTTP request endpoints, service installation and the
+upgrade/migration workflow are not yet ported.
 
 The dashboard is a candidate implementation and still needs the same visual,
 control and platform checks as the Python dashboard. The existing Python

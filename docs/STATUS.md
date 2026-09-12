@@ -1,5 +1,24 @@
 # Status and remaining verification
 
+Rust candidate update (2026-09-12): CLI requests now expose history and durable
+status notifications, with automatic expiry, replay deduplication, per-request
+ordering and capacity deferral. Paused routes do not block unrelated notices;
+removed routes and expired delivery receipts settle notices explicitly. Idle
+maintenance checks do not write or invoke a model. Live dashboard terminal checks
+cover queue-only Enter guidance, pause/resume and clean exit. macOS native
+subscriptions now include worker-resolved directory aliases; repeated changes
+through a symlink pass before the 30-second fallback. These are candidate checks,
+not installed rollout or full Codex TUI/desktop acceptance. HTTP request parity,
+authentication-aware owner telemetry, distribution and endurance remain open.
+
+
+Known operational health gap (2026-09-12): enabled routes and queue acceptance
+must not be presented as proof of working Codex authentication or execution.
+Receiver availability and owner/model readiness are separate observations.
+Fresh logout/model-error telemetry and an installed health correction remain
+outstanding. The Rust follow-up below does not claim to repair authentication
+or reconnect an owner.
+
 Status date: 2026-09-09. The default delivery path targets Codex CLI 0.153.4
 through its official `shared-local` queue. An independent stdio writer places
 input in the saved conversation store at the same `CODEX_HOME`/`sqlite_home`;

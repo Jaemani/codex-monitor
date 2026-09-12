@@ -5,7 +5,7 @@
 //! `<state>/rust.sqlite3`.
 
 use anyhow::{Context, Result, anyhow, bail};
-use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Row, Transaction, TransactionBehavior, params};
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -30,6 +30,9 @@ const MAX_WATCHES: i64 = 128;
 const MAX_WATCHES_PER_THREAD: i64 = 32;
 const MAX_REPLIES: i64 = 1_000;
 const MAX_REQUESTS: i64 = 10_000;
+const MAX_REQUEST_UPDATES: i64 = 64;
+const MAX_REQUEST_NOTIFICATIONS: i64 = 10_000;
+const MAX_REQUEST_MAINTENANCE: usize = 100;
 
 const NAME_CHARS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.:@/-";
 
@@ -270,10 +273,17 @@ impl Store {
                 // crossed the native handoff boundary. Keep those receipts
                 // visible, but settle them instead of leaving them pending
                 // forever behind a route that can never be resumed.
+                let now = Self::now();
                 tx.execute(
                     "UPDATE events SET state='dead',error='binding removed',next_at=0,updated=? \
                      WHERE binding=? AND state='pending'",
-                    params![Self::now(), name],
+                    params![now, name],
+                )?;
+                tx.execute(
+                    "UPDATE request_notifications SET state='failed',error='binding removed',updated=? \
+                     WHERE state='pending' AND original_binding=? AND (delivery_id IS NULL OR delivery_id IN \
+                       (SELECT id FROM events WHERE state='dead'))",
+                    params![now, name],
                 )?;
             }
             Ok(json!({"action":action,"binding":name,"thread":thread,"endpoint":endpoint,"enabled":enabled,"removed":retired}))
@@ -434,6 +444,7 @@ impl Store {
                 let Some((id, state, created)) = row else { return Ok(None); };
                 if state == "pending" && now - created > MAX_AGE_SECONDS {
                     tx.execute("UPDATE events SET state='dead',error='event expired',updated=? WHERE id=?", params![now, id])?;
+                    tx.execute("UPDATE request_notifications SET state='failed',error='event expired',updated=? WHERE delivery_id=? AND state='pending'", params![now, id])?;
                     continue;
                 }
                 if state == "pending" {
@@ -502,6 +513,18 @@ impl Store {
                 "UPDATE events SET state=?,submission_id=?,error=?,attempts=?,next_at=?,updated=? WHERE id=?",
                 params![stored_state, submission_id, stored_error, attempts, next_at, now, id],
             )?;
+            if stored_state == "accepted" || stored_state == "dead" {
+                let (notification_state, notification_error) = if stored_state == "accepted" {
+                    ("accepted", None)
+                } else {
+                    ("failed", stored_error.or(Some("notification delivery failed")))
+                };
+                tx.execute(
+                    "UPDATE request_notifications SET state=?,error=?,updated=? \
+                     WHERE delivery_id=? AND state='pending'",
+                    params![notification_state, notification_error, now, id],
+                )?;
+            }
             Ok(())
         })
     }
@@ -784,6 +807,84 @@ impl Store {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn insert_request_notification_tx(
+        tx: &Transaction<'_>,
+        request_id: &str,
+        update_id: &str,
+        revision: i64,
+        thread: &str,
+        source: &str,
+        key: &str,
+        delivery_id: &str,
+        binding: &str,
+        state: &str,
+        detail: Option<&str>,
+        now: f64,
+    ) -> Result<()> {
+        if !matches!(
+            state,
+            "in_progress" | "completed" | "failed" | "cancelled" | "expired"
+        ) {
+            return Ok(());
+        }
+        let pending: i64 = tx.query_row(
+            "SELECT count(*) FROM request_notifications WHERE state='pending'",
+            [],
+            |r| r.get(0),
+        )?;
+        if pending >= MAX_REQUEST_NOTIFICATIONS {
+            bail!("request notification capacity reached");
+        }
+        let notification_id = format!("request-notification-{request_id}-{revision}");
+        let event_id = format!("request-{request_id}-{revision}");
+        let mut data = json!({
+            "request_id": request_id,
+            "conversation_id": thread,
+            "thread": thread,
+            "request_key": key,
+            "original_delivery_id": delivery_id,
+            "delivery_id": delivery_id,
+            "state": state,
+            "revision": revision,
+            "message": format!("Request {key}: {state} (revision {revision})."),
+        });
+        if let Some(detail) = detail {
+            data["summary"] = json!(detail);
+            data["detail"] = json!(detail);
+        }
+        let envelope = canonical_json(&json!({
+            "id": event_id,
+            "source": source,
+            "type": "request.status.changed",
+            "data": data,
+        }))?;
+        tx.execute(
+            "INSERT INTO request_notifications \
+             (notification_id,request_id,update_id,revision,original_binding,source,event_id,\
+              envelope,state,attempts,next_at,delivery_id,error,created,updated) \
+             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            params![
+                notification_id,
+                request_id,
+                update_id,
+                revision,
+                binding,
+                source,
+                event_id,
+                envelope,
+                "pending",
+                0_i64,
+                0.0_f64,
+                Option::<String>::None,
+                Option::<String>::None,
+                now,
+                now,
+            ],
+        )?;
+        Ok(())
+    }
+
     pub fn request_create(
         &self,
         thread: &str,
@@ -858,25 +959,79 @@ impl Store {
             validate_text(detail, "request detail", MAX_DETAIL_BYTES)?;
         }
         self.with_tx(|tx| {
-            let row = tx.query_row("SELECT * FROM requests WHERE thread=? AND source=? AND request_key=?", params![thread,source,key], request_value).optional()?;
-            let Some(current) = row else { bail!("request not found"); };
-            let current_revision = current["revision"].as_i64().unwrap_or(0);
+            let row = tx.query_row(
+                "SELECT request_id,state,revision,delivery_id,binding FROM requests \
+                 WHERE thread=? AND source=? AND request_key=?",
+                params![thread, source, key],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, i64>(2)?,
+                        r.get::<_, String>(3)?,
+                        r.get::<_, String>(4)?,
+                    ))
+                },
+            ).optional()?;
+            let Some((request_id, previous, current_revision, delivery_id, binding)) = row else {
+                bail!("request not found");
+            };
             let expected = expected_revision.unwrap_or(current_revision);
-            let prior = tx.query_row("SELECT request_id,state,revision,detail FROM request_updates WHERE request_id=? AND update_id=?", params![current["request_id"].as_str().unwrap_or(""),update_id], |r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?,r.get::<_,Option<String>>(3)?))).optional()?;
-            if let Some((_, prior_state, prior_revision, prior_detail)) = prior {
-                if prior_state != state || prior_revision != expected || prior_detail.as_deref() != detail { bail!("update id already used for different content"); }
-                let mut value = tx.query_row("SELECT * FROM requests WHERE request_id=?", [current["request_id"].as_str().unwrap_or("")], request_value)?;
+            let prior = tx.query_row(
+                "SELECT expected_revision,state,detail FROM request_updates \
+                 WHERE request_id=? AND update_id=?",
+                params![request_id, update_id],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?)),
+            ).optional()?;
+            if let Some((prior_expected, prior_state, prior_detail)) = prior {
+                if prior_state != state || expected_revision.is_some_and(|expected| prior_expected != expected) || prior_detail.as_deref() != detail {
+                    bail!("update id already used for different content");
+                }
+                let mut value = tx.query_row(
+                    "SELECT * FROM requests WHERE request_id=?",
+                    [&request_id],
+                    request_value,
+                )?;
                 value["duplicate"] = json!(true);
                 value["update_id"] = json!(update_id);
                 return Ok(value);
             }
             if expected != current_revision { bail!("request revision conflict"); }
-            let previous = current["state"].as_str().unwrap_or("");
-            if !allowed_transition(previous, state) { bail!("request state transition is not allowed"); }
+            if !allowed_transition(&previous, state) {
+                bail!("request state transition is not allowed");
+            }
+            let update_count: i64 = tx.query_row(
+                "SELECT count(*) FROM request_updates WHERE request_id=?",
+                [&request_id],
+                |r| r.get(0),
+            )?;
+            if !matches!(state, "completed" | "failed" | "cancelled" | "expired")
+                && update_count + 1 >= MAX_REQUEST_UPDATES
+            {
+                bail!("request update capacity reached; terminal expiry slot is reserved");
+            }
             let new_revision = expected + 1;
-            tx.execute("INSERT INTO request_updates(request_id,update_id,expected_revision,revision,previous_state,state,detail,created) VALUES(?,?,?,?,?,?,?,?)", params![current["request_id"].as_str().unwrap_or(""),update_id,expected,new_revision,previous,state,detail,Self::now()])?;
-            tx.execute("UPDATE requests SET state=?,revision=?,updated=? WHERE request_id=? AND revision=?", params![state,new_revision,Self::now(),current["request_id"].as_str().unwrap_or(""),expected])?;
-            let mut value = tx.query_row("SELECT * FROM requests WHERE request_id=?", [current["request_id"].as_str().unwrap_or("")], request_value)?;
+            let now = Self::now();
+            tx.execute("INSERT INTO request_updates(request_id,update_id,expected_revision,revision,previous_state,state,detail,created) VALUES(?,?,?,?,?,?,?,?)", params![request_id,update_id,expected,new_revision,previous,state,detail,now])?;
+            let changed = tx.execute("UPDATE requests SET state=?,revision=?,updated=? WHERE request_id=? AND revision=?", params![state,new_revision,now,request_id,expected])?;
+            if changed != 1 {
+                bail!("request revision conflict");
+            }
+            Self::insert_request_notification_tx(
+                tx,
+                &request_id,
+                update_id,
+                new_revision,
+                thread,
+                source,
+                key,
+                &delivery_id,
+                &binding,
+                state,
+                detail,
+                now,
+            )?;
+            let mut value = tx.query_row("SELECT * FROM requests WHERE request_id=?", [&request_id], request_value)?;
             value["duplicate"] = json!(false);
             value["update_id"] = json!(update_id);
             Ok(value)
@@ -907,9 +1062,307 @@ impl Store {
         })
     }
 
+    /// Return one request together with its append-only transition history and
+    /// durable notification records.
+    pub fn request_get(&self, thread: &str, source: &str, key: &str) -> Result<Value> {
+        validate_identifier(thread, "thread")?;
+        validate_identifier(source, "source")?;
+        validate_identifier(key, "request key")?;
+        self.with_conn(|db| {
+            let row = db
+                .query_row(
+                    "SELECT * FROM requests WHERE thread=? AND source=? AND request_key=?",
+                    params![thread, source, key],
+                    request_value,
+                )
+                .optional()?;
+            let Some(row) = row else {
+                bail!("request not found");
+            };
+            let request_id: String = db.query_row(
+                "SELECT request_id FROM requests WHERE thread=? AND source=? AND request_key=?",
+                params![thread, source, key],
+                |r| r.get(0),
+            )?;
+            let mut value = row;
+            value["history"] = request_history_value(db, &request_id)?;
+            value["notifications"] = request_notifications_value(db, &request_id)?;
+            Ok(value)
+        })
+    }
+
+    /// Return the append-only transition history for one request.
+    pub fn request_history(&self, thread: &str, source: &str, key: &str) -> Result<Value> {
+        validate_identifier(thread, "thread")?;
+        validate_identifier(source, "source")?;
+        validate_identifier(key, "request key")?;
+        self.with_conn(|db| {
+            let request_id: Option<String> = db
+                .query_row(
+                    "SELECT request_id FROM requests WHERE thread=? AND source=? AND request_key=?",
+                    params![thread, source, key],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let Some(request_id) = request_id else {
+                bail!("request not found");
+            };
+            request_history_value(db, &request_id)
+        })
+    }
+
+    /// Expire due requests and atomically transfer ready status notifications
+    /// into the normal event inbox.  The initial due check deliberately stays
+    /// read-only so an idle receiver does not take a writer lock every tick.
+    pub fn request_maintenance(&self, limit: usize) -> Result<usize> {
+        if !(1..=MAX_REQUEST_MAINTENANCE).contains(&limit) {
+            bail!("request maintenance limit must be between 1 and {MAX_REQUEST_MAINTENANCE}");
+        }
+        let now = Self::now();
+        let work_needed = self.with_conn(|db| {
+            let due_expiry: i64 = db.query_row(
+                "SELECT EXISTS(SELECT 1 FROM requests \
+                 WHERE expires_at IS NOT NULL AND expires_at<=? \
+                   AND state NOT IN ('completed','failed','cancelled','expired'))",
+                [now],
+                |r| r.get(0),
+            )?;
+            let due_notification: i64 = db.query_row(
+                "SELECT EXISTS(SELECT 1 FROM request_notifications n LEFT JOIN bindings b ON b.name=n.original_binding \
+                 WHERE n.state='pending' AND n.delivery_id IS NULL AND n.next_at<=? AND (b.name IS NULL OR b.enabled!=0 OR b.removed!=0))",
+                [now],
+                |r| r.get(0),
+            )?;
+            Ok(due_expiry != 0 || due_notification != 0)
+        })?;
+        if !work_needed {
+            return Ok(0);
+        }
+        self.with_immediate_tx(|tx| {
+            let mut work = 0;
+
+            while work < limit {
+                let due = tx
+                    .query_row(
+                        "SELECT request_id,thread,source,request_key,delivery_id,binding,state,revision \
+                         FROM requests WHERE expires_at IS NOT NULL AND expires_at<=? \
+                           AND state NOT IN ('completed','failed','cancelled','expired') \
+                         ORDER BY seq LIMIT 1",
+                        [now],
+                        |r| {
+                            Ok((
+                                r.get::<_, String>(0)?,
+                                r.get::<_, String>(1)?,
+                                r.get::<_, String>(2)?,
+                                r.get::<_, String>(3)?,
+                                r.get::<_, String>(4)?,
+                                r.get::<_, String>(5)?,
+                                r.get::<_, String>(6)?,
+                                r.get::<_, i64>(7)?,
+                            ))
+                        },
+                    )
+                    .optional()?;
+                let Some((request_id, thread, source, key, delivery_id, binding, previous, revision)) = due else {
+                    break;
+                };
+                let pending: i64 = tx.query_row(
+                    "SELECT count(*) FROM request_notifications WHERE state='pending'",
+                    [],
+                    |r| r.get(0),
+                )?;
+                if pending >= MAX_REQUEST_NOTIFICATIONS {
+                    break;
+                }
+                let update_id = format!("request-expiry-{request_id}-{revision}");
+                let new_revision = revision + 1;
+                tx.execute(
+                    "INSERT INTO request_updates(request_id,update_id,expected_revision,revision,previous_state,state,detail,created) \
+                     VALUES(?,?,?,?,?,?,NULL,?)",
+                    params![request_id, update_id, revision, new_revision, previous, "expired", now],
+                )?;
+                let changed = tx.execute(
+                    "UPDATE requests SET state='expired',revision=?,updated=? \
+                     WHERE request_id=? AND revision=?",
+                    params![new_revision, now, request_id, revision],
+                )?;
+                if changed != 1 {
+                    bail!("request revision conflict");
+                }
+                Self::insert_request_notification_tx(
+                    tx,
+                    &request_id,
+                    &update_id,
+                    new_revision,
+                    &thread,
+                    &source,
+                    &key,
+                    &delivery_id,
+                    &binding,
+                    "expired",
+                    None,
+                    now,
+                )?;
+                work += 1;
+            }
+
+            if work >= limit {
+                return Ok(work);
+            }
+
+            // Read a wider candidate batch so one paused or saturated route
+            // cannot starve ready notifications for other conversations.
+            let candidate_limit = (limit - work).saturating_mul(4).clamp(1, MAX_REQUEST_MAINTENANCE);
+            let mut stmt = tx.prepare(
+                "SELECT n.notification_id,n.request_id,n.update_id,n.revision,n.original_binding,\
+                        n.source,n.event_id,n.envelope,n.attempts \
+                 FROM request_notifications n \
+                 WHERE n.state='pending' AND n.delivery_id IS NULL AND n.next_at<=? \
+                   AND NOT EXISTS (SELECT 1 FROM bindings b WHERE b.name=n.original_binding AND b.enabled=0 AND b.removed=0) \
+                   AND NOT EXISTS (SELECT 1 FROM request_notifications earlier \
+                                   WHERE earlier.request_id=n.request_id \
+                                     AND earlier.revision<n.revision \
+                                     AND earlier.state='pending') \
+                 ORDER BY n.next_at,n.created LIMIT ?",
+            )?;
+            let mut rows = stmt.query(params![now, candidate_limit as i64])?;
+            let mut candidates = Vec::new();
+            while let Some(row) = rows.next()? {
+                candidates.push((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, i64>(8)?,
+                ));
+            }
+            drop(rows);
+            drop(stmt);
+
+            for (notification_id, request_id, update_id, revision, binding, source, event_id, envelope, attempts) in candidates {
+                if work >= limit {
+                    break;
+                }
+                let target = tx
+                    .query_row(
+                        "SELECT thread,sources,enabled,removed FROM bindings WHERE name=?",
+                        [&binding],
+                        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?)),
+                    )
+                    .optional()?;
+                let Some((thread, sources_json, enabled, removed)) = target else {
+                    tx.execute(
+                        "UPDATE request_notifications SET state='failed',error='original binding is unavailable',updated=? \
+                         WHERE notification_id=? AND state='pending'",
+                        params![now, notification_id],
+                    )?;
+                    work += 1;
+                    continue;
+                };
+                if removed != 0 {
+                    tx.execute(
+                        "UPDATE request_notifications SET state='failed',error='original binding was removed',updated=? \
+                         WHERE notification_id=? AND state='pending'",
+                        params![now, notification_id],
+                    )?;
+                    work += 1;
+                    continue;
+                }
+                if enabled == 0 {
+                    continue;
+                }
+                let sources: Value = serde_json::from_str(&sources_json).context("decode binding sources")?;
+                let source_allowed = sources.as_array().map(|items| items.iter().any(|item| item.as_str() == Some(source.as_str()))).unwrap_or(false);
+                let request_thread: String = tx.query_row(
+                    "SELECT thread FROM requests WHERE request_id=?",
+                    [&request_id],
+                    |r| r.get(0),
+                )?;
+                if !source_allowed || request_thread != thread {
+                    tx.execute(
+                        "UPDATE request_notifications SET state='failed',error='original binding or source is unavailable',updated=? \
+                         WHERE notification_id=? AND state='pending'",
+                        params![now, notification_id],
+                    )?;
+                    work += 1;
+                    continue;
+                }
+                let existing = tx
+                    .query_row(
+                        "SELECT id,state FROM events WHERE binding=? AND source=? AND event_id=?",
+                        params![binding, source, event_id],
+                        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                    )
+                    .optional()?;
+                if let Some((event_id_local, event_state)) = existing {
+                    let (state, error): (&str, Option<&str>) = match event_state.as_str() {
+                        "accepted" => ("accepted", None),
+                        "dead" => ("failed", Some("notification event was rejected")),
+                        _ => ("pending", None),
+                    };
+                    tx.execute(
+                        "UPDATE request_notifications SET state=?,delivery_id=?,error=?,updated=? \
+                         WHERE notification_id=? AND state='pending'",
+                        params![state, event_id_local, error, now, notification_id],
+                    )?;
+                    work += 1;
+                    continue;
+                }
+                let pending_events: i64 = tx.query_row(
+                    "SELECT count(*) FROM events WHERE binding=? AND state IN ('pending','submitting','uncertain')",
+                    [&binding],
+                    |r| r.get(0),
+                )?;
+                let recent_events: i64 = tx.query_row(
+                    "SELECT count(*) FROM events WHERE binding=? AND created>?",
+                    params![binding, now - 60.0],
+                    |r| r.get(0),
+                )?;
+                if pending_events >= MAX_PENDING || recent_events >= RATE_LIMIT {
+                    let delay = now + 1.0;
+                    tx.execute(
+                        "UPDATE request_notifications SET next_at=?,error='binding queue capacity reached',updated=? \
+                         WHERE notification_id=? AND state='pending'",
+                        params![delay, now, notification_id],
+                    )?;
+                    work += 1;
+                    continue;
+                }
+                let local_id = Uuid::new_v4().to_string();
+                let client_id = format!("codex-monitor:{local_id}");
+                tx.execute(
+                    "INSERT INTO events(id,binding,source,event_id,envelope,client_id,state,created,updated,attempts,next_at) \
+                     VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    params![local_id, binding, source, event_id, envelope, client_id, "pending", now, now, attempts, 0.0_f64],
+                )?;
+                tx.execute(
+                    "UPDATE request_notifications SET delivery_id=?,error=NULL,updated=? \
+                     WHERE notification_id=? AND state='pending'",
+                    params![local_id, now, notification_id],
+                )?;
+                let _ = update_id;
+                let _ = revision;
+                work += 1;
+            }
+            Ok(work)
+        })
+    }
+
     fn with_tx<T>(&self, f: impl FnOnce(&Transaction<'_>) -> Result<T>) -> Result<T> {
         let mut guard = self.lock_conn()?;
         let tx = guard.transaction()?;
+        let value = f(&tx)?;
+        tx.commit()?;
+        Ok(value)
+    }
+
+    fn with_immediate_tx<T>(&self, f: impl FnOnce(&Transaction<'_>) -> Result<T>) -> Result<T> {
+        let mut guard = self.lock_conn()?;
+        let tx = guard.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let value = f(&tx)?;
         tx.commit()?;
         Ok(value)
@@ -956,6 +1409,17 @@ CREATE TABLE IF NOT EXISTS requests(
  expires_at REAL, created REAL NOT NULL, updated REAL NOT NULL,
  UNIQUE(thread,source,request_key)
 );
+CREATE INDEX IF NOT EXISTS request_expiry ON requests(expires_at) WHERE state NOT IN ('completed','failed','cancelled','expired');
+CREATE TABLE IF NOT EXISTS request_notifications(
+ notification_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, update_id TEXT NOT NULL,
+ revision INTEGER NOT NULL, original_binding TEXT NOT NULL, source TEXT NOT NULL,
+ event_id TEXT NOT NULL, envelope TEXT NOT NULL, state TEXT NOT NULL,
+ attempts INTEGER NOT NULL DEFAULT 0, next_at REAL NOT NULL DEFAULT 0,
+ delivery_id TEXT, error TEXT, created REAL NOT NULL, updated REAL NOT NULL,
+ UNIQUE(request_id,revision)
+);
+CREATE INDEX IF NOT EXISTS request_notice_due ON request_notifications(state,next_at);
+CREATE INDEX IF NOT EXISTS request_notice_delivery ON request_notifications(delivery_id);
 CREATE TABLE IF NOT EXISTS request_updates(
  seq INTEGER PRIMARY KEY AUTOINCREMENT, request_id TEXT NOT NULL, update_id TEXT NOT NULL,
  expected_revision INTEGER NOT NULL, revision INTEGER NOT NULL, previous_state TEXT NOT NULL,
@@ -1185,6 +1649,32 @@ fn watch_value(row: &Row<'_>) -> rusqlite::Result<Value> {
     Ok(
         json!({"id":row.get::<_,String>(0)?,"thread":row.get::<_,String>(1)?,"name":row.get::<_,String>(2)?,"path":row.get::<_,String>(3)?,"interval":row.get::<_,f64>(4)?,"endpoint":row.get::<_,String>(5)?,"debounce":row.get::<_,f64>(6)?,"condition":condition.map(|s|serde_json::from_str::<Value>(&s).unwrap_or(Value::Null)),"binding":row.get::<_,String>(8)?,"enabled":row.get::<_,i64>(9)? != 0,"removed":row.get::<_,i64>(10)? != 0,"epoch":row.get::<_,i64>(11)?,"checkpoint":last_sample,"last_sample":last_sample,"baseline_known":baseline_known}),
     )
+}
+
+fn request_history_value(db: &Connection, request_id: &str) -> Result<Value> {
+    let mut stmt = db.prepare("SELECT update_id,expected_revision,revision,previous_state,state,detail,created FROM request_updates WHERE request_id=? ORDER BY revision")?;
+    let rows = stmt.query_map([request_id], |r| {
+        Ok(json!({
+            "update_id": r.get::<_,String>(0)?, "expected_revision": r.get::<_,i64>(1)?,
+            "revision": r.get::<_,i64>(2)?, "previous_state": r.get::<_,String>(3)?,
+            "state": r.get::<_,String>(4)?, "detail": r.get::<_,Option<String>>(5)?,
+            "created": r.get::<_,f64>(6)?
+        }))
+    })?;
+    Ok(Value::Array(rows.collect::<rusqlite::Result<Vec<_>>>()?))
+}
+
+fn request_notifications_value(db: &Connection, request_id: &str) -> Result<Value> {
+    let mut stmt = db.prepare("SELECT notification_id,update_id,revision,state,delivery_id,error,created,updated FROM request_notifications WHERE request_id=? ORDER BY revision")?;
+    let rows = stmt.query_map([request_id], |r| {
+        Ok(json!({
+            "notification_id": r.get::<_,String>(0)?, "update_id": r.get::<_,String>(1)?,
+            "revision": r.get::<_,i64>(2)?, "state": r.get::<_,String>(3)?,
+            "delivery_id": r.get::<_,Option<String>>(4)?, "error": r.get::<_,Option<String>>(5)?,
+            "created": r.get::<_,f64>(6)?, "updated": r.get::<_,f64>(7)?
+        }))
+    })?;
+    Ok(Value::Array(rows.collect::<rusqlite::Result<Vec<_>>>()?))
 }
 
 fn request_value(row: &Row<'_>) -> rusqlite::Result<Value> {
