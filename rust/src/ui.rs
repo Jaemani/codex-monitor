@@ -99,7 +99,10 @@ fn route_dot(binding: &Value) -> &'static str {
     if binding["enabled"] != true || binding["removed"] == true {
         return "·";
     }
-    match binding["owner_health"]["state"].as_str() {
+    let owner_state = binding["owner_health"]["state"]
+        .as_str()
+        .or_else(|| binding["owner_health"]["status"].as_str());
+    match owner_state {
         Some("auth-required" | "unavailable" | "unloaded") => "○",
         Some("ready-to-receive") => "●",
         _ => "◐",
@@ -119,6 +122,82 @@ fn conversation_dot(routes: &Value) -> &'static str {
         }
     }
     "·"
+}
+
+const MAX_DETAIL_ROUTES: usize = 5;
+
+fn route_counts(routes: &Value) -> (usize, usize) {
+    routes
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|binding| binding["removed"] != true)
+        .fold((0, 0), |(active, paused), binding| {
+            if binding["enabled"] == true {
+                (active + 1, paused)
+            } else {
+                (active, paused + 1)
+            }
+        })
+}
+
+fn snapshot_route_counts(snapshot: &Value) -> (usize, usize) {
+    route_counts(&snapshot["bindings"])
+}
+
+fn route_count_label(count: usize, label: &str) -> String {
+    format!("{count} {label}{}", if count == 1 { "" } else { "s" })
+}
+
+fn route_state(binding: &Value) -> &'static str {
+    if binding["removed"] == true {
+        "removed"
+    } else if binding["enabled"] == true {
+        "active"
+    } else {
+        "paused"
+    }
+}
+
+fn owner_state(binding: &Value) -> &str {
+    binding["owner_health"]
+        .get("status")
+        .or_else(|| binding["owner_health"].get("state"))
+        .and_then(Value::as_str)
+        .unwrap_or("unverified")
+}
+
+fn route_sources(binding: &Value) -> String {
+    let Some(sources) = binding["sources"].as_array() else {
+        return "configured sources".into();
+    };
+    let mut names = sources
+        .iter()
+        .filter_map(Value::as_str)
+        .take(4)
+        .map(|source| clean(source, 20))
+        .collect::<Vec<_>>();
+    if sources.len() > names.len() {
+        names.push("…".into());
+    }
+    if names.is_empty() {
+        "configured sources".into()
+    } else {
+        names.join(", ")
+    }
+}
+
+fn route_summary(routes: &Value, narrow: bool) -> String {
+    let (active, paused) = route_counts(routes);
+    if narrow {
+        format!("{active}a/{paused}p")
+    } else {
+        format!(
+            "{} · {}",
+            route_count_label(active, "active route"),
+            route_count_label(paused, "paused route")
+        )
+    }
 }
 
 fn groups(snapshot: &Value, filter: Option<&str>) -> Vec<Value> {
@@ -206,29 +285,57 @@ fn render_sized(
     route: usize,
     detail: bool,
     notice: &str,
-    animate: bool,
-    tick: bool,
+    _animate: bool,
+    _tick: bool,
     width: usize,
     height: usize,
 ) -> String {
     let width = width.min(96);
+    let narrow = width < 64;
+    let (active_routes, paused_routes) = snapshot_route_counts(snapshot);
+    let receiver = if snapshot["receiver"]["ready"] == true {
+        "● ready"
+    } else {
+        "○ unavailable"
+    };
     let mut lines = vec![
-        format!(
-            "  codex-monitor   {} live   ·   Rust",
-            if animate && tick { "●" } else { "·" }
-        ),
-        format!(
-            "  {} conversations   ·   receiver {}",
-            rows.len(),
-            if snapshot["receiver"]["ready"] == true {
-                "●"
-            } else {
-                "○"
-            }
-        ),
+        if narrow {
+            format!("  Auto-refresh on · health {receiver}")
+        } else {
+            "  codex-monitor · Rust · Auto-refresh on".into()
+        },
+        if narrow {
+            format!(
+                "  {} conv · {} active · {} paused",
+                rows.len(),
+                active_routes,
+                paused_routes
+            )
+        } else {
+            format!(
+                "  {} conversations · {} · {} · Receiver health: {}",
+                rows.len(),
+                route_count_label(active_routes, "active route"),
+                route_count_label(paused_routes, "paused route"),
+                receiver
+            )
+        },
         String::new(),
     ];
-    let visible = (height.saturating_sub(if detail { 12 } else { 9 }) / 2).max(1);
+    let selected_route_count = rows
+        .get(selection)
+        .and_then(|row| row["routes"].as_array())
+        .map_or(0, Vec::len);
+    let detail_lines = if detail {
+        8 + selected_route_count.min(MAX_DETAIL_ROUTES)
+            + 2 * usize::from(selected_route_count > MAX_DETAIL_ROUTES)
+    } else {
+        0
+    };
+    let visible = (height
+        .saturating_sub(6 + detail_lines)
+        .saturating_div(if detail { 2 } else { 1 }))
+    .max(1);
     let start = selection
         .saturating_sub(visible / 2)
         .min(rows.len().saturating_sub(visible));
@@ -239,12 +346,18 @@ fn render_sized(
             lines.push(format!("  {}", clean(group, 60)));
             project = group.into();
         }
+        let summary = route_summary(&r["routes"], narrow);
+        let name_width = if narrow {
+            width.saturating_sub(summary.len() + 8).clamp(10, 30)
+        } else {
+            30
+        };
         lines.push(format!(
-            "{} {} {}  {} routes",
+            "{} {} {}  {}",
             if i == selection { "›" } else { " " },
             conversation_dot(&r["routes"]),
-            padded(r["name"].as_str().unwrap_or(""), 30),
-            r["routes"].as_array().map_or(0, Vec::len)
+            padded(r["name"].as_str().unwrap_or(""), name_width),
+            summary
         ));
     }
     if let Some(row) = rows.get(selection)
@@ -263,22 +376,74 @@ fn render_sized(
                 "  Thread: {}",
                 row["thread"].as_str().unwrap_or("")
             ));
-            lines.push(format!("  Owner: {}", b["endpoint"].as_str().unwrap_or("")));
-            let owner = b.get("owner_health").unwrap_or(&Value::Null);
             lines.push(format!(
-                "  Codex owner: {}{}",
-                owner
-                    .get("status")
-                    .or_else(|| owner.get("state"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("unverified"),
-                owner
+                "  Purpose: receive {} → {}",
+                route_sources(b),
+                row["thread"].as_str().unwrap_or("")
+            ));
+            lines.push(format!(
+                "  Status: {} · owner {}{}",
+                route_state(b),
+                owner_state(b),
+                b["owner_health"]
                     .get("reason")
                     .and_then(Value::as_str)
                     .map(|reason| format!(" · {}", clean(reason, 50)))
                     .unwrap_or_default()
             ));
-            lines.push("  Model execution: unverified".into());
+            lines.push(format!(
+                "  Endpoint: {}",
+                b["endpoint"].as_str().unwrap_or("unavailable")
+            ));
+            lines.push(format!(
+                "  Open: {}",
+                enter_hint(b["endpoint"].as_str().unwrap_or(""))
+            ));
+            let routes = row["routes"].as_array().cloned().unwrap_or_default();
+            let selected_route = route % routes.len().max(1);
+            let route_start = selected_route
+                .saturating_sub(MAX_DETAIL_ROUTES / 2)
+                .min(routes.len().saturating_sub(MAX_DETAIL_ROUTES));
+            let route_end = (route_start + MAX_DETAIL_ROUTES).min(routes.len());
+            lines.push("  Routes (Tab selects):".into());
+            if route_start > 0 {
+                lines.push(format!(
+                    "    … {} earlier route{}",
+                    route_start,
+                    if route_start == 1 { "" } else { "s" }
+                ));
+            }
+            for (index, binding) in routes
+                .iter()
+                .enumerate()
+                .skip(route_start)
+                .take(MAX_DETAIL_ROUTES)
+            {
+                lines.push(format!(
+                    "    {}{} {} · {} · {}",
+                    if index == selected_route {
+                        "› "
+                    } else {
+                        "  "
+                    },
+                    route_dot(binding),
+                    clean(binding["name"].as_str().unwrap_or("unnamed"), 24),
+                    route_state(binding),
+                    owner_state(binding)
+                ));
+            }
+            if route_end < routes.len() {
+                lines.push(format!(
+                    "    … {} more route{}",
+                    routes.len() - route_end,
+                    if routes.len() - route_end == 1 {
+                        ""
+                    } else {
+                        "s"
+                    }
+                ));
+            }
+            lines.push("  Model execution: unverified · no live model/tool telemetry".into());
             lines.push("  Scope: delivery state; no live model/tool telemetry".into());
         }
     }
@@ -291,7 +456,7 @@ fn render_sized(
         .unwrap_or("Enter unavailable; no route");
     lines.push(format!("  {}", selected_enter_hint));
     lines.push(format!("  {}", clean(notice, 90)));
-    lines.push("  ↑↓ select · Tab route · p pause · r resume · x remove".into());
+    lines.push("  ↑↓ select · Tab/[ ] route · p pause · r resume · x remove".into());
     lines.push("  d details · q quit".into());
     lines
         .into_iter()
@@ -464,10 +629,14 @@ pub async fn dashboard(
                 selection = selection.saturating_sub(1);
                 route = 0;
             }
-            KeyCode::Tab => {
+            KeyCode::Tab | KeyCode::Char(']') | KeyCode::Char('[') => {
                 notice.clear();
                 selection_valid = true;
-                route = route.wrapping_add(1);
+                if key.code == KeyCode::Char('[') {
+                    route = route.wrapping_sub(1);
+                } else {
+                    route = route.wrapping_add(1);
+                }
             }
             KeyCode::Char('d') => detail = !detail,
             KeyCode::Char('p') | KeyCode::Char('r') | KeyCode::Char('x') | KeyCode::Enter => {
@@ -631,9 +800,71 @@ mod tests {
         let rows = groups(&snapshot, None);
         let rendered = render_sized(&snapshot, &rows, 0, 0, true, "", false, false, 96, 24);
 
-        assert!(rendered.contains("Codex owner: auth-required"));
+        assert!(rendered.contains("Purpose: receive configured sources → thread"));
+        assert!(rendered.contains("Status: active · owner auth-required"));
         assert!(rendered.contains("authentication required"));
+        assert!(rendered.contains("Endpoint: wss://owner.example"));
+        assert!(rendered.contains("Open: Enter open"));
+        assert!(rendered.contains("Routes (Tab selects):"));
         assert!(rendered.contains("Model execution: unverified"));
+    }
+
+    #[test]
+    fn header_counts_active_and_paused_routes_and_labels_health_separately() {
+        let snapshot = json!({
+            "bindings": [
+                {"name":"active-one","thread":"one","enabled":true,"removed":false},
+                {"name":"active-two","thread":"two","enabled":true,"removed":false},
+                {"name":"paused","thread":"three","enabled":false,"removed":false},
+                {"name":"retired","thread":"four","enabled":true,"removed":true}
+            ],
+            "conversations": [],
+            "receiver": {"ready": true}
+        });
+        let rows = groups(&snapshot, None);
+        let rendered = render_sized(&snapshot, &rows, 0, 0, false, "", true, true, 96, 24);
+
+        assert!(rendered.contains("Auto-refresh on"));
+        assert!(rendered.contains("2 active routes"));
+        assert!(rendered.contains("1 paused route"));
+        assert!(rendered.contains("Receiver health: ● ready"));
+        assert!(!rendered.contains("connections"));
+    }
+
+    #[test]
+    fn detail_view_lists_routes_and_marks_the_selected_route() {
+        let snapshot = json!({
+            "bindings": [
+                {
+                    "name":"queue",
+                    "thread":"thread",
+                    "endpoint":"shared-local",
+                    "sources":["webhook"],
+                    "enabled":false,
+                    "removed":false,
+                    "owner_health":{"status":"unverified"}
+                },
+                {
+                    "name":"owner",
+                    "thread":"thread",
+                    "endpoint":"ws://127.0.0.1:4500",
+                    "sources":["manual"],
+                    "enabled":true,
+                    "removed":false,
+                    "owner_health":{"status":"ready-to-receive"}
+                }
+            ],
+            "conversations": [],
+            "receiver": {"ready": false}
+        });
+        let rows = groups(&snapshot, None);
+        let rendered = render_sized(&snapshot, &rows, 0, 1, true, "", false, false, 96, 32);
+
+        assert!(rendered.contains("Routes (Tab selects):"));
+        assert!(rendered.contains("queue · paused · unverified"));
+        assert!(rendered.contains("› ● owner · active · ready-to-receive"));
+        assert!(rendered.contains("Purpose: receive manual → thread"));
+        assert!(rendered.contains("Open: Enter open"));
     }
 
     #[test]

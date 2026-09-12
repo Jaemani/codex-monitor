@@ -601,3 +601,8 @@ notices on navigation. The control PTY passed 22 checks. The built wheel was
 installed and matched the source dashboard hash; receiver readiness passed.
 No operational routes were paused, deleted or replayed by these UI changes.
 Auto-refresh is now static; its test asserts it does not impersonate a health pulse.
+
+The matching Rust UI update passed 38 full Rust tests (11 binary/UI tests),
+strict Clippy and formatting. Its static refresh label is separate from receiver
+health; active/paused counts and a five-route inspection window are covered.
+This adds source UI coverage, not a new real Codex TUI acceptance claim.
