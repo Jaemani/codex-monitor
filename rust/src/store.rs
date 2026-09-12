@@ -33,6 +33,7 @@ const MAX_REQUESTS: i64 = 10_000;
 const MAX_REQUEST_UPDATES: i64 = 64;
 const MAX_REQUEST_NOTIFICATIONS: i64 = 10_000;
 const MAX_REQUEST_MAINTENANCE: usize = 100;
+const MAX_REQUEST_LIST_LIMIT: usize = 100;
 
 const NAME_CHARS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.:@/-";
 
@@ -1062,6 +1063,89 @@ impl Store {
         })
     }
 
+    /// Return one source-owned request by its durable ID, including history
+    /// and notification delivery records. The source predicate is part of the
+    /// indexed lookup so a caller cannot discover another source's request.
+    pub fn request_get_by_id(&self, request_id: &str, source: &str) -> Result<Value> {
+        validate_identifier(request_id, "request id")?;
+        validate_identifier(source, "source")?;
+        self.with_conn(|db| {
+            let value = db
+                .query_row(
+                    "SELECT * FROM requests WHERE request_id=? AND source=?",
+                    params![request_id, source],
+                    request_value,
+                )
+                .optional()?;
+            let Some(value) = value else {
+                bail!("request not found");
+            };
+            request_detail_value(db, value)
+        })
+    }
+
+    /// Return one source-owned request record by durable ID without loading
+    /// its append-only history or notification outbox. Mutating callers only
+    /// need the immutable thread/key ownership fields and current revision.
+    pub fn request_record_by_id(&self, request_id: &str, source: &str) -> Result<Value> {
+        validate_identifier(request_id, "request id")?;
+        validate_identifier(source, "source")?;
+        self.with_conn(|db| {
+            db.query_row(
+                "SELECT * FROM requests WHERE request_id=? AND source=?",
+                params![request_id, source],
+                request_value,
+            )
+            .optional()?
+            .ok_or_else(|| anyhow!("request not found"))
+        })
+    }
+
+    /// Return one bounded source/thread page using the request table's
+    /// monotonic sequence as an opaque keyset cursor. Only `limit + 1` rows
+    /// are read so the presence of a next page does not require a count.
+    pub fn request_page(
+        &self,
+        thread: &str,
+        source: &str,
+        limit: usize,
+        after: Option<i64>,
+    ) -> Result<Value> {
+        validate_identifier(thread, "thread")?;
+        validate_identifier(source, "source")?;
+        if !(1..=MAX_REQUEST_LIST_LIMIT).contains(&limit) {
+            bail!("request limit must be between 1 and {MAX_REQUEST_LIST_LIMIT}");
+        }
+        let cursor = after.unwrap_or(0);
+        if cursor < 0 {
+            bail!("request cursor must be a nonnegative integer");
+        }
+        self.with_conn(|db| {
+            let mut stmt = db.prepare(
+                "SELECT * FROM requests WHERE thread=? AND source=? AND seq>? \
+                 ORDER BY seq LIMIT ?",
+            )?;
+            let mut rows = stmt.query(params![thread, source, cursor, (limit + 1) as i64])?;
+            let mut page = Vec::with_capacity(limit + 1);
+            while let Some(row) = rows.next()? {
+                page.push((row.get::<_, i64>(0)?, request_value(row)?));
+            }
+            let has_more = page.len() > limit;
+            if has_more {
+                page.pop();
+            }
+            let next = if has_more {
+                page.last().map(|(seq, _)| seq.to_string())
+            } else {
+                None
+            };
+            Ok(json!({
+                "data": page.into_iter().map(|(_, value)| value).collect::<Vec<_>>(),
+                "next": next,
+            }))
+        })
+    }
+
     /// Return one request together with its append-only transition history and
     /// durable notification records.
     pub fn request_get(&self, thread: &str, source: &str, key: &str) -> Result<Value> {
@@ -1079,15 +1163,7 @@ impl Store {
             let Some(row) = row else {
                 bail!("request not found");
             };
-            let request_id: String = db.query_row(
-                "SELECT request_id FROM requests WHERE thread=? AND source=? AND request_key=?",
-                params![thread, source, key],
-                |r| r.get(0),
-            )?;
-            let mut value = row;
-            value["history"] = request_history_value(db, &request_id)?;
-            value["notifications"] = request_notifications_value(db, &request_id)?;
-            Ok(value)
+            request_detail_value(db, row)
         })
     }
 
@@ -1409,6 +1485,8 @@ CREATE TABLE IF NOT EXISTS requests(
  expires_at REAL, created REAL NOT NULL, updated REAL NOT NULL,
  UNIQUE(thread,source,request_key)
 );
+CREATE INDEX IF NOT EXISTS request_source_id ON requests(source,request_id);
+CREATE INDEX IF NOT EXISTS request_scope ON requests(thread,source,seq);
 CREATE INDEX IF NOT EXISTS request_expiry ON requests(expires_at) WHERE state NOT IN ('completed','failed','cancelled','expired');
 CREATE TABLE IF NOT EXISTS request_notifications(
  notification_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, update_id TEXT NOT NULL,
@@ -1675,6 +1753,17 @@ fn request_notifications_value(db: &Connection, request_id: &str) -> Result<Valu
         }))
     })?;
     Ok(Value::Array(rows.collect::<rusqlite::Result<Vec<_>>>()?))
+}
+
+fn request_detail_value(db: &Connection, mut value: Value) -> Result<Value> {
+    let request_id = value
+        .get("request_id")
+        .and_then(Value::as_str)
+        .context("request id missing")?
+        .to_owned();
+    value["history"] = request_history_value(db, &request_id)?;
+    value["notifications"] = request_notifications_value(db, &request_id)?;
+    Ok(value)
 }
 
 fn request_value(row: &Row<'_>) -> rusqlite::Result<Value> {

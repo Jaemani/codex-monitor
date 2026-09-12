@@ -1,6 +1,6 @@
 # Project TODO
 
-Updated: 2026-09-10. The goal is reliable external-event participation in the user's ongoing Codex conversation, with ordinary CLI TUI as the primary interface and Desktop also supported.
+Updated: 2026-09-12. The goal is reliable external-event participation in the user's ongoing Codex conversation, with ordinary CLI TUI as the primary interface and Desktop also supported.
 
 This file is the project backlog. Update it with the corresponding code change; record measured results in STATUS.md and the public evidence summary. Do not mark a platform or user flow done from protocol tests alone.
 
@@ -30,16 +30,27 @@ when its remaining acceptance criteria pass. Update the corresponding issue and 
 
 ## Rust candidate evaluation
 
+- [x] **Isolated binary distribution and macOS service lifecycle (2026-09-12).**
+  Versioned installation, checksum-before-execution validation, guarded rollback,
+  immutable service binary, explicit start/stop/restart/remove and state
+  preservation pass local tests and nine actual launchd checks. An asynchronous
+  restart race was reproduced and fixed.
+- [ ] **Rust service startup and migration.** Automatic login/reboot registration,
+  Linux supervision and deliberate Python-state migration remain open. Current
+  prefix-local launchd registration is session-scoped. ([#14](https://github.com/Jaemani/codex-monitor/issues/14))
+
 - [x] **Full candidate sweep (2026-09-12).** macOS/Docker Rust and Python suites,
   matched functional contracts, installed wheel canaries and ordinary Codex
   0.154.0 Rust TUI passed. Fixed test-driver remote-resume flags and failure
   cleanup; platform/endurance/adoption gaps remain. See TESTING.md.
 
-- [ ] **Authentication-aware operational health.** Dashboard conversation dots
-  must not equate enabled routes or accepted queue entries with working Codex
-  authentication. Fresh owner/model error telemetry, honest failure/unknown
-  presentation and installed rollout remain to be completed. Receiver readiness
-  is a separate observation.
+- [x] **Installed explicit-owner health (2026-09-12).** Python dashboard uses
+  bounded read-only probes and distinguishes missing authentication, unavailable
+  owners, unloaded tasks and unverified shared-local targets. Installed rollout,
+  222 regressions and dashboard/control PTYs passed. Account presence does not
+  prove valid credentials or successful model work.
+- [ ] **Model failure telemetry.** Surface fresh execution/authentication failures
+  beyond account presence without creating health-check turns. ([#14](https://github.com/Jaemani/codex-monitor/issues/14))
 
 - [x] **Request CLI and dashboard follow-up (2026-09-12).** Durable expiry,
   ordered transition notifications, inspectable history and restart replay pass
@@ -48,8 +59,9 @@ when its remaining acceptance criteria pass. Update the corresponding issue and 
 - [x] **Native alias subscription repair (2026-09-12).** Register the worker-resolved
   parent as well as the configured parent; repeated symlink-path changes now wake
   before the fallback interval on macOS.
-- [ ] **Request HTTP parity.** Add authenticated source-scoped request endpoints
-  and match Python request error, notification and lifecycle contracts. ([#14](https://github.com/Jaemani/codex-monitor/issues/14))
+- [x] **Request HTTP foundation (2026-09-12).** Source-authenticated create,
+  list, inspect and update endpoints now use indexed scoped lookups and bounded
+  keyset pagination. Cross-source/thread isolation and lifecycle contracts pass. ([#14](https://github.com/Jaemani/codex-monitor/issues/14))
 - [x] **Remove resident health-test timing race.** Hold the simulated outage
   through observation, verify recovery without resuming again, and clean up the
   worker even after an assertion failure. Found by the candidate's hosted CI.
@@ -61,7 +73,7 @@ when its remaining acceptance criteria pass. Update the corresponding issue and 
 - [ ] **Rust adoption gate.** ([#14](https://github.com/Jaemani/codex-monitor/issues/14))
   Develop and measure the isolated `codex/rust-runtime` candidate. Preserve durable
   delivery and ordinary TUI behavior; compare settled Python/Rust workloads before
-  adopting it. Request HTTP parity, dashboard acceptance and
+  adopting it. Final request HTTP acceptance, dashboard acceptance and
   distribution/upgrade parity remain required. See [evaluation](RUST-EVALUATION.md).
 
 ## Technical progression

@@ -1,9 +1,9 @@
-use crate::{Config, now, output, text, token};
+use crate::{Config, now, output, owner_health, text, token};
 use anyhow::{Context, Result, bail};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Request, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, Uri},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -64,9 +64,16 @@ pub async fn health(c: &Config, root: &FsPath) -> Value {
     .await;
     result.unwrap_or_else(|_| json!({"ready":false,"reason":"receiver is not verified reachable"}))
 }
-pub async fn snapshot(store: &Store, c: &Config, root: &FsPath) -> Result<Value> {
+pub async fn snapshot(
+    store: &Store,
+    c: &Config,
+    root: &FsPath,
+    pool: &SessionPool,
+) -> Result<Value> {
+    let mut bindings = store.bindings()?;
+    owner_health::attach(&mut bindings, pool).await;
     Ok(
-        json!({"runtime":"rust","generated_at":now(),"receiver":health(c,root).await,"bindings":store.bindings()?,"conversations":store.metadata_list(None)?,"monitors":store.watches(None)?,"delivery":store.status()?,"scope":{"event_delivery":"persisted_observations","model_telemetry":"not_collected","tool_telemetry":"not_collected"}}),
+        json!({"runtime":"rust","generated_at":now(),"receiver":health(c,root).await,"bindings":bindings,"conversations":store.metadata_list(None)?,"monitors":store.watches(None)?,"delivery":store.status()?,"scope":{"event_delivery":"persisted_observations","model_telemetry":"not_collected","tool_telemetry":"not_collected"}}),
     )
 }
 #[derive(Clone)]
@@ -93,6 +100,7 @@ fn storage_error(e: anyhow::Error) -> ApiError {
         || s.contains("different")
         || s.contains("duplicate")
         || s.contains("exists")
+        || s.contains("state transition is not allowed")
     {
         ApiError(StatusCode::CONFLICT, "identifier conflict")
     } else if s.contains("capacity") || s.contains("rate") {
@@ -100,11 +108,20 @@ fn storage_error(e: anyhow::Error) -> ApiError {
             StatusCode::TOO_MANY_REQUESTS,
             "capacity or rate limit reached",
         )
+    } else if s.contains("unknown request state") {
+        ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid or unavailable target/input",
+        )
     } else if s.contains("not found") || s.contains("unknown") {
         ApiError(StatusCode::NOT_FOUND, "resource not found")
     } else if s.contains("invalid")
         || s.contains("must")
         || s.contains("exceed")
+        || s.contains("empty")
+        || s.contains("too long")
+        || s.contains("finite")
+        || s.contains("malformed")
         || s.contains("paused")
         || s.contains("removed")
         || s.contains("disabled")
@@ -228,7 +245,7 @@ async fn ingest(
 async fn status(State(app): State<App>, h: HeaderMap) -> Result<Json<Value>, ApiError> {
     admin(&app, &h)?;
     Ok(Json(
-        json!({"ready":true,"runtime":"rust","delivery":app.store.status().map_err(storage_error)?,"collector":collector::stats(),"capabilities":{"managed_file_monitor":true,"managed_json_predicates":true,"reply_outbox":true,"request_lifecycle":false,"request_cli":true,"request_maintenance":true,"request_http":false},"consumer_ready":"unknown","generated_at":now()}),
+        json!({"ready":true,"runtime":"rust","delivery":app.store.status().map_err(storage_error)?,"collector":collector::stats(),"capabilities":{"managed_file_monitor":true,"managed_json_predicates":true,"reply_outbox":true,"request_lifecycle":true,"request_cli":true,"request_maintenance":true,"request_http":true},"consumer_ready":"unknown","generated_at":now()}),
     ))
 }
 async fn sessions(State(app): State<App>, h: HeaderMap) -> Result<Json<Value>, ApiError> {
@@ -264,6 +281,335 @@ async fn ack(
     Ok(Json(
         app.store.reply_ack(&name, &id).map_err(storage_error)?,
     ))
+}
+
+const HTTP_REQUEST_UPDATES_LIMIT: i64 = 64;
+
+fn ensure_body_fields(
+    body: &serde_json::Map<String, Value>,
+    allowed: &[&str],
+) -> Result<(), ApiError> {
+    if body
+        .keys()
+        .any(|field| !allowed.iter().any(|name| *name == field))
+    {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "unknown request body field",
+        ));
+    }
+    Ok(())
+}
+
+fn query_values(uri: &Uri, allowed: &[&str]) -> Result<BTreeMap<String, String>, ApiError> {
+    let mut values = BTreeMap::new();
+    let Some(query) = uri.query() else {
+        return Ok(values);
+    };
+    for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
+        let key = key.into_owned();
+        if !allowed.iter().any(|name| *name == key) {
+            return Err(ApiError(StatusCode::BAD_REQUEST, "unknown query parameter"));
+        }
+        if values.insert(key, value.into_owned()).is_some() {
+            return Err(ApiError(
+                StatusCode::BAD_REQUEST,
+                "query parameter must occur once",
+            ));
+        }
+    }
+    Ok(values)
+}
+
+fn request_body(value: &Value) -> Result<&serde_json::Map<String, Value>, ApiError> {
+    value.as_object().ok_or(ApiError(
+        StatusCode::BAD_REQUEST,
+        "request body must be an object",
+    ))
+}
+
+fn request_string<'a>(
+    body: &'a serde_json::Map<String, Value>,
+    field: &'static str,
+) -> Result<&'a str, ApiError> {
+    body.get(field).and_then(Value::as_str).ok_or(ApiError(
+        StatusCode::BAD_REQUEST,
+        "request field must be a string",
+    ))
+}
+
+fn valid_request_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 200
+        && value.bytes().enumerate().all(|(index, byte)| {
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.:@/-".contains(&byte)
+                && (index != 0 || byte.is_ascii_alphanumeric())
+        })
+}
+
+fn optional_expiry(body: &serde_json::Map<String, Value>) -> Result<Option<f64>, ApiError> {
+    match body.get("expires_at") {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value
+            .as_f64()
+            .filter(|value| value.is_finite() && *value >= 0.0)
+            .map(Some)
+            .ok_or(ApiError(StatusCode::BAD_REQUEST, "expiry must be finite")),
+    }
+}
+
+fn request_capacity(value: &Value) -> Result<Value> {
+    let updates_used = value
+        .get("revision")
+        .and_then(Value::as_i64)
+        .context("request revision missing")?;
+    Ok(json!({
+        "updates_used": updates_used,
+        "updates_limit": HTTP_REQUEST_UPDATES_LIMIT,
+        "updates_remaining": (HTTP_REQUEST_UPDATES_LIMIT - updates_used).max(0),
+    }))
+}
+
+fn request_view(mut value: Value) -> Result<Value> {
+    value["capacity"] = request_capacity(&value)?;
+    Ok(value)
+}
+
+fn request_by_id(store: &Store, source: &str, request_id: &str) -> Result<Option<Value>> {
+    match store.request_get_by_id(request_id, source) {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if error.to_string().to_lowercase().contains("not found") => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn request_record_by_id(store: &Store, source: &str, request_id: &str) -> Result<Option<Value>> {
+    match store.request_record_by_id(request_id, source) {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if error.to_string().to_lowercase().contains("not found") => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn request_list(
+    store: &Store,
+    thread: &str,
+    source: &str,
+    limit: usize,
+    after: Option<&str>,
+) -> Result<Value> {
+    let cursor = after
+        .map(|value| value.parse::<i64>())
+        .transpose()
+        .context("request cursor must be a nonnegative integer")?;
+    let page = store.request_page(thread, source, limit, cursor)?;
+    let values = page
+        .get("data")
+        .and_then(Value::as_array)
+        .context("request list is not an array")?;
+    let mut data = Vec::with_capacity(values.len());
+    for value in values {
+        data.push(request_view(value.clone())?);
+    }
+    Ok(json!({
+        "data": data,
+        "next": page.get("next").cloned().unwrap_or(Value::Null),
+    }))
+}
+
+async fn request_create(
+    State(app): State<App>,
+    uri: Uri,
+    h: HeaderMap,
+    Json(body): Json<Value>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let name = source(&app, &h)?;
+    query_values(&uri, &[])?;
+    let body = request_body(&body)?;
+    ensure_body_fields(
+        body,
+        &["delivery_id", "request_key", "payload", "expires_at"],
+    )?;
+    let delivery_id = request_string(body, "delivery_id")?;
+    let request_key = request_string(body, "request_key")?;
+    let payload = body.get("payload").cloned().unwrap_or_else(|| json!({}));
+    if !payload.is_object() {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "request payload must be an object",
+        ));
+    }
+    let expires_at = optional_expiry(body)?;
+    let event = app.store.event(delivery_id).map_err(storage_error)?;
+    if event.get("source").and_then(Value::as_str) != Some(name.as_str()) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "delivery not found"));
+    }
+    let binding = event
+        .get("binding")
+        .and_then(Value::as_str)
+        .context("delivery binding missing")
+        .map_err(|_| ApiError(StatusCode::NOT_FOUND, "delivery binding not found"))?;
+    let bindings = app.store.bindings().map_err(storage_error)?;
+    let thread = bindings
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|value| value.get("name").and_then(Value::as_str) == Some(binding))
+        .and_then(|value| value.get("thread").and_then(Value::as_str))
+        .ok_or(ApiError(
+            StatusCode::NOT_FOUND,
+            "delivery binding not found",
+        ))?;
+    let value = app
+        .store
+        .request_create(
+            thread,
+            &name,
+            request_key,
+            delivery_id,
+            &payload,
+            expires_at,
+        )
+        .map_err(storage_error)?;
+    let value = request_view(value).map_err(storage_error)?;
+    Ok((StatusCode::CREATED, Json(value)))
+}
+
+async fn request_list_handler(
+    State(app): State<App>,
+    uri: Uri,
+    h: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let name = source(&app, &h)?;
+    let values = query_values(&uri, &["thread", "limit", "after"])?;
+    let thread = values
+        .get("thread")
+        .filter(|value| !value.is_empty())
+        .ok_or(ApiError(
+            StatusCode::BAD_REQUEST,
+            "thread query parameter is required",
+        ))?;
+    let limit = values
+        .get("limit")
+        .map(|value| value.parse::<usize>())
+        .transpose()
+        .map_err(|_| {
+            ApiError(
+                StatusCode::BAD_REQUEST,
+                "limit query parameter must be an integer",
+            )
+        })?
+        .unwrap_or(100);
+    if !(1..=100).contains(&limit) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "limit query parameter must be between 1 and 100",
+        ));
+    }
+    if let Some(after) = values.get("after")
+        && after
+            .parse::<i64>()
+            .ok()
+            .filter(|value| *value >= 0)
+            .is_none()
+    {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "request cursor must be a nonnegative integer",
+        ));
+    }
+    Ok(Json(
+        request_list(
+            &app.store,
+            thread,
+            &name,
+            limit,
+            values.get("after").map(String::as_str),
+        )
+        .map_err(storage_error)?,
+    ))
+}
+
+async fn request_get(
+    State(app): State<App>,
+    uri: Uri,
+    Path(request_id): Path<String>,
+    h: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let name = source(&app, &h)?;
+    query_values(&uri, &[])?;
+    if !valid_request_id(&request_id) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "request id must be a nonempty identifier",
+        ));
+    }
+    let value = request_by_id(&app.store, &name, &request_id)
+        .map_err(storage_error)?
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "request not found"))?;
+    Ok(Json(request_view(value).map_err(storage_error)?))
+}
+
+async fn request_update(
+    State(app): State<App>,
+    uri: Uri,
+    Path(request_id): Path<String>,
+    h: HeaderMap,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let name = source(&app, &h)?;
+    query_values(&uri, &[])?;
+    if !valid_request_id(&request_id) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "request id must be a nonempty identifier",
+        ));
+    }
+    let request = request_record_by_id(&app.store, &name, &request_id)
+        .map_err(storage_error)?
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "request not found"))?;
+    let body = request_body(&body)?;
+    ensure_body_fields(body, &["update_id", "state", "expected_revision", "detail"])?;
+    let update_id = request_string(body, "update_id")?;
+    let state = request_string(body, "state")?;
+    let expected_revision = body
+        .get("expected_revision")
+        .and_then(Value::as_i64)
+        .filter(|value| *value >= 0)
+        .ok_or(ApiError(
+            StatusCode::BAD_REQUEST,
+            "expected revision must be a nonnegative integer",
+        ))?;
+    let detail = match body.get("detail") {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(value.as_str().ok_or(ApiError(
+            StatusCode::BAD_REQUEST,
+            "request detail must be a string",
+        ))?),
+    };
+    let thread = request
+        .get("thread")
+        .and_then(Value::as_str)
+        .context("request thread missing")
+        .map_err(storage_error)?;
+    let key = request
+        .get("request_key")
+        .and_then(Value::as_str)
+        .context("request key missing")
+        .map_err(storage_error)?;
+    let value = app
+        .store
+        .request_update(
+            thread,
+            &name,
+            key,
+            update_id,
+            state,
+            Some(expected_revision),
+            detail,
+        )
+        .map_err(storage_error)?;
+    Ok(Json(request_view(value).map_err(storage_error)?))
 }
 
 pub async fn shutdown_signal() {
@@ -310,6 +656,12 @@ pub async fn serve(
         .route("/v1/deliveries/{id}", get(delivery))
         .route("/v1/replies", get(replies))
         .route("/v1/replies/{id}/ack", post(ack))
+        .route(
+            "/v1/requests",
+            get(request_list_handler).post(request_create),
+        )
+        .route("/v1/requests/{id}", get(request_get))
+        .route("/v1/requests/{id}/updates", post(request_update))
         .layer(DefaultBodyLimit::max(32768))
         .layer(middleware::from_fn_with_state(app.clone(), guard))
         .with_state(app);

@@ -15,7 +15,8 @@ notifications. Local tests cover explicit/implicit revision replay, automatic
 expiry across receiver restart, paused-route isolation, per-request ordering,
 removal, expired delivery, rate-limit deferral and idle maintenance without DB
 writes. Status notifications use the existing inbox; maintenance does not call a
-model. HTTP request parity is still absent.
+model. A subsequent source-authenticated HTTP implementation adds scoped
+create/list/inspect/update, direct indexed lookups and bounded keyset pagination.
 
 A live pseudo-terminal check exercised dashboard rendering, queue-only Enter
 without launching Codex, pause/resume and clean exit. Owner-address routes retain
@@ -45,7 +46,8 @@ These are short, host-specific observations after build/test processes finished,
 not long-duration guarantees, precise physical memory totals or full parity.
 The follow-up ordinary Codex 0.154.0 TUI passed after a test-driver resume fix;
 see the dated [full test matrix](TESTING.md#full-candidate-verification-2026-09-12).
-The candidate still lacks request HTTP, operational-health and distribution parity.
+Request HTTP is now implemented. Operational-health and distribution validation
+are progressing; deliberate state migration remains open.
 
 ## What changed structurally
 
@@ -175,11 +177,13 @@ do not close the default-adoption gates below.
 
 ## Remaining adoption gates
 
-- Request notification outbox, automatic expiry and history interfaces need parity.
+- Final-candidate request workflow acceptance must complement the now-passing
+  notification, expiry, history and HTTP contracts.
 - Operator resolution of unresolved native handoffs and per-watch error/freshness
   reporting need parity; an ambiguous handoff is retained rather than replayed.
-- Installer, service supervision, upgrade/rollback and deliberate state migration
-  are not yet implemented for Rust. No installed runtime has been replaced.
+- An isolated versioned binary installer is implemented. Service lifecycle and
+  cross-version upgrade/rollback acceptance remain separate from deliberate
+  Python-to-Rust state migration. The default runtime remains Python.
 - The Rust dashboard needs full visual/controls acceptance against the existing
   Python dashboard, including narrow terminals and duplicate display names.
 - Linux/Windows/WSL, SSH, long outages and long-duration Rust runs need their own

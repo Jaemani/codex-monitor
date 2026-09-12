@@ -1,6 +1,6 @@
 use crate::{Config, connect, output, runtime, text};
 use anyhow::{Context, Result};
-use codex_monitor_rs::store::Store;
+use codex_monitor_rs::{session::SessionPool, store::Store};
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEventKind},
@@ -95,6 +95,32 @@ fn restore_selection(
     *selection = (*selection).min(rows.len().saturating_sub(1));
     *route = 0;
 }
+fn route_dot(binding: &Value) -> &'static str {
+    if binding["enabled"] != true || binding["removed"] == true {
+        return "·";
+    }
+    match binding["owner_health"]["state"].as_str() {
+        Some("auth-required" | "unavailable" | "unloaded") => "○",
+        Some("ready-to-receive") => "●",
+        _ => "◐",
+    }
+}
+
+fn conversation_dot(routes: &Value) -> &'static str {
+    let dots: Vec<_> = routes
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(route_dot)
+        .collect();
+    for dot in ["○", "◐", "●"] {
+        if dots.contains(&dot) {
+            return dot;
+        }
+    }
+    "·"
+}
+
 fn groups(snapshot: &Value, filter: Option<&str>) -> Vec<Value> {
     let mut map: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     for b in snapshot["bindings"].as_array().into_iter().flatten() {
@@ -213,13 +239,10 @@ fn render_sized(
             lines.push(format!("  {}", clean(group, 60)));
             project = group.into();
         }
-        let active = r["routes"]
-            .as_array()
-            .is_some_and(|v| v.iter().any(|b| b["enabled"] == true));
         lines.push(format!(
             "{} {} {}  {} routes",
             if i == selection { "›" } else { " " },
-            if active { "●" } else { "○" },
+            conversation_dot(&r["routes"]),
             padded(r["name"].as_str().unwrap_or(""), 30),
             r["routes"].as_array().map_or(0, Vec::len)
         ));
@@ -233,7 +256,7 @@ fn render_sized(
         lines.push(format!(
             "  Route: {}  {}",
             clean(b["name"].as_str().unwrap_or(""), 50),
-            if b["enabled"] == true { "●" } else { "○" }
+            route_dot(b)
         ));
         if detail {
             lines.push(format!(
@@ -241,6 +264,21 @@ fn render_sized(
                 row["thread"].as_str().unwrap_or("")
             ));
             lines.push(format!("  Owner: {}", b["endpoint"].as_str().unwrap_or("")));
+            let owner = b.get("owner_health").unwrap_or(&Value::Null);
+            lines.push(format!(
+                "  Codex owner: {}{}",
+                owner
+                    .get("status")
+                    .or_else(|| owner.get("state"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("unverified"),
+                owner
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .map(|reason| format!(" · {}", clean(reason, 50)))
+                    .unwrap_or_default()
+            ));
+            lines.push("  Model execution: unverified".into());
             lines.push("  Scope: delivery state; no live model/tool telemetry".into());
         }
     }
@@ -281,6 +319,7 @@ pub async fn dashboard(
     store: Store,
     cfg: Config,
     root: PathBuf,
+    pool: SessionPool,
     once: bool,
     as_json: bool,
     thread: Option<String>,
@@ -288,7 +327,7 @@ pub async fn dashboard(
     color: String,
     no_animate: bool,
 ) -> Result<()> {
-    let mut snapshot = runtime::snapshot(&store, &cfg, &root).await?;
+    let mut snapshot = runtime::snapshot(&store, &cfg, &root, &pool).await?;
     let mut rows = groups(&snapshot, thread.as_deref());
     if once {
         if as_json {
@@ -332,7 +371,7 @@ pub async fn dashboard(
                 .map(|(thread, name, endpoint)| {
                     (thread.to_owned(), name.to_owned(), endpoint.to_owned())
                 });
-            snapshot = runtime::snapshot(&store, &cfg, &root).await?;
+            snapshot = runtime::snapshot(&store, &cfg, &root, &pool).await?;
             rows = groups(&snapshot, thread.as_deref());
             restore_selection(
                 &rows,
@@ -375,6 +414,7 @@ pub async fn dashboard(
                     displayed
                         .replace('●', "\x1b[32m●\x1b[0m")
                         .replace('○', "\x1b[31m○\x1b[0m")
+                        .replace('◐', "\x1b[33m◐\x1b[0m")
                 );
             } else {
                 print!("{displayed}");
@@ -521,6 +561,20 @@ mod tests {
     }
 
     #[test]
+    fn enabled_routes_do_not_imply_healthy_conversations() {
+        let ready = json!({"enabled":true,"owner_health":{"state":"ready-to-receive"}});
+        let unknown = json!({"enabled":true});
+        let failed = json!({"enabled":true,"owner_health":{"state":"auth-required"}});
+        let paused = json!({"enabled":false});
+        assert_eq!(route_dot(&ready), "●");
+        assert_eq!(route_dot(&unknown), "◐");
+        assert_eq!(route_dot(&failed), "○");
+        assert_eq!(route_dot(&paused), "·");
+        assert_eq!(conversation_dot(&json!([ready, unknown, failed])), "○");
+        assert_eq!(conversation_dot(&json!([paused])), "·");
+    }
+
+    #[test]
     fn shared_local_route_explains_that_enter_needs_an_owner() {
         let rendered = rendered_hint("shared-local", 40);
 
@@ -551,6 +605,32 @@ mod tests {
             enter_notice("ssh://owner"),
             Some("Cannot open route; explicit ws/wss/Unix owner endpoint required")
         );
+    }
+
+    #[test]
+    fn detail_view_shows_owner_health_without_claiming_model_readiness() {
+        let snapshot = json!({
+            "bindings": [{
+                "name": "route",
+                "thread": "thread",
+                "endpoint": "wss://owner.example",
+                "enabled": true,
+                "removed": false,
+                "owner_health": {
+                    "status": "auth-required",
+                    "reason": "authentication required",
+                    "model_execution": "unverified"
+                }
+            }],
+            "conversations": [],
+            "receiver": {"ready": false}
+        });
+        let rows = groups(&snapshot, None);
+        let rendered = render_sized(&snapshot, &rows, 0, 0, true, "", false, false, 96, 24);
+
+        assert!(rendered.contains("Codex owner: auth-required"));
+        assert!(rendered.contains("authentication required"));
+        assert!(rendered.contains("Model execution: unverified"));
     }
 
     #[test]

@@ -1,5 +1,44 @@
 # Status and remaining verification
 
+Operational recovery and candidate work (2026-09-12): two already-loaded CLI
+routes were reconnected from shared-local to their existing explicit owner
+without changing task IDs, source allowlists or receipt identities. Six configured
+CLI targets were observed loaded/idle with empty queues; one other target retained
+an active-writer conflict and was not taken over. Receiver, owner, resident and
+external gateway processes were running. These observations do not prove future
+credential validity or task success. Private target details and backups stay local.
+
+The Python dashboard now uses bounded cached read-only explicit-owner probes.
+Missing required authentication, unavailable owners and unloaded tasks no longer
+appear as ready. Shared-local targets stay unverified. Rust source-scoped request
+HTTP APIs and an isolated versioned binary installer are implemented. Nine
+actual disposable macOS service lifecycle checks passed after fixing a launchd
+restart race; stop/remove wait for unload and restart uses `kickstart -k`. Desktop cold-task work is excluded
+from this recovery scope, and Rust state migration remains a separate adoption gate.
+
+
+Installed recovery verification (2026-09-12): the corrected Python wheel was
+upgraded through the versioned installer and its receiver LaunchAgent restarted.
+Authenticated receiver readiness passed after startup; all 49 binding identities
+remained present. Existing operational activity continued during the rollout;
+two managed routes changed enabled state independently, so a frozen inventory
+is not claimed. Six explicit CLI targets remained ready to receive. The
+dashboard distinguishes account presence from credential validity/model success.
+The source passed 222 Python tests, 42 dashboard PTY checks and 22 control PTY
+checks. Reopen an existing dashboard with `q`, then `codex-monitor dashboard`
+to load the updated code. No owner, resident or external gateway was restarted.
+
+
+Rust recovery candidate (2026-09-12): the final source passed 36 Rust tests,
+strict Clippy and formatting, including actual fake-owner CLI/RPC health checks
+and honest multi-route status-dot aggregation. The rebuilt release passed 19 ordinary Codex 0.154.0 TUI checks in
+34.585 seconds, including closed-UI delivery, receiver restart, owner restart,
+exact-once native observations and same-conversation reopening. Six Python
+installer/service tests and nine actual isolated macOS launchd checks passed.
+The initial launchd restart failure is retained in local evidence. Prefix-local
+service registration is session-scoped; automatic login/reboot registration,
+Linux supervision and cross-runtime state migration remain unverified/open.
+
 Full candidate verification (2026-09-12): macOS and Docker Linux both passed
 29 Rust contracts and 208 Python checkout regressions. The final macOS rerun
 passed all 211 tests including three new cleanup regressions. Matched functional checks
@@ -8,7 +47,8 @@ checks after correcting the canary's remote-resume permission flags and cleanup.
 Installed-wheel process/predicate/request and monitor dashboard checks passed.
 See [the dated matrix](TESTING.md#full-candidate-verification-2026-09-12) for exact
 scope, initial failures, pending Python changes and excluded acceptance gates.
-No installed service or default runtime was replaced.
+At that earlier verification point no installed service or default runtime was replaced;
+the later Python health rollout is recorded above.
 
 
 Rust candidate update (2026-09-12): CLI requests now expose history and durable
@@ -26,8 +66,8 @@ authentication-aware owner telemetry, distribution and endurance remain open.
 Known operational health gap (2026-09-12): enabled routes and queue acceptance
 must not be presented as proof of working Codex authentication or execution.
 Receiver availability and owner/model readiness are separate observations.
-Fresh logout/model-error telemetry and an installed health correction remain
-outstanding. The Rust follow-up below does not claim to repair authentication
+The installed explicit-owner health correction is now recorded above. Fresh
+model-error telemetry beyond account presence remains outstanding. The Rust follow-up below does not claim to repair authentication
 or reconnect an owner.
 
 Status date: 2026-09-09. The default delivery path targets Codex CLI 0.153.4

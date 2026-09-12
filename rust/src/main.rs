@@ -1,3 +1,4 @@
+mod owner_health;
 mod runtime;
 mod ui;
 use anyhow::{Context, Result, bail};
@@ -567,7 +568,7 @@ async fn run(cli: Cli) -> Result<()> {
             )
             .await?;
         }
-        Command::Status => output(runtime::snapshot(&store, &cfg, &root).await?),
+        Command::Status => output(runtime::snapshot(&store, &cfg, &root, &pool).await?),
         Command::Sessions { name, .. } => {
             let mut routes = store.bindings()?;
             if let Some(name) = name {
@@ -598,6 +599,7 @@ async fn run(cli: Cli) -> Result<()> {
                 store,
                 cfg,
                 root,
+                pool,
                 once,
                 json,
                 thread,

@@ -554,3 +554,39 @@ python3 rust/bench/tui_canary.py --run \
 
 This is a source release-build check, not installed-package, Desktop, Windows or
 long-duration evidence. The existing Python packaging workflow remains separate.
+
+## Recovery follow-up (2026-09-12)
+
+The Python health/rebind candidate passed 222 checkout tests in 50.446 seconds,
+42 dashboard PTY checks and 22 dashboard-control checks. The built wheel was
+installed through the versioned upgrade path; authenticated receiver readiness
+and six existing explicit-owner CLI target observations passed after service
+startup. This rollout did not send canary turns to operational conversations.
+Account presence is not credential validation or a model-work result.
+
+The Rust fake-owner outage driver (`rust/bench/outage_canary.py`) passed six
+checks with a 120.002-second owner outage and a receiver crash/restart during
+that outage. The persisted event retained zero submission attempts until owner
+recovery, then produced exactly one queue addition. Duplicate ingress and a
+further receiver restart did not replay it. No model methods were called.
+This is bounded protocol/process evidence, not a one-hour or real-client soak.
+Raw reports and operational backups remain outside Git.
+
+The rebuilt Rust recovery candidate passed 34 tests and strict Clippy/formatting,
+then 19 ordinary Codex 0.154.0 TUI checks in 34.585 seconds. An isolated macOS
+launchd lifecycle initially failed receiver readiness after restart. Replacing
+asynchronous bootout/bootstrap restart with `kickstart -k`, and awaiting unload
+on stop/remove, fixed the reproduced failure. All nine real service checks and
+six mocked installer/service tests then passed. The failed report is retained.
+These checks do not establish login/reboot autoload or Linux supervision.
+
+The final rebuilt release repeated the same six outage checks successfully:
+120.001 seconds unavailable, 123.951 seconds total, with no start/resume/turn
+or interrupt methods and exactly one recovered submission.
+
+Final source verification passed 36 Rust tests after adding actual fake-owner
+CLI/RPC coverage and conversation-dot aggregation. Authentication-required,
+ready, disconnected and shared-local observations are exercised without
+start/resume/model calls. A mixed set of active routes cannot hide a failed or
+unverified route behind a healthy sibling. Strict Clippy and formatting pass.
+The ordinary TUI run above preceded this final display-only aggregation change.
