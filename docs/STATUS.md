@@ -1,11 +1,12 @@
 # Status and remaining verification
 
-Desktop setup restriction (2026-09-14): the skill routes new monitoring and resume
-requests from Desktop to a selected CLI-owned task. The requesting Desktop conversation
-stays a discussion surface; creating another Desktop chat does not satisfy this policy.
-Verify explicit owner/resident readiness before enabling routes. Existing Desktop routes
-remain available for diagnosis and scoped disabling, not automatic migration or replay.
-This is an agent setup policy, not runtime detection/enforcement of every caller surface.
+Desktop setup restriction (2026-09-14): refuse monitoring on the requesting Desktop conversation,
+including attempts to transfer that same session to CLI. New setup must use an authorized new,
+separate CLI monitoring task with a distinct thread ID and verified owner/resident readiness.
+A new monitor definition targeting the same Desktop task is not a workaround. Existing explicitly
+selected CLI monitors remain manageable; legacy Desktop routes remain available for diagnosis and
+scoped disabling, without automatic migration, pause, deletion or replay. This is skill guidance,
+not a runtime-level caller-surface block or a fix for Desktop ownership.
 Historical Desktop delivery evidence does not establish supported unattended operation.
 
 

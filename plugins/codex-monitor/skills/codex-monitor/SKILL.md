@@ -13,8 +13,13 @@ While Desktop can unload tasks independently, do not enable monitoring on the re
 conversation or another Desktop-owned task. A currently loaded task or successful queue write does
 not waive this restriction. A new Desktop chat alone is not a solution.
 
-For a Desktop request, use an explicitly chosen existing CLI-owned task, or propose a separate CLI
-monitoring task. Create a new task only when authorized; otherwise obtain the missing target choice.
+For a Desktop setup request, refuse the current conversation as the monitoring target and offer a
+new, separate CLI monitoring task. Say plainly: "Monitoring cannot run in this Desktop conversation;
+use a separate CLI monitoring task." Create that task only when authorized. A request to edit these
+instructions or inspect status does not authorize task creation. A new monitor name, route, source,
+or chat label pointing to the current Desktop thread ID does not satisfy this rule.
+For an explicitly selected existing CLI monitoring task, management remains available after verifying
+its owner; do not turn a Desktop task into that target as a workaround.
 Read [resident.md](references/resident.md) before setup. Keep the Desktop conversation available for
 user discussion, and pass the work scope and permissions to the CLI task. Confirm its exact ID,
 explicit owner endpoint, resident subscription and receiver/producer readiness before enabling routes.
@@ -23,8 +28,11 @@ current_thread identifies a task; it does not prove CLI ownership.
 
 Do not solve a blocked Desktop target by asking the user to quit the whole app, waiting for an
 unspecified unload, stealing a writer lock, or calling a queue-only resume a completed handoff.
-If a selected existing task still has a Desktop owner conflict, report that target as blocked and
-suggest a separate CLI task. Same-task migration needs a separately verified ownership transition.
+Do not attempt to transfer, resume through a CLI owner, or wait to acquire the current Desktop
+conversation as part of monitor setup, even if the user asks to monitor "this conversation".
+If a selected task has a Desktop owner conflict, report it as blocked and offer a new CLI task.
+Copy only the authorized monitoring scope and necessary context to the separate task; do not move
+the Desktop session, replay its queued events, or claim automatic handoff.
 Read-only diagnosis, receipt inspection, explicit replies within existing authorization, and disabling
 legacy Desktop routes remain available. Do not automatically pause/delete/replay existing routes.
 

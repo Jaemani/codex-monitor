@@ -66,7 +66,9 @@ Desktop app alone therefore cannot guarantee background processing of every save
 
 **Setup policy: Desktop is for discussion; monitoring runs in a separate CLI-owned task.**
 The skill must not attach or resume monitoring on the requesting Desktop conversation.
-Choose an existing CLI worker or authorize a new one. A new Desktop chat is insufficient;
+Authorize a new, separate CLI monitoring task for setup. Do not attempt to migrate the current
+Desktop session or create a new route pointing to it. Existing CLI monitors remain manageable.
+A new Desktop chat alone is insufficient;
 the CLI owner and resident must be established and verified before enabling event routes.
 An existing ownership conflict is a blocker, not a reason to close the entire Desktop app.
 
@@ -77,8 +79,8 @@ Open its ordinary TUI to converse, inspect work, or answer approvals, and use `c
 to see registered monitoring routes without chat polling.
 
 This does **not** keep the requesting Desktop conversation loaded. Arbitrary unloaded Desktop tasks
-still cannot self-start from a shared queue write. Reusing a Desktop task in CLI requires a deliberate
-ownership transition; independent Desktop and CLI servers cannot both own it. A separate CLI task's
+still cannot self-start from a shared queue write. The setup workflow refuses same-session migration; independent Desktop and CLI servers cannot
+both own it. A separate CLI task's
 responses do not automatically return to the Desktop requesting task.
 
 See [Desktop-to-CLI setup, example request, status checks and stop controls](docs/OWNER-LIFECYCLE.md#request-from-desktop-run-through-cli).

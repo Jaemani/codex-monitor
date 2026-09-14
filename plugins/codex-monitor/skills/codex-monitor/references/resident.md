@@ -4,7 +4,7 @@ Use this workflow when the user requests keeping selected CLI conversations avai
 their owner connection. Inspect `resident --help` to verify the installed runtime supports it.
 
 Use one explicit owner endpoint shared by the ordinary `codex --remote` TUI, the receiver binding
-and the resident. Use only user-selected existing conversation IDs. A default Desktop shared-local
+and the resident. Use exact IDs of authorized CLI monitoring tasks. A default Desktop shared-local
 writer is not that owner; there is no verified unattended Desktop equivalent.
 
 The foreground lifecycle command is:
@@ -28,21 +28,22 @@ Approvals and questions belong to that native TUI. Resident never answers them. 
 conflict requires using the existing owner; preserve queued receipts instead of competing or replaying.
 
 Keep ordinary shared-local setup only for CLI-owned local conversations. Desktop requests
-use a separately selected CLI monitoring task under the SKILL.md execution-target gate.
+use a new, separate CLI monitoring task under the SKILL.md execution-target gate.
 Do not migrate an existing Desktop task or replay an incident merely because it is queued.
 
 
 ## Requests made in Desktop
 
-The requesting UI and the execution owner are separate. With local shell access, a Desktop assistant
-must configure monitoring on a separately selected CLI-owned task on the same machine; SSH is not required.
-A newly created Desktop chat is not a CLI worker: establish its CLI owner and resident before enabling
-monitoring. Keep the requesting Desktop task for discussion. If the existing task is still owned by
-Desktop, select a separate CLI task rather than requiring whole-app shutdown or an unbounded wait. It does not keep the
-requesting Desktop conversation loaded or expose the Desktop internal owner. Use exact authorized
-targets, and resolve existing ownership before moving a Desktop conversation to CLI. Do not promise
-simultaneous ownership by independent Desktop and CLI servers, or automatic replies back to a separate
-Desktop task. A relay is an explicitly configured additional workflow.
+Refuse the requesting Desktop conversation as a monitoring target. For new setup, create a new,
+separate CLI monitoring task only when authorized; SSH is not required. A new Desktop chat or monitor
+definition is insufficient: the target must have its own distinct thread ID and a verified CLI owner
+and resident. Keep the requesting Desktop task for discussion.
+
+Do not attempt same-task migration, wait for Desktop ownership release, or ask for whole-app shutdown.
+An ownership conflict is a blocker for that target, not a transfer workflow. Existing explicitly
+selected CLI monitors can still be inspected and managed after verifying their owner. Do not promise
+simultaneous Desktop/CLI ownership or automatic replies back to Desktop; a relay requires a separate,
+explicitly authorized configuration.
 
 After setup, tell the user the project/group, exact conversation, endpoint, watched condition, and
 which producer, receiver and owner/resident observations passed. Give concrete commands to open

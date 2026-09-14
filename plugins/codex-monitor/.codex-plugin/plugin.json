@@ -13,6 +13,6 @@
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": [],
-    "defaultPrompt": "Use codex-monitor for event monitoring. If this is Desktop, use a separate CLI-owned monitoring task; verify its owner and resident before enabling routes."
+    "defaultPrompt": "Use codex-monitor for event monitoring. If this is Desktop, refuse monitoring or migration of this conversation and use an authorized new, separate CLI monitoring task; verify its owner and resident before enabling routes."
   }
 }

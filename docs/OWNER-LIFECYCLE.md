@@ -5,7 +5,9 @@ unresolved. CLI implementation and evidence must not be presented as a Desktop f
 
 ## Request from Desktop, run through CLI
 
-Current setup policy requires a separately selected CLI monitoring task for Desktop requests.
+Current setup policy requires an authorized new, separate CLI monitoring task for Desktop setup
+requests. Refuse the current Desktop session as a target, including attempts to transfer it to CLI.
+A new monitor definition targeting that same session does not satisfy this policy.
 Keep the requesting Desktop conversation for user discussion. A new Desktop chat alone is
 not sufficient. Do not enable/resume monitoring on Desktop-owned targets or require whole-app
 shutdown as setup. Resolve a specific authorized CLI target and residency before enabling routes.
@@ -29,10 +31,9 @@ boundary, not proof that Desktop support is technically impossible in a future v
 [compatibility and verification limits](COMPATIBILITY.md).
 
 Choose the exact target before setup. A separate CLI monitoring conversation leaves the Desktop
-requesting conversation available for user discussion. Reusing an existing Desktop conversation ID
-requires a deliberate ownership transition: preserve history and queued input, and resolve any active
-writer conflict before registering it with the CLI owner. Simultaneous interactive ownership of that
-same task in independent Desktop and CLI servers is not supported by this workflow. A CLI worker's
+requesting conversation available for user discussion. Reusing the current Desktop conversation ID
+or waiting to acquire it in CLI is not a supported setup path. Existing explicitly selected CLI
+monitors remain manageable after owner verification. A CLI worker's
 responses stay in its task; delivery back to a separate Desktop task requires explicit relay setup.
 
 Example request from Desktop:

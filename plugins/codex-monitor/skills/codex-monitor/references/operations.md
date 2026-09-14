@@ -1,7 +1,9 @@
 # Receiver and producers
 
 Apply the SKILL.md execution-target gate before enabling any route: Desktop requests
-must delegate monitoring to a selected CLI-owned task with verified residency. A current
+must create a new, separate CLI monitoring task for new setup, with authorization and verified
+residency. Refuse current-Desktop-session binding and migration attempts. A new route targeting the
+same Desktop thread is still prohibited. A current
 Desktop task ID, queue acceptance or receiver readiness does not satisfy that gate.
 
 Use the same `--state PATH` throughout. `init` is for new state only. On macOS use `service install`,
