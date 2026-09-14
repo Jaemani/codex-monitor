@@ -1,5 +1,14 @@
 # Client connectivity and validation scope
 
+Desktop setup restriction (2026-09-14): the skill routes new monitoring and resume
+requests from Desktop to a selected CLI-owned task. The requesting Desktop conversation
+stays a discussion surface; creating another Desktop chat does not satisfy this policy.
+Verify explicit owner/resident readiness before enabling routes. Existing Desktop routes
+remain available for diagnosis and scoped disabling, not automatic migration or replay.
+This is an agent setup policy, not runtime detection/enforcement of every caller surface.
+Historical Desktop delivery evidence does not establish supported unattended operation.
+
+
 Current development priority (2026-09-09): CLI conversations on one explicitly shared App Server.
 `resident --endpoint ENDPOINT --thread THREAD_ID` maintains owner subscriptions and reconnects to
 that owner. This is distinct from the default shared-local queue writer. The foreground owner and

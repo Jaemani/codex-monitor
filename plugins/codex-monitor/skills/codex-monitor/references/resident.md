@@ -27,14 +27,18 @@ Return interactively with `connect --endpoint ENDPOINT --thread THREAD_ID --cwd 
 Approvals and questions belong to that native TUI. Resident never answers them. An active-writer
 conflict requires using the existing owner; preserve queued receipts instead of competing or replaying.
 
-Keep ordinary shared-local setup for users who only want events in a loaded local conversation.
+Keep ordinary shared-local setup only for CLI-owned local conversations. Desktop requests
+use a separately selected CLI monitoring task under the SKILL.md execution-target gate.
 Do not migrate an existing Desktop task or replay an incident merely because it is queued.
 
 
 ## Requests made in Desktop
 
 The requesting UI and the execution owner are separate. With local shell access, a Desktop assistant
-can configure this CLI workflow on the same machine; SSH is not required. It does not keep the
+must configure monitoring on a separately selected CLI-owned task on the same machine; SSH is not required.
+A newly created Desktop chat is not a CLI worker: establish its CLI owner and resident before enabling
+monitoring. Keep the requesting Desktop task for discussion. If the existing task is still owned by
+Desktop, select a separate CLI task rather than requiring whole-app shutdown or an unbounded wait. It does not keep the
 requesting Desktop conversation loaded or expose the Desktop internal owner. Use exact authorized
 targets, and resolve existing ownership before moving a Desktop conversation to CLI. Do not promise
 simultaneous ownership by independent Desktop and CLI servers, or automatic replies back to a separate

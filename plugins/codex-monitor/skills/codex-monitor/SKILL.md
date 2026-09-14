@@ -1,25 +1,39 @@
 ---
 name: codex-monitor
-description: Set up event-driven monitoring in an existing Codex conversation instead of scheduled model polling. Use for codex-monitor, receiving external changes or agent events in this conversation, checking monitoring status, pausing or resuming, and explicit source replies.
+description: Set up event-driven monitoring in Codex CLI instead of scheduled model polling; route Desktop requests to a separate CLI monitoring task. Use for codex-monitor, receiving external changes or agent events in this conversation, checking monitoring status, pausing or resuming, and explicit source replies.
 ---
 
 # Codex Monitor
 
-Keep the user's chosen conversation as the session. A separate receiver delivers real events through
-the official shared-local queue. Invoking this skill alone does not start a monitor.
-The receiver and producer wait outside the model; an event becomes input to the chosen conversation.
-A separate relay conversation is optional: use it when requested for routing or model separation,
-otherwise keep delivery in the chosen conversation. The user can continue ordinary conversation there.
-Busy conversations queue input for native processing; this is not a continuously running model.
-Actual consumption requires the target to remain loaded in an owning Codex client. A running Desktop
-app or an enabled binding does not keep every saved task loaded. Unloaded targets retain queued input
-and do not self-start from a shared-local write. State this limitation for unattended or multi-task setups.
-For unattended setup, run `doctor --endpoint ENDPOINT --thread THREAD_ID --require-consumer`.
-Unknown consumer readiness fails this gate even when queue access works; report it as unverified,
-not as proof that the task is unloaded. A passing owner probe is a current observation, not a residency guarantee.
-For explicitly requested unattended CLI operation or owner reconnection, read
-[resident.md](references/resident.md). It uses a shared owner and deliberate subscriptions;
-the default Desktop owner path remains unavailable.
+## Choose the execution target first
+
+Desktop is the control conversation, not the monitoring execution target. Before any create,
+attach, bind, or resume operation, identify the requesting surface and the target's actual owner.
+While Desktop can unload tasks independently, do not enable monitoring on the requesting Desktop
+conversation or another Desktop-owned task. A currently loaded task or successful queue write does
+not waive this restriction. A new Desktop chat alone is not a solution.
+
+For a Desktop request, use an explicitly chosen existing CLI-owned task, or propose a separate CLI
+monitoring task. Create a new task only when authorized; otherwise obtain the missing target choice.
+Read [resident.md](references/resident.md) before setup. Keep the Desktop conversation available for
+user discussion, and pass the work scope and permissions to the CLI task. Confirm its exact ID,
+explicit owner endpoint, resident subscription and receiver/producer readiness before enabling routes.
+If the target surface/owner is unknown, resolve it before enabling monitoring. The context helper's
+current_thread identifies a task; it does not prove CLI ownership.
+
+Do not solve a blocked Desktop target by asking the user to quit the whole app, waiting for an
+unspecified unload, stealing a writer lock, or calling a queue-only resume a completed handoff.
+If a selected existing task still has a Desktop owner conflict, report that target as blocked and
+suggest a separate CLI task. Same-task migration needs a separately verified ownership transition.
+Read-only diagnosis, receipt inspection, explicit replies within existing authorization, and disabling
+legacy Desktop routes remain available. Do not automatically pause/delete/replay existing routes.
+
+For CLI-owned tasks, keep the user's chosen conversation as the session. A separate receiver waits
+outside the model and delivers real events through the official queue. The user can continue ordinary
+conversation in the same owner's TUI. Busy turns retain the native queue processing boundary.
+Run `doctor --endpoint ENDPOINT --thread THREAD_ID --require-consumer` before unattended setup;
+unknown consumer readiness fails the gate. A passing probe is a current observation, not a residency
+guarantee. Use the explicit owner/resident workflow for unattended operation.
 This workflow needs a local Codex host with shell access; installing the plugin in a web-only chat does
 not provide that runtime or access to a Desktop conversation.
 
@@ -29,19 +43,13 @@ Do not silently substitute a recurring model automation. Change an existing sche
 the user's requested scope; timed reminders remain a separate use case.
 
 
-A request made in Desktop may use a local CLI owner/resident for an explicitly selected monitoring
-conversation. Explain where execution will run; do not equate this with keeping the requesting Desktop
-conversation loaded. For this choice, read [resident.md](references/resident.md). A separate monitoring
-task needs explicit user authorization to create it; reusing a task requires resolving its existing
-owner without stealing locks. Responses in a separate CLI task are not automatically relayed back.
-
 ## Locate and inspect
 
 Run the bundled `scripts/monitor.py context` helper to locate the runtime, `CODEX_THREAD_ID`, and default
 state path. Further arguments are forwarded to the installed CLI without a shell. Reuse the explicit state path or `CODEX_MONITOR_HOME`.
 If the runtime is missing, read [installation.md](references/installation.md).
 
-For “this conversation,” use the exact thread ID from host context or `CODEX_THREAD_ID`. If unavailable,
+For “this conversation,” apply the execution-target gate above, then use the exact thread ID from host context or `CODEX_THREAD_ID`. If unavailable,
 ask for the existing conversation ID; never pick the most recent thread. Inspect `monitor list --thread THREAD_ID`
 before changing managed monitors. A monitor name is scoped to its conversation; identical names in other conversations must remain untouched.
 
@@ -105,7 +113,8 @@ receiver readiness without model calls. External producer and agent activity rem
 supported observations or explicit work reports exist.
 
 For a managed monitor, use `monitor status`, `monitor pause`, `monitor resume`, or `monitor remove`
-with its name and the exact current `--thread`. `monitor list` is scoped the same way. Removal preserves
+with its name and the exact selected CLI target `--thread`. Resume must pass the execution-target gate;
+legacy Desktop pause/removal stays scoped to the user-selected route. `monitor list` is scoped the same way. Removal preserves
 old receipts and checkpoints; recreating a name starts a separate generation. Pause/removal cannot
 retract already accepted native input or an in-flight submission. These operations do not target
 another conversation or stop the shared receiver.

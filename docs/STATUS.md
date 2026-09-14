@@ -1,5 +1,14 @@
 # Status and remaining verification
 
+Desktop setup restriction (2026-09-14): the skill routes new monitoring and resume
+requests from Desktop to a selected CLI-owned task. The requesting Desktop conversation
+stays a discussion surface; creating another Desktop chat does not satisfy this policy.
+Verify explicit owner/resident readiness before enabling routes. Existing Desktop routes
+remain available for diagnosis and scoped disabling, not automatic migration or replay.
+This is an agent setup policy, not runtime detection/enforcement of every caller surface.
+Historical Desktop delivery evidence does not establish supported unattended operation.
+
+
 Dashboard route inspector (2026-09-13): overview separates active/paused registrations
 and recent delivery. Details browse every route, show source/file, owner/collector
 observations, delivery history and receipt IDs, with wrapped text and scrolling.

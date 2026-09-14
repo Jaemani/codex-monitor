@@ -1,18 +1,18 @@
 {
   "name": "codex-monitor",
   "version": "0.1.0",
-  "description": "Manage external-event monitoring for one ongoing Codex conversation",
+  "description": "Event-driven CLI monitoring; delegate Desktop requests to a CLI task",
   "author": {
     "name": "Local developer"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Monitor",
-    "shortDescription": "Monitor and manage one ongoing conversation.",
-    "longDescription": "Attach an existing conversation, inspect monitoring state, pause delivery, and explicitly reply to external sources. Requires the separately installed codex-monitor runtime.",
+    "shortDescription": "Monitor CLI tasks from a Desktop control conversation.",
+    "longDescription": "Configure a selected CLI-owned monitoring task, inspect events, pause routes, and explicitly reply to sources. Desktop requests stay in a discussion task and delegate execution to CLI. Requires the separately installed codex-monitor runtime.",
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": [],
-    "defaultPrompt": "Use codex-monitor to manage monitoring for this conversation."
+    "defaultPrompt": "Use codex-monitor for event monitoring. If this is Desktop, use a separate CLI-owned monitoring task; verify its owner and resident before enabling routes."
   }
 }

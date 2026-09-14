@@ -5,6 +5,12 @@ unresolved. CLI implementation and evidence must not be presented as a Desktop f
 
 ## Request from Desktop, run through CLI
 
+Current setup policy requires a separately selected CLI monitoring task for Desktop requests.
+Keep the requesting Desktop conversation for user discussion. A new Desktop chat alone is
+not sufficient. Do not enable/resume monitoring on Desktop-owned targets or require whole-app
+shutdown as setup. Resolve a specific authorized CLI target and residency before enabling routes.
+The technical observations below describe historical behavior, not an exception to this policy.
+
 You can ask a Desktop assistant with local shell access to set up CLI-backed monitoring. The place
 where you ask is separate from the client that owns and runs the monitored conversation. This needs
 no remote computer or SSH: the CLI owner can run on the same machine over a loopback endpoint.

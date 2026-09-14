@@ -6,7 +6,7 @@
 
 **Keep working in your Codex conversation. Let external events come to you.**
 
-codex-monitor connects file changes, webhooks and worker events to an existing **Codex CLI or Desktop conversation**. A small receiver waits outside the model, stores events and delivers them through Codex's **official but experimental App Server queue API**. You can keep typing in the same conversation while its owning client is loaded. Unloaded Desktop tasks retain queued input but do not automatically wake.
+codex-monitor connects file changes, webhooks and worker events to an existing **Codex CLI conversation**. A small receiver waits outside the model, stores events and delivers them through Codex's **official but experimental App Server queue API**. You can keep typing in the same conversation while its owning client is loaded. Unloaded Desktop tasks retain queued input but do not automatically wake.
 
 [Quick start](#quick-start) · [Execution model](#what-runs-where) · [Use cases](#what-can-i-use-it-for) · [Comparison](#how-it-compares) · [Status & evidence](docs/STATUS.md) · [Roadmap](docs/TODO.md)
 
@@ -63,6 +63,13 @@ Default local Desktop does not yet have a verified owner connection for this lif
 Desktop app alone therefore cannot guarantee background processing of every saved conversation.
 
 ### Start from Desktop, keep monitoring in CLI
+
+**Setup policy: Desktop is for discussion; monitoring runs in a separate CLI-owned task.**
+The skill must not attach or resume monitoring on the requesting Desktop conversation.
+Choose an existing CLI worker or authorize a new one. A new Desktop chat is insufficient;
+the CLI owner and resident must be established and verified before enabling event routes.
+An existing ownership conflict is a blocker, not a reason to close the entire Desktop app.
+
 
 You can ask a Desktop assistant to configure **a local CLI monitoring task**. Desktop is where you
 request setup; a separate CLI owner and resident keep the selected task available. No SSH is required.

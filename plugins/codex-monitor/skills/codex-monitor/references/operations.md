@@ -1,5 +1,9 @@
 # Receiver and producers
 
+Apply the SKILL.md execution-target gate before enabling any route: Desktop requests
+must delegate monitoring to a selected CLI-owned task with verified residency. A current
+Desktop task ID, queue acceptance or receiver readiness does not satisfy that gate.
+
 Use the same `--state PATH` throughout. `init` is for new state only. On macOS use `service install`,
 `service status`, and `sessions`. Verify `/v1/status` on the configured loopback port with the admin
 token read directly from its file; never print token contents. Service registration and process locks

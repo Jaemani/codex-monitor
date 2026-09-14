@@ -1,4 +1,4 @@
 interface:
   display_name: "Codex Monitor"
-  short_description: "Manage one ongoing conversation with external events"
-  default_prompt: "Use $codex-monitor to set up monitoring for this conversation and show its status."
+  short_description: "Monitor CLI tasks; delegate Desktop requests"
+  default_prompt: "Use $codex-monitor to set up event monitoring. In Desktop, use a separate CLI-owned monitoring task and keep this conversation for discussion. Verify the execution owner before enabling monitoring."
