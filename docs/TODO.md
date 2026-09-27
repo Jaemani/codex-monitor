@@ -37,6 +37,13 @@ The legacy doctor tests now isolate their state from the developer's live adopte
 configuration. Installation, operation and sampler-safety docs distinguish the
 native runtime from historical Python behavior. Publication checks pass.
 
+A final receiver check observed four cumulative sample errors. The count remained
+four while successful sample observations advanced from 8,446 to 8,516 over
+20 seconds, with readiness retained. All seven active input files were readable;
+configured JSON predicates parsed successfully at inspection. The historical
+errors are not attributed to a specific watch by the current aggregate counter,
+so this observation must not be described as error-free production operation.
+
 Remaining: retire the protected legacy dashboard when its Codex client returns;
 optional lifecycle-observer parity, longer soak and end-to-end Discord reply
 verification are not claimed by this cutover.

@@ -2384,13 +2384,23 @@
         "strict_clippy": true,
         "operational_codex_owner_restarted": false,
         "synthetic_discord_posts": 0,
-        "initial_registration_rollback_succeeded": true
+        "initial_registration_rollback_succeeded": true,
+        "final_receiver_observation": {
+          "ready": true,
+          "sample_count_start": 8446,
+          "sample_count_end": 8516,
+          "sample_errors_start": 4,
+          "sample_errors_end": 4,
+          "seconds": 20,
+          "active_inputs_readable": 7
+        }
       },
       "limitations": [
         "One legacy dashboard remains while its child Codex TUI is open; replacement command already points to Rust.",
         "Optional legacy request_lifecycle observer is rejected, not silently ignored; disabled in both deployments.",
         "One-shot project reply CLIs remain separate integrations.",
-        "No long-duration soak or completed Discord reply claimed."
+        "No long-duration soak or completed Discord reply claimed.",
+        "Four historical receiver sample errors remain unattributed; no increase during the final 20-second observation."
       ]
     }
   ]
