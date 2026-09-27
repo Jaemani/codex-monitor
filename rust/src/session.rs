@@ -555,7 +555,7 @@ impl RpcConnection {
         }
     }
 
-    async fn ensure_subscribed(&self, thread: &str) -> Result<Value> {
+    async fn ensure_subscribed(&self, thread: &str, policy: &ResumePolicy) -> Result<Value> {
         let _subscription = self.subscription_lock.lock().await;
         if self.subscribed.lock().await.contains(thread) {
             // A cheap owner probe makes the generation cache self-healing when
@@ -582,12 +582,9 @@ impl RpcConnection {
         )
         .await?;
         let result = self
-            .request(
-                "thread/resume",
-                json!({"threadId": thread, "excludeTurns": true}),
-                DEFAULT_TIMEOUT,
-            )
+            .request("thread/resume", policy.params(thread)?, DEFAULT_TIMEOUT)
             .await?;
+        policy.verify(&result)?;
         self.subscribed.lock().await.insert(thread.to_string());
         Ok(result)
     }
@@ -1151,7 +1148,27 @@ impl SessionPool {
             ));
         }
         let connection = self.connection(endpoint).await?;
-        connection.ensure_subscribed(thread).await
+        connection
+            .ensure_subscribed(thread, &ResumePolicy::default())
+            .await
+    }
+
+    pub async fn subscribe_with_policy(
+        &self,
+        endpoint: &str,
+        thread: &str,
+        policy: &ResumePolicy,
+    ) -> Result<Value> {
+        if endpoint == "shared-local" || thread.trim().is_empty() {
+            return Err(SessionError::Permanent(
+                "resident requires an explicit owner and thread".into(),
+            ));
+        }
+        policy.params(thread)?;
+        self.connection(endpoint)
+            .await?
+            .ensure_subscribed(thread, policy)
+            .await
     }
 
     /// Keep explicitly selected threads attached to an owner App Server.  It
@@ -1363,4 +1380,82 @@ pub fn render_event(binding: &str, envelope: &Value, receipt: &str) -> String {
         content,
         safe_text(receipt)
     )
+}
+
+/// Explicit resident policy, applied only when subscribing a selected thread.
+#[derive(Clone, Debug, Default)]
+pub struct ResumePolicy {
+    pub sandbox: Option<String>,
+    pub network: Option<bool>,
+}
+impl ResumePolicy {
+    pub fn params(&self, thread: &str) -> Result<Value> {
+        if self.network.is_some() && self.sandbox.as_deref() != Some("workspace-write") {
+            return Err(SessionError::Permanent(
+                "network override requires workspace-write".into(),
+            ));
+        }
+        let mut value = json!({"threadId":thread,"excludeTurns":true});
+        if let Some(mode) = &self.sandbox {
+            if !["read-only", "workspace-write", "danger-full-access"].contains(&mode.as_str()) {
+                return Err(SessionError::Permanent("unsupported sandbox mode".into()));
+            }
+            value["sandbox"] = json!(mode);
+        }
+        if let Some(network) = self.network {
+            value["config"] = json!({"sandbox_workspace_write.network_access":network});
+        }
+        Ok(value)
+    }
+    pub fn verify(&self, result: &Value) -> Result<()> {
+        if let Some(mode) = &self.sandbox {
+            let expected = match mode.as_str() {
+                "read-only" => "readOnly",
+                "workspace-write" => "workspaceWrite",
+                _ => "dangerFullAccess",
+            };
+            if result["sandbox"]["type"] != expected
+                || self
+                    .network
+                    .is_some_and(|n| result["sandbox"]["networkAccess"].as_bool() != Some(n))
+            {
+                return Err(SessionError::Permanent(
+                    "effective permissions differ from requested resident policy".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod policy_tests {
+    use super::*;
+    #[test]
+    fn explicit_policy_requires_matching_effective_response() {
+        let p = ResumePolicy {
+            sandbox: Some("workspace-write".into()),
+            network: Some(true),
+        };
+        assert_eq!(
+            p.params("a").unwrap()["config"]["sandbox_workspace_write.network_access"],
+            true
+        );
+        assert!(
+            p.verify(&json!({"sandbox":{"type":"workspaceWrite","networkAccess":true}}))
+                .is_ok()
+        );
+        assert!(
+            p.verify(&json!({"sandbox":{"type":"workspaceWrite","networkAccess":false}}))
+                .is_err()
+        );
+        assert!(
+            ResumePolicy {
+                sandbox: Some("read-only".into()),
+                network: Some(true)
+            }
+            .params("a")
+            .is_err()
+        );
+    }
 }

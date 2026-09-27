@@ -1062,4 +1062,12 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    if "--legacy-python" in sys.argv:
+        sys.argv.remove("--legacy-python")
+        raise SystemExit(main())
+    arguments = sys.argv[1:]
+    if "--wheel" in arguments or any(a in arguments for a in ("uninstall", "rollback", "link", "status")):
+        print("Rust is the canonical runtime. Use scripts/install.sh for installation. Historical Python operations require --legacy-python.", file=sys.stderr)
+        raise SystemExit(2)
+    arguments = [a for a in arguments if a not in ("install", "upgrade")]
+    raise SystemExit(subprocess.run([str(REPO_ROOT / "scripts/install.sh"), *arguments], check=False).returncode)

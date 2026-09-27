@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 import io
 import json
@@ -38,6 +40,15 @@ class WorkingQueueRpc:
 
 
 class DoctorTest(unittest.TestCase):
+    def setUp(self):
+        # A developer may already have adopted their default state into Rust.
+        # Protocol fixtures must never inspect that live configuration.
+        state = tempfile.TemporaryDirectory()
+        self.addCleanup(state.cleanup)
+        environment = mock.patch.dict(os.environ, {"CODEX_MONITOR_HOME": state.name})
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def test_missing_queue_method_is_structured_and_bounded(self):
         rpc = UnsupportedQueueRpc()
 

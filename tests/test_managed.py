@@ -58,6 +58,7 @@ class ManagedMonitorTest(unittest.TestCase):
     def _supervisor(self, **kwargs):
         now = [0.0]
         supervisor = ManagedSupervisor(self.monitor, poll_interval=.01, clock=lambda: now[0], **kwargs)
+        self.addCleanup(supervisor.close)
         return supervisor, now
 
     def _settle(self, supervisor, now, predicate, timeout=.75):
@@ -134,6 +135,7 @@ class ManagedMonitorTest(unittest.TestCase):
         # A new supervisor can dispatch an accepted durable event exactly once.
         supervisor.close()
         restarted = ManagedSupervisor(self.monitor, poll_interval=.01, clock=lambda: .6)
+        self.addCleanup(restarted.close)
         restarted.poll_once()
         self.assertEqual(len(self.session.calls), 2)
 
@@ -221,7 +223,8 @@ class ManagedMonitorTest(unittest.TestCase):
             supervisor._schedule(self.monitor.managed_runtime_rows(), now[0] + .2)
 
         status = self.monitor.managed_status("thread-a", "pending")
-        self.assertEqual(start.call_count, 2)
+        self.assertEqual(start.call_count, 1)
+        self.assertIn("spawning suspended", status["last_sample_error"])
         self.assertFalse(status["checkpoint_pending"])
         self.assertIsNotNone(status["last_delivery"])
         with self.monitor.connect() as db:

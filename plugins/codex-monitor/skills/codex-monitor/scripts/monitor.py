@@ -18,7 +18,7 @@ def locate():
     found = shutil.which("codex-monitor")
     if found:
         return found
-    path = Path.home() / ".local/share/codex-monitor/bin/codex-monitor"
+    path = Path.home() / ".local/share/codex-monitor-rust/current/bin/codex-monitor"
     return str(path) if path.is_file() and os.access(path, os.X_OK) else None
 
 

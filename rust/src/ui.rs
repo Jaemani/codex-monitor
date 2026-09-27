@@ -1,5 +1,5 @@
 use crate::{Config, connect, output, runtime, text};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use codex_monitor_rs::{session::SessionPool, store::Store};
 use crossterm::{
     cursor,
@@ -25,6 +25,7 @@ fn clean(s: &str, max: usize) -> String {
         })
         .collect()
 }
+#[cfg(test)]
 fn padded(s: &str, width: usize) -> String {
     let s = clean(s, width);
     format!(
@@ -38,6 +39,7 @@ fn endpoint_can_open(endpoint: &str) -> bool {
         || endpoint.starts_with("wss://")
         || (endpoint.starts_with("unix:///") && endpoint.len() > "unix:///".len())
 }
+#[cfg(test)]
 fn enter_hint(endpoint: &str) -> &'static str {
     if endpoint_can_open(endpoint) {
         "Enter open"
@@ -95,6 +97,7 @@ fn restore_selection(
     *selection = (*selection).min(rows.len().saturating_sub(1));
     *route = 0;
 }
+#[cfg(test)]
 fn route_dot(binding: &Value) -> &'static str {
     if binding["enabled"] != true || binding["removed"] == true {
         return "·";
@@ -109,6 +112,7 @@ fn route_dot(binding: &Value) -> &'static str {
     }
 }
 
+#[cfg(test)]
 fn conversation_dot(routes: &Value) -> &'static str {
     let dots: Vec<_> = routes
         .as_array()
@@ -124,8 +128,10 @@ fn conversation_dot(routes: &Value) -> &'static str {
     "·"
 }
 
+#[cfg(test)]
 const MAX_DETAIL_ROUTES: usize = 5;
 
+#[cfg(test)]
 fn route_counts(routes: &Value) -> (usize, usize) {
     routes
         .as_array()
@@ -141,14 +147,17 @@ fn route_counts(routes: &Value) -> (usize, usize) {
         })
 }
 
+#[cfg(test)]
 fn snapshot_route_counts(snapshot: &Value) -> (usize, usize) {
     route_counts(&snapshot["bindings"])
 }
 
+#[cfg(test)]
 fn route_count_label(count: usize, label: &str) -> String {
     format!("{count} {label}{}", if count == 1 { "" } else { "s" })
 }
 
+#[cfg(test)]
 fn route_state(binding: &Value) -> &'static str {
     if binding["removed"] == true {
         "removed"
@@ -159,6 +168,7 @@ fn route_state(binding: &Value) -> &'static str {
     }
 }
 
+#[cfg(test)]
 fn owner_state(binding: &Value) -> &str {
     binding["owner_health"]
         .get("status")
@@ -167,6 +177,7 @@ fn owner_state(binding: &Value) -> &str {
         .unwrap_or("unverified")
 }
 
+#[cfg(test)]
 fn route_sources(binding: &Value) -> String {
     let Some(sources) = binding["sources"].as_array() else {
         return "configured sources".into();
@@ -187,6 +198,7 @@ fn route_sources(binding: &Value) -> String {
     }
 }
 
+#[cfg(test)]
 fn route_summary(routes: &Value, narrow: bool) -> String {
     let (active, paused) = route_counts(routes);
     if narrow {
@@ -226,7 +238,9 @@ fn groups(snapshot: &Value, filter: Option<&str>) -> Vec<Value> {
             .and_then(|v| v["display_name"].as_str())
             .filter(|v| !v.is_empty())
             .unwrap_or(&thread);
-        rows.push(json!({"thread":thread,"project":project,"name":label,"routes":routes}));
+        let mut row = json!({"thread":thread,"project":project,"name":label,"routes":routes,"bindings":routes});
+        row["permission_label"] = json!(crate::board::permission(&row));
+        rows.push(row);
     }
     let mut counts = BTreeMap::new();
     for r in &rows {
@@ -253,31 +267,7 @@ fn groups(snapshot: &Value, filter: Option<&str>) -> Vec<Value> {
     rows
 }
 #[allow(clippy::too_many_arguments)]
-fn render(
-    snapshot: &Value,
-    rows: &[Value],
-    selection: usize,
-    route: usize,
-    detail: bool,
-    notice: &str,
-    animate: bool,
-    tick: bool,
-) -> String {
-    let (width, height) = terminal::size().unwrap_or((96, 24));
-    render_sized(
-        snapshot,
-        rows,
-        selection,
-        route,
-        detail,
-        notice,
-        animate,
-        tick,
-        width as usize,
-        height as usize,
-    )
-}
-#[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn render_sized(
     snapshot: &Value,
     rows: &[Value],
@@ -469,14 +459,24 @@ struct TerminalGuard;
 impl TerminalGuard {
     fn enter() -> Result<Self> {
         terminal::enable_raw_mode()?;
-        execute!(io::stdout(), terminal::EnterAlternateScreen, cursor::Hide)?;
+        execute!(
+            io::stdout(),
+            terminal::EnterAlternateScreen,
+            cursor::Hide,
+            event::EnableMouseCapture
+        )?;
         Ok(Self)
     }
 }
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = terminal::disable_raw_mode();
-        let _ = execute!(io::stdout(), cursor::Show, terminal::LeaveAlternateScreen);
+        let _ = execute!(
+            io::stdout(),
+            cursor::Show,
+            terminal::LeaveAlternateScreen,
+            event::DisableMouseCapture
+        );
     }
 }
 #[allow(clippy::too_many_arguments)]
@@ -490,10 +490,11 @@ pub async fn dashboard(
     thread: Option<String>,
     interval: Duration,
     color: String,
-    no_animate: bool,
+    _no_animate: bool,
 ) -> Result<()> {
     let mut snapshot = runtime::snapshot(&store, &cfg, &root, &pool).await?;
     let mut rows = groups(&snapshot, thread.as_deref());
+    let size = terminal::size().unwrap_or((100, 32));
     if once {
         if as_json {
             snapshot["connections"] = json!(rows);
@@ -501,16 +502,20 @@ pub async fn dashboard(
         } else {
             println!(
                 "{}",
-                render(
+                crate::board::build(
                     &snapshot,
                     &rows,
                     0,
                     0,
                     false,
-                    "Dots show configuration, not model activity",
                     false,
-                    false
+                    0,
+                    0,
+                    "",
+                    size.0 as usize,
+                    size.1 as usize
                 )
+                .render()
             );
         }
         return Ok(());
@@ -519,89 +524,148 @@ pub async fn dashboard(
         anyhow::bail!("live dashboard needs a terminal; use --once --json");
     }
     let mut guard = Some(TerminalGuard::enter()?);
-    let mut selection = 0usize;
-    let mut route = 0usize;
+    let mut selected = 0usize;
+    let mut route = rows.first().map(crate::board::preferred).unwrap_or(0);
     let mut detail = false;
+    let mut menu = false;
+    let mut action = 0usize;
+    let mut scroll = 0usize;
     let mut notice = String::new();
-    let mut deleting: Option<String> = None;
-    let mut selection_valid = true;
+    let mut previous = String::new();
     let mut refresh = Instant::now();
-    let mut tick = false;
-    let mut previous_frame = String::new();
+    let mut deleting: Option<String> = None;
+    let mut preview: Option<crate::reconnect::Plan> = None;
+    type Operation = tokio::task::JoinHandle<Result<(Option<crate::reconnect::Plan>, String)>>;
+    let mut operation: Option<Operation> = None;
+    let mut refreshing: Option<tokio::task::JoinHandle<Result<Value>>> = None;
     loop {
-        if refresh.elapsed() >= interval {
-            let previous_selection = rows
-                .get(selection)
-                .and_then(|row| route_identity(row, route))
-                .map(|(thread, name, endpoint)| {
-                    (thread.to_owned(), name.to_owned(), endpoint.to_owned())
-                });
-            snapshot = runtime::snapshot(&store, &cfg, &root, &pool).await?;
+        if operation.as_ref().is_some_and(|h| h.is_finished()) {
+            match operation.take().unwrap().await {
+                Ok(Ok((plan, message))) => {
+                    preview = plan;
+                    notice = message;
+                }
+                Ok(Err(e)) => {
+                    notice = e.to_string();
+                    preview = None;
+                }
+                Err(_) => {
+                    notice = "Server operation failed; inspect services before retrying".into();
+                    preview = None;
+                }
+            }
+            refresh = Instant::now() - interval;
+            scroll = 0;
+        }
+        if refresh.elapsed() >= interval && operation.is_none() && refreshing.is_none() {
+            let (store, cfg, root, pool) = (store.clone(), cfg.clone(), root.clone(), pool.clone());
+            refreshing = Some(tokio::spawn(async move {
+                runtime::snapshot(&store, &cfg, &root, &pool).await
+            }));
+            refresh = Instant::now();
+        }
+        if refreshing.as_ref().is_some_and(|h| h.is_finished()) {
+            let identity = rows
+                .get(selected)
+                .and_then(|r| route_identity(r, route))
+                .map(|(t, n, e)| (t.to_owned(), n.to_owned(), e.to_owned()));
+            match refreshing.take().unwrap().await {
+                Ok(Ok(next)) => snapshot = next,
+                _ => {
+                    notice = "Inventory refresh failed; showing last observation".into();
+                    continue;
+                }
+            }
             rows = groups(&snapshot, thread.as_deref());
             restore_selection(
                 &rows,
-                previous_selection.as_ref().map(|(thread, name, endpoint)| {
-                    (thread.as_str(), name.as_str(), endpoint.as_str())
-                }),
-                &mut selection,
+                identity
+                    .as_ref()
+                    .map(|(t, n, e)| (t.as_str(), n.as_str(), e.as_str())),
+                &mut selected,
                 &mut route,
             );
-            let restored = rows
-                .get(selection)
-                .and_then(|row| route_identity(row, route));
-            if previous_selection
-                .as_ref()
-                .is_some_and(|(t, n, e)| restored != Some((t.as_str(), n.as_str(), e.as_str())))
-            {
-                selection_valid = false;
+            if identity.as_ref().is_some_and(|(t, n, e)| {
+                rows.get(selected).and_then(|r| route_identity(r, route))
+                    != Some((t.as_str(), n.as_str(), e.as_str()))
+            }) {
+                preview = None;
                 deleting = None;
-                notice = "Selected route changed; use arrows or Tab to select again".into();
+                detail = false;
+                menu = false;
+                notice = "Selected connection changed; select again".into();
             }
             refresh = Instant::now();
         }
-        let frame = render(
-            &snapshot,
-            &rows,
-            selection,
-            route,
-            detail,
-            &notice,
-            !no_animate,
-            tick,
+        let (w, h) = terminal::size().unwrap_or((100, 32));
+        let board = crate::board::build(
+            &snapshot, &rows, selected, route, detail, menu, action, scroll, &notice, w as usize,
+            h as usize,
         );
-        if frame != previous_frame {
+        let frame = board.render();
+        if frame != previous {
             execute!(io::stdout(), cursor::MoveTo(0, 0))?;
-            let displayed = frame.replace("\r\n", "\x1b[K\r\n") + "\x1b[K";
-            let colored = color != "never" && std::env::var_os("NO_COLOR").is_none();
-            if colored {
-                print!(
-                    "{}",
-                    displayed
-                        .replace('●', "\x1b[32m●\x1b[0m")
-                        .replace('○', "\x1b[31m○\x1b[0m")
-                        .replace('◐', "\x1b[33m◐\x1b[0m")
-                );
-            } else {
+            if color != "never" && std::env::var_os("NO_COLOR").is_none() {
+                let displayed = frame
+                    .replace("\r\n", "\x1b[K\r\n")
+                    .replace("CODEX MONITOR", "\x1b[1;97mCODEX MONITOR\x1b[0m")
+                    .replace("Needs review", "\x1b[33mNeeds review\x1b[0m")
+                    .replace("Execution error", "\x1b[91mExecution error\x1b[0m")
+                    .replace("Login required", "\x1b[91mLogin required\x1b[0m")
+                    .replace("Ready", "\x1b[36mReady\x1b[0m");
                 print!("{displayed}");
+            } else {
+                print!("{}", frame.replace("\r\n", "\x1b[K\r\n"));
             }
             execute!(io::stdout(), terminal::Clear(ClearType::FromCursorDown))?;
             io::stdout().flush()?;
-            previous_frame = frame;
+            previous = frame;
         }
-        tick = !tick;
-        if !event::poll(Duration::from_millis(250))? {
+        if !event::poll(Duration::from_millis(100))? {
             continue;
         }
-        let Event::Key(key) = event::read()? else {
-            continue;
+        let ev = event::read()?;
+        let key = match ev {
+            Event::Key(k) if k.kind == KeyEventKind::Press => k,
+            Event::Mouse(m) => {
+                if m.kind == event::MouseEventKind::Down(event::MouseButton::Left) {
+                    match board.hits.get(&(m.column as usize, m.row as usize)) {
+                        Some(crate::board::Hit::Conversation(i)) => {
+                            selected = *i;
+                            route = crate::board::preferred(&rows[selected]);
+                            detail = true;
+                            menu = false;
+                            action = 0;
+                            scroll = 0;
+                            notice.clear();
+                            preview = None;
+                            continue;
+                        }
+                        Some(crate::board::Hit::Action(i)) => {
+                            action = *i;
+                            event::KeyEvent::new(KeyCode::Enter, event::KeyModifiers::NONE)
+                        }
+                        None => continue,
+                    }
+                } else if m.kind == event::MouseEventKind::ScrollDown {
+                    event::KeyEvent::new(KeyCode::Down, event::KeyModifiers::NONE)
+                } else if m.kind == event::MouseEventKind::ScrollUp {
+                    event::KeyEvent::new(KeyCode::Up, event::KeyModifiers::NONE)
+                } else {
+                    continue;
+                }
+            }
+            _ => continue,
         };
-        if key.kind != KeyEventKind::Press {
-            continue;
-        }
         if key.code == KeyCode::Char('q')
-            || (key.code == KeyCode::Char('c')
-                && key.modifiers.contains(event::KeyModifiers::CONTROL))
+            || key.code == KeyCode::Char('c')
+                && key.modifiers.contains(event::KeyModifiers::CONTROL)
         {
+            if operation.is_some() {
+                notice =
+                    "Server operation is still running; wait for its result before closing".into();
+                continue;
+            }
             break;
         }
         if let Some(name) = deleting.take() {
@@ -617,93 +681,192 @@ pub async fn dashboard(
             continue;
         }
         match key.code {
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Esc => {
+                if menu {
+                    menu = false;
+                    action = 4;
+                } else {
+                    detail = false;
+                }
+                preview = None;
                 notice.clear();
-                selection_valid = true;
-                selection = (selection + 1).min(rows.len().saturating_sub(1));
-                route = 0;
+                scroll = 0;
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if detail {
+                    scroll += 1;
+                } else {
+                    selected = (selected + 1).min(rows.len().saturating_sub(1));
+                    route = rows.get(selected).map(crate::board::preferred).unwrap_or(0);
+                    notice.clear();
+                    preview = None;
+                }
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                notice.clear();
-                selection_valid = true;
-                selection = selection.saturating_sub(1);
-                route = 0;
-            }
-            KeyCode::Tab | KeyCode::Char(']') | KeyCode::Char('[') => {
-                notice.clear();
-                selection_valid = true;
-                if key.code == KeyCode::Char('[') {
-                    route = route.wrapping_sub(1);
+                if detail {
+                    scroll = scroll.saturating_sub(1);
                 } else {
-                    route = route.wrapping_add(1);
+                    selected = selected.saturating_sub(1);
+                    route = rows.get(selected).map(crate::board::preferred).unwrap_or(0);
+                    notice.clear();
+                    preview = None;
                 }
             }
-            KeyCode::Char('d') => detail = !detail,
-            KeyCode::Char('p') | KeyCode::Char('r') | KeyCode::Char('x') | KeyCode::Enter => {
-                if !selection_valid {
+            KeyCode::Left => {
+                action = (action + if menu { 3 } else { 5 }) % if menu { 4 } else { 6 };
+            }
+            KeyCode::Right => {
+                action = (action + 1) % if menu { 4 } else { 6 };
+            }
+            KeyCode::Tab => {
+                route += 1;
+                preview = None;
+                notice.clear();
+                scroll = 0;
+                menu = false;
+            }
+            KeyCode::Enter => {
+                if !detail {
+                    detail = true;
+                    action = 0;
+                    scroll = 0;
                     continue;
                 }
-                let Some(row) = rows.get(selection) else {
+                if operation.is_some() {
+                    continue;
+                }
+                let Some(row) = rows.get(selected) else {
                     continue;
                 };
                 let Some(routes) = row["routes"].as_array() else {
                     continue;
                 };
-                let Some(b) = routes.get(route % routes.len().max(1)) else {
+                let Some(binding) = routes.get(route % routes.len().max(1)) else {
                     continue;
                 };
-                let name = text(b, "name")?;
-                if key.code == KeyCode::Char('x') {
-                    deleting = Some(name.into());
+                let name = text(binding, "name")?;
+                let endpoint = text(binding, "endpoint")?;
+                let id = text(binding, "thread")?;
+                let current = store.bindings()?;
+                if !current.as_array().is_some_and(|all| {
+                    all.iter().any(|v| {
+                        v["name"] == name
+                            && v["thread"] == id
+                            && v["endpoint"] == endpoint
+                            && v["removed"] != true
+                    })
+                }) {
+                    notice = "Connection changed; select it again".into();
+                    preview = None;
+                    continue;
+                }
+                if menu && action == 3 {
+                    menu = false;
+                    action = 4;
+                    preview = None;
+                    continue;
+                }
+                if !menu && action == 5 {
+                    detail = false;
+                    continue;
+                }
+                if !menu && action == 4 {
+                    menu = true;
+                    action = 0;
+                    scroll = 0;
+                    preview = None;
                     notice = format!(
-                        "Remove route {}? y confirms; any other key cancels",
-                        clean(name, 40)
+                        "Current saved permissions: {}. This menu changes the SHARED SERVER, not only {}.",
+                        binding["permission"]["label"]
+                            .as_str()
+                            .unwrap_or("Access unknown"),
+                        row["name"].as_str().unwrap_or("this conversation")
                     );
                     continue;
                 }
-                if key.code == KeyCode::Enter {
-                    if let Some(message) = enter_notice(text(b, "endpoint")?) {
-                        notice = message.into();
-                        continue;
-                    }
-                    let current = store.bindings()?;
-                    let found = current.as_array().context("routes")?.iter().find(|v| {
-                        v["name"] == b["name"]
-                            && v["thread"] == b["thread"]
-                            && v["endpoint"] == b["endpoint"]
-                            && v["removed"] != true
-                    });
-                    if found.is_none() {
-                        notice = "Route changed; refresh and select again".into();
-                        continue;
-                    }
-                    drop(guard.take());
-                    let result =
-                        connect(text(b, "endpoint")?, Some(text(b, "thread")?), None).await;
-                    guard = Some(TerminalGuard::enter()?);
-                    previous_frame.clear();
-                    notice = result
-                        .err()
-                        .map_or("Returned from TUI".into(), |e| e.to_string());
-                } else {
-                    notice = match store.route_action(
-                        name,
-                        if key.code == KeyCode::Char('p') {
-                            "pause"
-                        } else {
-                            "resume"
-                        },
-                    ) {
-                        Ok(_) => "Route updated; accepted native input is unchanged".into(),
-                        Err(e) => e.to_string(),
+                if menu || action == 3 {
+                    let policy = if menu {
+                        Some(["full", "read-only", "workspace-network"][action].to_owned())
+                    } else {
+                        None
                     };
+                    let execute = preview.take().filter(|p| {
+                        p.endpoint == endpoint
+                            && p.thread == id
+                            && p.policy == policy
+                            && p.created.elapsed() < Duration::from_secs(60)
+                    });
+                    let endpoint = endpoint.to_owned();
+                    let id = id.to_owned();
+                    let root = root.clone();
+                    notice = if execute.is_some() {
+                        "Reconnecting shared server; verifying login and restoring conversations…"
+                    } else {
+                        "Inspecting shared server and affected conversations…"
+                    }
+                    .into();
+                    scroll = 0;
+                    operation = Some(tokio::spawn(async move {
+                        if let Some(p) = execute {
+                            Ok((None, crate::reconnect::execute(&root, &p).await?))
+                        } else {
+                            let p =
+                                crate::reconnect::plan(&endpoint, &id, policy.as_deref()).await?;
+                            let message = p.summary();
+                            Ok((Some(p), message))
+                        }
+                    }));
+                    continue;
+                }
+                match action {
+                    0 => {
+                        if let Some(message) = enter_notice(endpoint) {
+                            notice = message.into();
+                            continue;
+                        }
+                        drop(guard.take());
+                        println!(
+                            "Back to codex-monitor Dashboard: use /quit in Codex. The shared owner and monitoring keep running."
+                        );
+                        let result = connect(endpoint, Some(id), None).await;
+                        guard = Some(TerminalGuard::enter()?);
+                        previous.clear();
+                        notice = result
+                            .err()
+                            .map_or("Back to codex-monitor Dashboard".into(), |e| e.to_string());
+                    }
+                    1 => {
+                        notice = match store.route_action(
+                            name,
+                            if binding["enabled"] == true {
+                                "pause"
+                            } else {
+                                "resume"
+                            },
+                        ) {
+                            Ok(_) => "Connection updated; accepted input unchanged".into(),
+                            Err(e) => e.to_string(),
+                        };
+                    }
+                    2 => {
+                        deleting = Some(name.into());
+                        notice = format!(
+                            "Remove connection {name}? Press y to confirm; any other key cancels."
+                        );
+                    }
+                    _ => {}
                 }
                 refresh = Instant::now() - interval;
             }
             _ => {}
         }
     }
+    if let Some(refresh) = refreshing {
+        refresh.abort();
+        let _ = refresh.await;
+    }
     drop(guard);
+    pool.close().await;
     Ok(())
 }
 

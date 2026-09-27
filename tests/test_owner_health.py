@@ -34,6 +34,53 @@ class FakeRpc:
 
 
 class OwnerHealthTest(unittest.TestCase):
+    def test_native_error_redaction_preserves_reason_and_removes_credentials(self):
+        from codex_monitor.owner_health import _safe_error_message
+        message = ('Refresh failed. Bearer secret-bearer access_token="secret-access" '
+                   "refresh_token='secret-refresh' api_key=secret-key sk-private "
+                   "eyJabc.def.ghi https://example.com/?token=private actual-transport-secret\x1b\n")
+        result = _safe_error_message(message, "actual-transport-secret")
+        self.assertIn("Refresh failed", result)
+        for secret in ("secret-bearer", "secret-access", "secret-refresh", "secret-key", "sk-private",
+                       "eyJabc.def.ghi", "token=private", "actual-transport-secret", "\x1b", "\n"):
+            self.assertNotIn(secret, result)
+
+    def test_latest_success_does_not_expose_an_older_failed_turn(self):
+        class Peer(FakeRpc):
+            def call(self, method, params, *, timeout):
+                if method == "thread/read":
+                    return {"thread": {"status": "systemError"}}
+                if method == "thread/turns/list":
+                    return {"data": [{"status": "completed"},
+                                     {"status": "failed", "error": {"message": "Old login failure"}}]}
+                return super().call(method, params, timeout=timeout)
+        result = probe_owner("unix:///tmp/test-owner", "thread-a", rpc_factory=Peer)
+        self.assertEqual(result["status"], "execution-error")
+        self.assertEqual(result["execution_error"], {"status": "unavailable"})
+
+    def test_system_error_exposes_latest_turn_auth_failure_without_loading_items(self):
+        message = ("Your access token could not be refreshed because you have since logged out "
+                   "or signed in to another account. Please sign in again.")
+
+        class ErrorPeer(FakeRpc):
+            def call(self, method, params, *, timeout):
+                if method == "thread/read":
+                    return {"thread": {"status": {"type": "systemError"}}}
+                if method == "thread/turns/list":
+                    self.calls.append((method, params))
+                    return {"data": [{"id": "failed-turn", "status": "failed",
+                                      "error": {"message": message}}]}
+                return super().call(method, params, timeout=timeout)
+
+        peer = ErrorPeer("unix:///tmp/owner.sock", timeout=.1, token=None)
+        result = probe_owner(peer.endpoint, "thread-a", rpc_factory=lambda *a, **k: peer)
+        self.assertEqual(result["execution_error"]["message"], message)
+        self.assertEqual(result["execution_error"]["kind"], "authentication")
+        self.assertEqual(result["status"], "execution-error")
+        self.assertIn(("thread/turns/list", {"threadId": "thread-a", "limit": 1,
+                                           "sortDirection": "desc", "itemsView": "notLoaded"}), peer.calls)
+        self.assertTrue(peer.closed)
+
     def test_explicit_owner_is_ready_to_receive_but_execution_remains_unverified(self):
         peers = []
 
@@ -143,6 +190,17 @@ class OwnerHealthTest(unittest.TestCase):
         result = probe_owner("ws://127.0.0.1:8767", "thread-a", rpc_factory=BrokenReadPeer)
         self.assertEqual(result["status"], "unavailable")
         self.assertFalse(result["ready"])
+
+    def test_system_error_is_not_ready_even_when_loaded(self):
+        class ErrorPeer(FakeRpc):
+            def call(self, method, params, *, timeout):
+                if method == "thread/read":
+                    return {"thread": {"status": {"type": "systemError"}}}
+                return super().call(method, params, timeout=timeout)
+        result = probe_owner("ws://127.0.0.1:8767", "thread-a", rpc_factory=ErrorPeer)
+        self.assertEqual(result["status"], "execution-error")
+        self.assertFalse(result["ready"])
+        self.assertEqual(result["thread_read"]["status"], "systemError")
 
     def test_cache_is_ttl_and_size_bounded(self):
         calls = []

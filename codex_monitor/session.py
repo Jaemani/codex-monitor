@@ -113,7 +113,7 @@ def _submission_error(exc):
 
 
 class Rpc:
-    def __init__(self, endpoint="local", *, command=None, timeout=10, token=None):
+    def __init__(self, endpoint="local", *, command=None, timeout=10, token=None, env=None, cwd=None):
         self.timeout = timeout
         self.pending = {}
         self.lock = threading.Lock()
@@ -166,7 +166,7 @@ class Rpc:
                             raise Permanent("endpoint must be shared-local, local, ssh://ALIAS, unix:///absolute/path, ws://loopback, or wss://")
                         command += ["--sock", endpoint.removeprefix("unix://")]
                 self.proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                             stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                                             stderr=subprocess.DEVNULL, text=True, bufsize=1, env=env, cwd=cwd)
             self.writer = threading.Thread(target=self._write_loop, name="codex-monitor-rpc-writer", daemon=True)
             self.writer.start()
             self.reader = threading.Thread(target=self._read, name="codex-monitor-rpc", daemon=True)

@@ -60,6 +60,11 @@ impl Store {
         let existed = path.is_file();
         let conn = Connection::open(path)
             .with_context(|| format!("open Rust store {}", path.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        }
         conn.busy_timeout(std::time::Duration::from_secs(10))?;
         if existed {
             let marker_table: Option<String> = conn
@@ -180,6 +185,23 @@ impl Store {
                 out.push(binding_value(row)?);
             }
             Ok(Value::Array(out))
+        })
+    }
+
+    /// Read-only dashboard observations; queue acceptance is not task completion.
+    pub fn dashboard_bindings(&self) -> Result<Value> {
+        let mut bindings = self.bindings()?;
+        self.with_conn(|db| {
+            for binding in bindings.as_array_mut().context("binding inventory")? {
+                let name=binding["name"].as_str().context("binding name")?;
+                let mut counts=Map::new();
+                let mut stmt=db.prepare("SELECT state,count(*) FROM events WHERE binding=? GROUP BY state")?;
+                for row in stmt.query_map([name],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?)))? {let(state,n)=row?;counts.insert(state,json!(n));}
+                let latest:Option<Value>=db.query_row("SELECT id,state,created,updated,error FROM events WHERE binding=? ORDER BY seq DESC LIMIT 1",[name],|r|Ok(json!({"id":r.get::<_,String>(0)?,"state":r.get::<_,String>(1)?,"created":r.get::<_,f64>(2)?,"updated":r.get::<_,f64>(3)?,"error":r.get::<_,Option<String>>(4)?}))).optional()?;
+                let oldest:Option<f64>=db.query_row("SELECT min(e.created) FROM events e WHERE e.binding=? AND e.state IN ('pending','uncertain','accepted') AND NOT EXISTS (SELECT 1 FROM replies r WHERE r.delivery_id=e.id)",[name],|r|r.get(0))?;
+                let replies:i64=db.query_row("SELECT count(*) FROM replies WHERE binding=?",[name],|r|r.get(0))?;
+                binding["events"]=json!({"counts":counts,"latest":latest,"oldest_unresolved_age_seconds":oldest.map(|t|(Self::now()-t).max(0.0)),"reply_count":replies});
+            } Ok(bindings)
         })
     }
 

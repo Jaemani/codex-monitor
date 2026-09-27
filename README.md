@@ -1,8 +1,8 @@
 # codex-monitor
 
-> This development branch includes an isolated [Rust runtime candidate](rust/README.md).
-> See its [measured evaluation and adoption gates](docs/RUST-EVALUATION.md).
-> The Python runtime remains the default; the instructions below describe that baseline.
+> **Rust is the canonical runtime.** `codex-monitor` runs the native executable in
+> `rust/`. Python sources remain a frozen compatibility reference for migration
+> and regression tests. See [installation and migration](docs/INSTALLATION.md).
 
 **Keep working in your Codex conversation. Let external events come to you.**
 
@@ -36,7 +36,7 @@ flowchart LR
     Q --> C[Existing CLI or Desktop conversation]
     U[You] <--> C
     D[Terminal dashboard] -. observes local state and receiver .-> R
-    D -->|Enter: open selected CLI conversation| T[Ordinary Codex TUI on saved owner]
+    D -->|Details: open selected CLI conversation| T[Ordinary Codex TUI on saved owner]
     T <--> C
 ```
 
@@ -47,9 +47,9 @@ flowchart LR
 | Receiver | Authenticates, persists, deduplicates and routes events | One long-lived local process; can serve multiple conversations |
 | CLI resident (explicit owner mode) | Retains selected conversation subscriptions and restores them after connection loss | Separate foreground process alongside the shared App Server; no model polling |
 | Codex conversation | Reads events and performs the authorized work alongside user input | Native Codex processing; busy conversations queue events |
-| Dashboard | Reads monitor state and checks receiver readiness; Enter opens the selected CLI conversation | Refreshes without model calls; explicit TUI interaction follows normal Codex behavior |
+| Dashboard | Reads monitor state and checks receiver readiness; Details provide an explicit Open in Codex action | Refreshes without model calls; explicit TUI interaction follows normal Codex behavior |
 
-**You normally run one receiver, your usual Codex client, and optionally the dashboard.** A Discord integration also needs a Gateway producer and reply adapter. It does not need an always-running model or a separate relay conversation.
+**You normally run one receiver, your usual Codex client, and optionally the dashboard.** A Discord integration also needs a Gateway producer and reply adapter. The native `discord-gateway` command provides the producer; see [Gateway configuration and adoption](docs/DISCORD-GATEWAY.md). It does not need an always-running model or a separate relay conversation. If Codex runs the reply adapter, its commands also need outbound HTTPS access. Follow the [Discord reply permissions](docs/OWNER-LIFECYCLE.md#discord-reply-permissions) to retain workspace restrictions while enabling networking.
 
 The default `shared-local` path uses the same OS user and Codex store (`CODEX_HOME` / `sqlite_home`) as the target client. An independent App Server writer adds input through the official but experimental queue API; it does not type into the UI or start/resume conversations. Local Desktop does not require SSH.
 
@@ -87,12 +87,12 @@ See [Desktop-to-CLI setup, example request, status checks and stop controls](doc
 
 ## Quick start
 
-Requires **Python 3.11+**, Codex CLI and a local CLI/Desktop conversation. The installer supports macOS and Linux and installs the Python `websockets` dependency.
+Requires **Rust/Cargo 1.97.1+ and a C compiler to build**, Codex CLI and a local CLI conversation. The installed receiver, resident, dashboard and sampler run natively without Python. macOS service supervision is built in; Linux can run `serve` under an external supervisor.
 
 ```bash
 git clone https://github.com/Jaemani/codex-monitor.git
 cd codex-monitor
-python3 scripts/install.py --with-skill install
+./scripts/install.sh --with-skill
 codex-monitor --help
 ```
 
@@ -135,24 +135,18 @@ From a second terminal, with the receiver running:
 codex-monitor dashboard
 ```
 
-**Auto-refresh** means the view periodically reads observations; it is not a connection heartbeat.
-The updated age refers to the snapshot, not the latest event. Status dots describe observed
-health independently. Use `--color never` for plain symbols.
+The dashboard separates receiver readiness, execution failures, pending delivery and unchecked
+conversations. Bordered project panels keep names and states together; a dedicated attention
+area shows recovery steps. Taller terminals also show last activity under each conversation.
+Ready means delivery is available, not that an agent completed its work.
 
-Select a conversation with the arrow keys and press **Enter** to open its ordinary Codex
-TUI. Read events and responses, send messages, or answer approvals; exit the TUI to return to the
-dashboard. Opening uses the binding's explicit shared owner endpoint and the same conversation ID.
-`shared-local` bindings need an explicit owner endpoint before they can be opened this way.
-
-The Graphite view shows one row per conversation, status dots, active/paused route counts and recent delivery observations.
-The selected route appears below the list; use **Tab** to cycle routes before opening it.
-Project groups and stable display names distinguish similar agents across projects. **p** stops
-the selected monitor route, **r** resumes it, and **x**, then **y**, removes it while preserving
-the Codex conversation. See [groups and controls](docs/DASHBOARD.md).
-Press **d** for the route inspector: browse every registered route with **Tab** or **[ / ]**,
-including paused routes. Inspect source/file paths, collector state, delivery history,
-receipts and TUI availability. **Page Up / Page Down** scroll long details. **q** closes only the dashboard. Green/red dots describe the displayed
-binding or receiver; they do not imply that an agent is currently generating or has finished work.
+Use the arrow keys to select a conversation, then **Enter**, or click it, to inspect details.
+**Esc** returns to the unchanged overview. Inside details, **Tab** cycles connections,
+**Up/Down** scroll content, and **Left/Right** selects a visible action; **Enter** activates it.
+**Open in Codex** launches the ordinary TUI on the saved owner; exiting that TUI returns here.
+Pause/resume applies to the displayed connection; removal requires a second confirmation.
+**Esc** from the overview (or **q** / Ctrl-C) closes only the dashboard.
+See [groups, controls and status meanings](docs/DASHBOARD.md).
 
 Use `--once` for a snapshot, `--once --json` for structured output, or `--thread "$THREAD_ID"` to filter a conversation. The display refreshes observations using bounded read-only owner probes without creating model turns. See [dashboard controls and status meanings](docs/DASHBOARD.md).
 
@@ -178,7 +172,7 @@ See the [domain vocabulary](CONTEXT.md).
 | Track requested work beyond delivery | Correlated request lifecycle | Explicit progress and terminal state transitions |
 | Recover a service only when unhealthy | OS timer + included HTTP probe example + authorized recovery policy | Confirmed outage; healthy checks and recovery stay quiet |
 
-Managed file collectors, predicates and request tracking are implemented. CI, Discord and other service-specific integrations require adapters; the core does not bundle a Discord bot. Source-side filtering prevents routine progress chatter from waking the model. See [copyable skill requests and usage details](docs/EXAMPLES.md).
+Managed file collectors, predicates and request tracking are implemented. A native Discord Gateway producer is available with explicit project routing and durable receipts; reply adapters remain project integrations. CI and other service-specific sources require adapters. Source-side filtering prevents routine progress chatter from waking the model. See [copyable skill requests and usage details](docs/EXAMPLES.md).
 
 For “check the server without spending chat tokens, then ask Codex to repair it only on failure,” see
 the [OS timer health-hook recipe](docs/HEALTH-HOOK.md). The timer runs a script, not a model prompt.
@@ -288,10 +282,10 @@ Desktop draft/approval cases, Windows/WSL, OS sleep/reboot, fresh Desktop skill 
 ## Development
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[test]'
-.venv/bin/python -m unittest discover -s tests -v
-.venv/bin/python scripts/check-publication.py
+cargo fmt --manifest-path rust/Cargo.toml --check
+cargo clippy --locked --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+cargo test --locked --manifest-path rust/Cargo.toml
+python3 scripts/check-publication.py
 ```
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before publishing. Keep raw transcripts and credentials out of Git; update status and the backlog with material changes.

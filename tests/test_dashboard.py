@@ -18,6 +18,7 @@ from codex_monitor.dashboard import (
     _age_text,
     _color_enabled,
     _conversation_label,
+    _conversation_activity,
     _conversation_status,
     _cycle_route,
     _launch_selected,
@@ -38,17 +39,84 @@ class DashboardTest(unittest.TestCase):
         snapshot = {"ok": True, "connections": [{"thread": "task", "bindings": bindings,
                     "collectors": [{"binding": "watch-33", "name": "watch-33",
                     "path": "/very/long/" + "nested/" * 20 + "result.json"}]}]}
-        panel = render_text(snapshot, width=80, height=30, detail=True, selected_route=33)
-        self.assertIn("1 active / 33 paused", panel)
-        self.assertIn("30–34/34", panel)
-        self.assertIn("Selected: watch-33", panel)
-        self.assertIn("result.json", panel)
-        self.assertIn("TUI unavailable", panel)
+        panel = render_text(snapshot, width=80, height=60, detail=True, selected_route=33)
+        self.assertIn("34/34", panel)
+        self.assertIn("Tab for next", panel)
+        self.assertIn("watch-33 · paused", panel)
+        scrolled = render_text(snapshot, width=80, height=60, detail=True, selected_route=33, detail_scroll=99)
+        self.assertIn("result.json", scrolled)
+        self.assertIn("CONNECTION", panel)
         short = render_text(snapshot, width=40, height=8, detail=True, selected_route=33, detail_scroll=100)
         self.assertLessEqual(len(short.splitlines()), 8)
-        self.assertIn("q quit", short)
+        self.assertIn("Esc close", short)
         self.assertTrue(all(len(line) <= 40 for line in short.splitlines()))
 
+
+    def test_details_overlay_preserves_selection_and_bounds_pointer_targets(self):
+        from codex_monitor.dashboard_board import build
+        snapshot = {"ok": True, "connections": [
+            {"thread": name, "display_name": name, "project": "Project",
+             "bindings": [{"name": name + "-route", "enabled": True,
+                           "endpoint": "shared-local", "events": {"counts": {}}}]}
+            for name in ("art", "pm", "mobile")]}
+        overview = build(snapshot, width=96, height=36, selected=1)
+        overlay = build(snapshot, width=96, height=36, selected=1, detail=True)
+        self.assertIn("Project / pm", overlay.render())
+        self.assertIn("pm-route", overlay.render())
+        self.assertIn("Esc close", overlay.render())
+        self.assertTrue(all(target[0] == "action" for target in overlay.hits.values()))
+        self.assertTrue(any(target == ("conversation", 1) for target in overview.hits.values()))
+        self.assertEqual(overview.render(), build(snapshot, width=96, height=36, selected=1).render())
+        self.assertEqual(len(overlay.render().splitlines()), 36)
+
+    def test_overview_prioritizes_errors_and_delivery_age_without_repeated_disclaimers(self):
+        snapshot = {"ok": True, "connections": [
+            {"thread": "pm", "display_name": "PM", "bindings": [{"enabled": True,
+                "name": "pm", "owner_health": {"status": "execution-error"},
+                "events": {"latest": {"state": "accepted", "age_seconds": 3600}, "counts": {"accepted": 18}}}]},
+            {"thread": "old", "display_name": "Old", "bindings": [{"enabled": False,
+                "name": "old", "events": {"counts": {}}}]},
+        ]}
+        view = render_text(snapshot, width=96, height=32)
+        self.assertIn("1 need attention", view)
+        self.assertIn("Execution error", view)
+        self.assertIn("Check the failed run", view)
+        self.assertIn("Paused", view)
+        self.assertNotIn("18 queue accepted", view)
+        self.assertNotIn("No connection issue detected", view)
+
+    def test_default_dashboard_fits_fourteen_conversations_at_96_by_30(self):
+        connections = [{"thread": str(i), "display_name": f"Conversation-{i}",
+                        "project": f"Project-{min(i // 3, 4)}",
+                        "bindings": [{"name": f"internal-route-{i}", "enabled": True,
+                        "events": {"counts": {}}, "owner_health": {"status": "ready-to-receive"}}]}
+                       for i in range(14)]
+        snapshot = {"ok": True, "receiver": {"ready": True}, "connections": connections}
+        rendered = render_text(snapshot, width=96, height=30, selected=13)
+        for i in range(14):
+            self.assertIn(f"Conversation-{i}", rendered)
+        self.assertLessEqual(len(rendered.splitlines()), 30)
+        self.assertNotIn("internal-route", rendered)
+        self.assertNotIn("Next step", rendered)
+        for width, height in ((80, 24), (60, 20), (40, 16)):
+            rendered = render_text(snapshot, width=width, height=height, selected=13)
+            self.assertIn("Conversation-13", rendered)
+            self.assertIn("Esc quit", rendered)
+            self.assertLessEqual(len(rendered.splitlines()), height)
+            self.assertTrue(all(len(line) <= width for line in rendered.splitlines()))
+
+    def test_historical_paused_error_does_not_override_current_connection(self):
+        connection = {"bindings": [
+            {"enabled": False, "events": {"counts": {"dead": 1, "pending": 1},
+             "oldest_unresolved_age_seconds": 99999, "latest": {"error": "old error"}}},
+            {"enabled": True, "owner_health": {"status": "ready-to-receive"}, "events": {"counts": {}}}]}
+        self.assertEqual(_conversation_status(connection), "ON")
+
+    def test_preferred_connection_points_to_observed_failure(self):
+        connection = {"bindings": [
+            {"enabled": True, "endpoint": "ws://owner", "owner_health": {"status": "ready-to-receive"}},
+            {"enabled": True, "endpoint": "ws://owner", "owner_health": {"status": "execution-error"}}]}
+        self.assertEqual(_preferred_route(connection), 1)
 
     def test_duration_uses_whole_larger_and_smaller_units(self):
         for seconds, expected in [(3 * 86400 + 2 * 3600, "3d 2h"),
@@ -105,6 +173,41 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(disabled["connections"][0]["bindings"][0]["owner_health"]["status"], "unverified")
         self.assertEqual(calls, [])
 
+    def test_old_backlog_is_visible_even_after_new_acceptance(self):
+        connection = {"bindings": [{"enabled": True, "events": {
+            "counts": {"pending": 1, "accepted": 20},
+            "oldest_unresolved_age_seconds": 90000,
+            "latest": {"state": "accepted", "age_seconds": 1},
+        }}]}
+        self.assertEqual(_conversation_status(connection), "STALE")
+        self.assertIn("Delivery backlog", _conversation_activity(connection))
+        connection["bindings"][0]["events"]["counts"]["uncertain"] = 1
+        self.assertIn("before replay", _conversation_activity(connection))
+
+    def test_paused_unloaded_route_does_not_override_enabled_route(self):
+        connection = {"bindings": [
+            {"enabled": False, "owner_health": {"status": "unloaded"}},
+            {"enabled": True, "owner_health": {"status": "ready-to-receive"}},
+        ]}
+        self.assertEqual(_conversation_status(connection), "ON")
+        self.assertIn("execution unverified", _conversation_activity(connection))
+
+    def test_same_endpoint_threads_keep_independent_execution_errors(self):
+        calls = []
+        def probe(endpoint, thread):
+            calls.append(thread)
+            state = "execution-error" if thread == "broken" else "ready-to-receive"
+            return {"status": state, "loaded_threads": ["healthy", "broken"]}
+        reader = DashboardReader(self.root, owner_probe=probe)
+        connections = [{"thread": name, "bindings": [{"enabled": True,
+            "endpoint": "ws://127.0.0.1:8767", "identity_exact": True}]}
+            for name in ("healthy", "broken")]
+        reader._attach_owner_health(connections)
+        self.assertEqual(calls, ["healthy", "broken"])
+        self.assertEqual(_conversation_status(connections[1]), "ERROR")
+        self.assertIn("Execution error", _conversation_activity(connections[1]))
+        self.assertEqual(_conversation_status(connections[0]), "ON")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -134,6 +237,7 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(snapshot["connections"][0]["thread"], "thread-a")
         binding = snapshot["connections"][0]["bindings"][0]
         self.assertEqual(binding["events"]["counts"], {"pending": 1})
+        self.assertIsNotNone(binding["events"]["oldest_unresolved_age_seconds"])
         self.assertEqual(binding["events"]["latest"]["delivery_id"], self.receipt["delivery_id"])
         self.assertEqual(snapshot["connections"][0]["requests"]["available"], False)
         after = (self.root / "monitor.sqlite3").stat().st_mtime_ns
@@ -190,7 +294,7 @@ class DashboardTest(unittest.TestCase):
         self.assertLessEqual(max(map(len, rendered.splitlines())), 36)
         self.assertIn("Enter", rendered)
         self.assertNotIn("bad", rendered)
-        details = render_text(snapshot, width=100, height=12, detail=True)
+        details = render_text(snapshot, width=100, height=32, detail=True)
         self.assertIn("bad", details)
 
     def test_compact_render_groups_connections_and_keeps_details_explicit(self):
@@ -215,28 +319,26 @@ class DashboardTest(unittest.TestCase):
             }],
         }
         compact = render_text(snapshot, width=120, height=20, color=True, live=True, frame=True, now=1_001)
-        self.assertIn("Auto-refresh", compact)
-        self.assertIn("1 conversation  /  3 registered routes", compact)
-        self.assertIn("Conversation", compact)
-        self.assertIn("Active / paused", compact)
-        self.assertIn("Recent delivery", compact)
-        self.assertIn("1 conversation  /  3 registered routes", compact)
+        self.assertIn("CODEX MONITOR", compact)
+        self.assertIn("0 need attention", compact)
+        self.assertIn("1 unchecked", compact)
+        self.assertIn("RECEIVER", compact)
+        self.assertIn("DELIVERY", compact)
         self.assertIn("1 pending", compact)
-        self.assertNotIn("ON", compact)
-        self.assertNotIn("OFF", compact)
-        self.assertNotIn("UNKNOWN", compact)
         self.assertNotIn("uuid-on", compact)
         self.assertNotIn("shared-local", compact)
         self.assertNotIn("thread-a", compact)
-        self.assertIn("\x1b[32m", compact)
-        self.assertIn("\x1b[48;5;236m", compact)
+        self.assertIn("48;5;237", compact)
 
-        details = render_text(snapshot, width=120, height=20, color=False, detail=True, selected=0, now=1_001)
-        self.assertIn("Latest: pending", details)
-        self.assertIn("Selected: on-binding", details)
-        self.assertIn("shared-local", details)
-        self.assertIn("Queue delivery does not confirm completed work", details)
-        self.assertIn("1 active / 2 paused", details)
+        details = render_text(snapshot, width=120, height=60, color=False, detail=True, selected=0, now=1_001)
+        self.assertIn("pending · 1s ago", details)
+        self.assertIn("on-binding · enabled", details)
+        self.assertNotIn("shared-local", details)
+        self.assertIn("Completion not reported", details)
+        for section in ("EXECUTION", "DELIVERY", "CONNECTION"):
+            self.assertIn(section, details)
+        self.assertNotIn("Receipt:", details)
+        self.assertIn("1/3", details)
         self.assertNotIn("\x1b", details)
 
         many = dict(snapshot)
@@ -248,18 +350,18 @@ class DashboardTest(unittest.TestCase):
             "requests": {"available": False, "reason": "none"},
             "collectors": [],
         } for index in range(10)]
-        last_details = render_text(many, width=100, height=20, color=False, detail=True, selected=9, now=1_001)
-        self.assertIn("showing 1–1/1", last_details)
-        self.assertIn("Selected: binding-9", last_details)
+        last_details = render_text(many, width=100, height=60, color=False, detail=True, selected=9, now=1_001)
+        self.assertIn("1/1", last_details)
+        self.assertIn("binding-9 · enabled", last_details)
         short = render_text(many, width=100, height=8, color=False, selected=9, now=1_001)
         self.assertLessEqual(len(short.splitlines()), 8)
-        self.assertIn("Route 1/1 · binding-9", short)
-        self.assertIn("Enter TUI", short)
+        self.assertIn("binding-9", short)
+        self.assertIn("Enter details", short)
         for width in (24, 36):
             narrow = render_text(many, width=width, height=8, selected=9)
             self.assertLessEqual(len(narrow.splitlines()), 8)
             self.assertTrue(all(len(line) <= width for line in narrow.splitlines()))
-            self.assertIn("q", narrow.splitlines()[-1])
+            self.assertIn("Esc", narrow.splitlines()[-1])
             self.assertIn("binding-9", narrow)
 
     def test_details_name_request_lifecycle_as_explicit_work_reports(self):
@@ -284,9 +386,9 @@ class DashboardTest(unittest.TestCase):
                 "collectors": [],
             }],
         }
-        details = render_text(snapshot, width=120, height=20, color=False, detail=True, now=1_001)
-        self.assertIn("Delivery history: none", details)
-        self.assertIn("Work reports: 1 completed; latest report completed request-1", details)
+        details = render_text(snapshot, width=120, height=60, color=False, detail=True, now=1_001)
+        self.assertIn("No delivery recorded", details)
+        self.assertIn("1 completed; latest report completed request-1", details)
         self.assertNotIn("requests: ", details)
 
     def test_compact_render_uses_human_managed_name_and_hides_generated_binding_id(self):
@@ -349,9 +451,10 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(_cycle_route(connection, preferred), 2)
         self.assertEqual(_cycle_route(connection, 2), 0)
         rendered = render_text(snapshot, width=90, height=18, selected=0, selected_route=preferred, live=True)
-        self.assertIn("Route 2/3 · mobile", rendered)
-        self.assertIn("1 sent to Codex", rendered)
-        self.assertIn("▌", rendered)
+        self.assertIn("local + 2 routes", rendered)
+        self.assertNotIn("No connection issue detected", rendered)
+        self.assertIn("2s ago", render_text(snapshot, detail=True, selected_route=preferred, height=32))
+        self.assertIn("›", rendered)
         self.assertNotIn("wss://owner.example:8765", rendered)
         self.assertNotIn("\x1b", rendered)
         calls = []
@@ -442,6 +545,7 @@ class DashboardTest(unittest.TestCase):
         with self.assertRaisesRegex(DashboardError, "identity changed"):
             _launch_selected(DashboardReader(self.root), snapshot, 0, mock.Mock(), mock.Mock(), runner=runner)
         runner.assert_not_called()
+
 
     def test_selected_binding_restores_terminal_after_child_interrupt(self):
         self._set_binding_endpoint("ws://127.0.0.1:8765")

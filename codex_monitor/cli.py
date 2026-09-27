@@ -201,6 +201,10 @@ def parser():
     resident.add_argument("--endpoint", required=True, help="same owner endpoint used by codex --remote; shared-local is not supported")
     resident.add_argument("--thread", action="append", required=True, help="existing conversation ID; repeat for multiple conversations")
     resident.add_argument("--health-interval", type=float, default=10, help="read-only owner probe interval in seconds; no model calls")
+    resident.add_argument("--sandbox", choices=["read-only", "workspace-write", "danger-full-access"],
+                          help="explicit sandbox mode for these conversations on every resume; omitted preserves native behavior")
+    resident.add_argument("--network-access", action=argparse.BooleanOptionalAction, default=None,
+                          help="allow or deny network access with --sandbox workspace-write; verified after resume")
     service = commands.add_parser("service", help="manage the macOS launchd receiver")
     service.add_argument("action", choices=["install", "start", "stop", "restart", "status", "uninstall"])
     service.add_argument("--codex-home", help="Codex storage home (defaults to CODEX_HOME or ~/.codex)")
@@ -229,10 +233,13 @@ def main(argv=None):
     config_path = root / "config.json"
     pool = None
     try:
+        if config_path.exists() and json.loads(config_path.read_text()).get("runtime") == "rust":
+            raise ValueError("This state belongs to the native Rust runtime. Use the installed codex-monitor executable.")
         if args.command == "resident":
             token = server_token()
             keeper = ResidentKeeper(
                 args.endpoint, args.thread, health_interval=args.health_interval,
+                sandbox=args.sandbox, network_access=args.network_access,
                 rpc_factory=lambda endpoint: Rpc(endpoint, token=token),
             )
             stopped = threading.Event()
@@ -371,6 +378,8 @@ def main(argv=None):
                 animate=not args.no_animate,
             )
         config = json.loads(config_path.read_text())
+        if config.get("runtime") == "rust":
+            raise ValueError("This state was adopted by Rust. Use the native codex-monitor executable; legacy Python must not write its old database.")
         if config.get("version") != 1:
             raise ValueError("unsupported config version")
         if args.command == "service":
@@ -535,14 +544,18 @@ def main(argv=None):
                 signal.signal(sig, lambda *_: stopped.set())
             with ProcessLock(root / "serve.lock"):
                 managed_supervisor = ManagedSupervisor(monitor)
-                server = Server(monitor, tokens, (root / "admin.token").read_text().strip(), port=config["port"]).start()
-                managed_supervisor.start()
-                output({"listening": server.url, "state": str(root)})
+                server = Server(monitor, tokens, (root / "admin.token").read_text().strip(), port=config["port"])
+                server.resource_provider = managed_supervisor.resource_status
                 try:
+                    server.start()
+                    managed_supervisor.start()
+                    output({"listening": server.url, "state": str(root)})
                     stopped.wait()
                 finally:
-                    managed_supervisor.close()
-                    server.close()
+                    try:
+                        managed_supervisor.close()
+                    finally:
+                        server.close()
         elif args.command in ("send", "watch-file"):
             if not NAME.fullmatch(args.to) or "/" in args.to:
                 raise ValueError("invalid target binding")

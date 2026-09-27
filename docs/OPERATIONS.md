@@ -3,8 +3,8 @@
 ## State and permissions
 
 The `--state` directory contains `config.json`, admin and source token files,
-`monitor.sqlite3`, reply and request databases with their WAL files,
-`serve.lock`, and watcher checkpoints. The
+`rust.sqlite3` and its WAL files, `serve.lock`, and persisted watch checkpoints.
+Legacy Python databases are retained only as migration evidence. The
 directory is created with mode `0700`; config and token files use `0600`. Do
 not add this directory to a model's writable root. Running processes as the
 same OS user is not a security boundary, and full filesystem access can still
@@ -81,16 +81,11 @@ binding and incoming events before restarting `serve`.
 
 ## Limits and retention
 
-Set positive integer limits in `config.json`, then restart `serve`:
-
-```json
-{"max_attempts":5,"max_age":3600,"max_pending":1000,"rate_limit":120,"trace_limit":16}
-```
-
-`rate_limit` is the number of new events per binding in the last 60 seconds;
-duplicate retries do not consume quota. `max_pending` counts
-`pending`/`submitting`/`uncertain` events per binding. `trace_limit` caps events
-with one trace across all bindings. The hop limit of 8 is separate.
+The native receiver uses fixed limits: five delivery attempts, a 3,600-second
+age limit, 1,000 unresolved events per binding, 120 new events per binding per
+minute, and 16 events per trace. The hop limit is eight. Duplicate intake does
+not consume new-event quota. Legacy `config.json` limit overrides are not applied;
+migration refuses nonempty custom limits instead of silently ignoring them.
 
 Records are not deleted automatically. Deleting old records also removes
 deduplication evidence, so define a retention policy and monitor state volume.
@@ -119,7 +114,7 @@ pruning. See [request lifecycle](REQUEST-LIFECYCLE.md) for commands and limits.
 
 When running the receiver in Docker, use `--init` or an equivalent init/reaper.
 After receiver SIGKILL, terminated sampler children can otherwise remain as
-zombies owned by a Python PID 1. The Linux failure/recovery canary verifies
+zombies owned by a non-reaping PID 1. The Linux failure/recovery canary verifies
 reaping separately from worker termination.
 
 ## Long-running service
@@ -133,23 +128,23 @@ absolute command under the OS service manager; this is a systemd example:
 Description=Codex Monitor event receiver
 [Service]
 Type=simple
-ExecStart=/absolute/installed-venv/bin/codex-monitor --state /absolute/state serve
+ExecStart=/absolute/bin/codex-monitor --state /absolute/state serve
 Restart=on-failure
 RestartSec=5
 [Install]
 WantedBy=default.target
 ```
 
-On macOS, use the `service` command from a wheel-installed console entry point.
-Editable/source execution cannot be registered as a persistent service:
+On macOS, install the immutable native release, then register its receiver
+LaunchAgent using the `service` command:
 
 ```bash
-/absolute/installed-venv/bin/codex-monitor --state /absolute/state service install
-/absolute/installed-venv/bin/codex-monitor --state /absolute/state service status
-/absolute/installed-venv/bin/codex-monitor --state /absolute/state service restart
-/absolute/installed-venv/bin/codex-monitor --state /absolute/state service stop
-/absolute/installed-venv/bin/codex-monitor --state /absolute/state service start
-/absolute/installed-venv/bin/codex-monitor --state /absolute/state service uninstall
+/absolute/bin/codex-monitor --state /absolute/state service install
+/absolute/bin/codex-monitor --state /absolute/state service status
+/absolute/bin/codex-monitor --state /absolute/state service restart
+/absolute/bin/codex-monitor --state /absolute/state service stop
+/absolute/bin/codex-monitor --state /absolute/state service start
+/absolute/bin/codex-monitor --state /absolute/state service uninstall
 ```
 
 `install` registers and starts a per-state user LaunchAgent. `start` is
@@ -166,9 +161,9 @@ file; the plist stores the path, not the credential. The direct
 `CODEX_MONITOR_SERVER_TOKEN` environment value is suitable for foreground
 execution but should not be copied into a service plist.
 
-The macOS install, forced-termination recovery, restart, reinstall, removal,
-and queue-delivery paths have been tested. Test jobs are removed after testing;
-the project does not leave a permanent receiver running for the user.
+Native installation and macOS receiver/resident adoption have been verified.
+Disposable fake-owner tests cover forced termination, recovery and duplicate
+suppression. These checks do not prove Discord delivery or completed model work.
 
 ## Endpoints and security boundaries
 

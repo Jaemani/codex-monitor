@@ -1,5 +1,356 @@
 # Status and remaining verification
 
+## Native Discord producer cutover and publication (2026-09-27)
+
+Both deployed Discord producers now use the installed Rust executable, in addition
+to the native receiver and two residents. Read-only REST verification confirmed
+bot identity, guild and every configured thread before cutover. Fresh health
+snapshots confirmed both live Gateway connections ready after history recovery.
+All 77 and 12 existing adapter receipt IDs were retained, with no raw backlog at
+verification. The first launchd registration attempt failed and restored the old
+producer; bounded registration retries after unloading completed the cutover.
+Backups, service definitions, local paths and raw transcripts remain outside Git.
+No synthetic Discord message or model turn was sent. The shared Codex owner and
+active conversations were not restarted. This is connection/recovery evidence,
+not an end-to-end reply or long-duration stability claim.
+
+The native adapter preserves scoped routing, author restrictions, bounded image
+attachments, durable delivery retries and receipt reactions. Optional legacy
+`request_lifecycle` observation is rejected explicitly and was disabled in both
+deployments. Existing one-shot project reply CLIs remain separate integrations.
+See [Discord Gateway operations](DISCORD-GATEWAY.md) for configuration, differences,
+restart recovery, rollback and credential handling.
+
+A local legacy dashboard was reopened with Rust. An idle remote legacy view and
+verified unused historical test processes were stopped normally. One legacy
+Python dashboard still parents an open Codex TUI and is deliberately retained
+until that client exits; terminating it would violate the active-work constraint.
+The installed launch command already resolves to Rust for its next launch.
+The dashboard handoff and return now say **Back to codex-monitor Dashboard**;
+Codex's own `/quit` command-picker text belongs to the upstream TUI.
+
+Validation: all 61 Rust tests, strict Clippy, formatting and 322 legacy Python
+reference tests pass. Eight native Gateway tests cover authorization, configuration
+rejection, schema preservation, image signatures, durable intake/restart,
+receiver retry identity, and Gateway sequence/resume behavior using local fixtures.
+The legacy doctor tests now isolate their state from the developer's live adopted
+configuration. Installation, operation and sampler-safety docs distinguish the
+native runtime from historical Python behavior. Publication checks pass.
+
+Remaining: retire the protected legacy dashboard when its Codex client returns;
+optional lifecycle-observer parity, longer soak and end-to-end Discord reply
+verification are not claimed by this cutover.
+
+## Post-adoption stability and resource check (2026-09-27)
+
+The installed Rust 0.2.0 receiver and both residents were verified against the
+native release executable. The receiver remained ready with zero sample errors
+through 2,240 samples. This is short-run operational evidence, not a long-duration
+soak or end-to-end Discord delivery certification. Existing pending/uncertain
+records remain; receiver readiness does not establish consumer readiness.
+
+A disposable fake-owner canary passed a 120-second outage, receiver SIGKILL and
+restart, recovery with exactly one submission, duplicate receipt reuse, and a
+second restart without replay. No operational conversation or model was invoked.
+Black-box comparison passed 61 checks per runtime: HTTP intake/auth/deduplication,
+pause/resume, restart persistence, predicate recovery and conversation isolation.
+Known representation differences remain, including aggregate rather than per-watch
+Rust sample errors; these results do not claim complete surface parity.
+
+Matched collector comparison used seven 4,077-byte files, a two-second interval,
+60 seconds unchanged and 60 seconds after changing every file, per runtime.
+Python is the frozen legacy source in this working tree, not an exact replay of
+its previous installed interpreter/release. Rust is the installed native binary.
+
+| Process-tree RSS / CPU | Legacy Python | Rust 0.2.0 |
+| --- | ---: | ---: |
+| Unchanged RSS median | 20.3 MiB | 30.1 MiB |
+| Unchanged RSS peak | 67.2 MiB | 38.8 MiB |
+| After-change RSS median | 17.6 MiB | 27.4 MiB |
+| After-change RSS peak | 65.4 MiB | 31.1 MiB |
+| Whole-run waited CPU | 25.83 s | 0.44 s |
+
+Both generated exactly seven change events, no unchanged events, preserved all
+seven checkpoints and exited cleanly. Rust reduced sampled peaks and CPU, but its
+RSS medians were higher in this run. The host was under substantial memory
+compression and concurrent workload; sequential RSS samples cannot establish a
+physical-memory or leak conclusion. Sampling can miss short-lived Python workers.
+Owner/App Server, resident, dashboard and external-tool memory are excluded from
+this matched collector comparison. Raw reports remain outside Git.
+
+Remaining verification: longer production soak, memory footprint comparison under
+controlled host pressure, and production permission changes/end-to-end delivery.
+
+## Canonical Rust adoption (2026-09-27)
+
+Rust is the authoritative runtime. Recent dashboard, owner-error, reconnect,
+permission and resource-observation work is implemented natively in `rust/`.
+The dashboard keeps project cards, explicit error details, width-based action
+wrapping and a separate shared-server permission menu. Snapshot refresh and server
+operations run outside the UI input loop. Disabled legacy routes do not affect
+active permission summaries. Resident policy overrides verify returned permissions.
+
+Native installation, receiver service management and offline Python-state migration
+are available. Migration preserves IDs, uncertain/accepted states, reply records,
+request history, watch baselines and credentials; original databases and private
+backups remain available. Receiver locks and pending watch events block unsafe
+migration. Python sources are frozen legacy reference, not a parallel runtime.
+`headroom` remains optional; this adoption does not change model/provider settings.
+
+Validation: 53 Rust tests and strict Clippy passed; a production-state copy
+preserved all binding/event columns exactly. A real PTY verified six actions on one
+row, shared-server scope and clean exit. No Discord message or model turn was sent
+for these checks. Native macOS cutover is complete: receiver and both resident
+services run the installed Rust executable. Receiver health reports ready/rust;
+watch sampling reports no errors and no new events from unchanged baselines.
+All 65 routes, 224 events, 43 watches, 20 metadata rows and one reply were migrated.
+Installed binary and skill content match the canonical source release. The native
+archive passed all 12 manifest hashes and an isolated installation, with no wheel.
+Existing permission modes and model/provider configuration were preserved.
+Linux supervision and production full/read-only switching are not claimed.
+
+## Dashboard readability refinement (2026-09-27)
+
+Detail actions occupy one horizontal row when the terminal has enough width;
+wrapping depends only on available space, with no three-button limit. The dialog
+can use up to 112 columns. All six actions remain visible at narrower widths.
+Permission summaries ignore disabled legacy routes when active routes exist.
+The overview no longer repeats `(configured)`: saved-setting provenance and the
+lack of live verification are explained in details. Unknown access and conflicting
+connections display as Access unknown and Check permissions.
+Validation: 92 focused dashboard, permission-status and reconnect tests passed,
+including wide single-row buttons and disabled-route aggregation regressions.
+No live permission was changed and no Discord message was sent for validation.
+
+## Permission labels and visible actions (2026-09-27)
+
+Renamed the network-enabled workspace UI label to Project Access with an explicit
+project-files/internet explanation. All detail actions, including Change Permission
+and Close, wrap into visible rows instead of paging. Permission behavior is unchanged.
+Validation: 89 focused tests passed, followed by 14 board tests after explanatory
+copy changes. All action hit targets remain present at widths 40 through 120.
+Rendered layout and installed UI hashes were checked; publication checks passed.
+
+## Separate permission menu and status (2026-09-27)
+
+Reconnect retains the current permission mode. Change Permission opens a separate
+menu showing the saved policy and Full Access, Read-only, Workspace + Network and
+Back choices. The same mode must be activated twice to preview then apply it.
+Overview and detail labels show configured permissions without a native resume;
+Unknown/Mixed remain explicit. Effective verification remains part of application.
+
+Validation: 88 focused tests passed. A disposable PTY with a fake action backend
+verified menu entry, mode selection/confirmation, Back/Esc, and ordinary Reconnect
+without a permission override. Installed runtime hashes match source. No live
+permission was changed to test these UI changes.
+
+## Permission reconnect controls (2026-09-27)
+
+Added explicit Full, Read-only and Workspace+Net reconnect actions with shared-owner
+previews, mode-specific two-action confirmation, queue/idle gates, service backups,
+rollback attempts and effective permission verification. Settings persist until
+changed. Mandatory setup preflight/user choice now includes Discord thread/channel
+creation. Existing explicit authorization is reused; full access is not mandatory.
+The account-manager handoff describes scope, restoration and verification limits.
+
+Validation: 314 tests passed in 54.505 seconds, including mode-specific confirmation,
+queue blocking, backup/rollback and permission mismatch checks. Disposable native
+App Servers returned the expected policy for all three modes without model turns.
+The installed runtime matches source. Existing live owner permissions were not
+switched for testing; operational defaults remain workspace-write with networking.
+Skill validation and publication checks passed. Reopen an existing dashboard
+process to load the new controls.
+
+## Provisioning permission choice (2026-09-27)
+
+The setup skill now distinguishes ordinary network-enabled replies from worktree,
+routing and service provisioning. Before expanding access, identify the exact
+missing scope and obtain a user choice unless already authorized: targeted access,
+temporary full access with restoration, or keep restrictions. External resource
+creation waits until required local setup is feasible. The setup guidance is complemented by the permission reconnect controls above. No live permission change was made for
+this documentation update.
+
+## Workspace networking repair (2026-09-27)
+
+Resident now accepts `--sandbox workspace-write --network-access` and verifies
+both effective fields after resume. Explicit network denial is also supported.
+No automatic escalation or model/provider change occurs. Removed ineffective
+dashboard/connect sandbox forwarding; remote clients use the owner policy.
+Discord documentation now uses workspace restrictions with outbound networking,
+not a full-access default. This supersedes the earlier full-access workaround.
+
+Installed validation: all seven available conversations report workspaceWrite with
+networkAccess true and idle status after owner/resident restart. Authenticated
+Discord bot/channel GETs succeed under that effective policy, while a write
+outside the workspace is denied. No Discord message or model turn was submitted.
+The existing missing-provider conversation remains unresolved. Owner and resident
+service definitions were backed up locally; global Codex configuration and account
+credentials were not changed. The ineffective owner bypass flag was removed.
+The full suite passed 289 tests in 55.121 seconds. Publication checks passed.
+
+## Corrected permission root cause (2026-09-27)
+
+A disposable real-server reproduction isolated legacy sandbox restoration from
+concurrent clients. Missing named permission state caused resume to derive the
+trusted-project workspace default with network access disabled. Enabling network
+access alone retained workspace restrictions and passed authenticated Discord
+GET verification. Full access is not required. Earlier client-race explanations
+are superseded by [the root-cause report](RESUME-PERMISSION-ROOT-CAUSE.md).
+Remote TUI flag forwarding is not proof of an applied remote permission policy.
+The diagnosis itself did not change live settings; the narrower repair below supersedes the workaround.
+
+## Optional provider handling (2026-09-27)
+
+Reconnect no longer rejects every custom provider. Built-in OpenAI needs no
+custom entry; other saved provider IDs are checked against effective model_providers
+from config/read in each conversation's own project directory. Missing or
+unverifiable definitions still block restart. No provider is required by name,
+installed automatically, or substituted silently. Configuration presence does not
+validate a custom provider's credentials or model execution. This supersedes the
+blanket custom-provider restriction described in the earlier reconnect entry.
+
+Validation: 101 focused reconnect, auth, dashboard and RPC tests passed, including
+17 reconnect tests. Cases cover default OpenAI without custom configuration,
+an optional configured provider, per-project absence and redacted config-read
+failure. A live read confirmed that the unresolved task refers to a provider
+absent from its effective project configuration. No login or provider was changed.
+See ACCOUNT-MANAGER-INTEGRATION.md for the independent account-manager handoff.
+
+The updated wheel is installed and receiver readiness and source/installed backend
+hashes passed. Monitor credentials and Codex configuration were preserved. A
+disposable real App Server config/read probe retained an optional provider passed
+as a command-line override; it made no model call and changed no user config.
+
+## Reconnect with the current saved account (2026-09-27)
+
+The Python dashboard now replaces Retry auth with a two-action Reconnect flow.
+The preview enumerates conversations sharing a verified local macOS LaunchAgent.
+Confirmation verifies the current saved login and saved tasks in a short-lived
+unsubscribed App Server, rechecks idle states and resident coverage, and restarts
+only the exact loaded owner job. A PID/account/access/loaded-thread verification
+follows; timeouts after restart acceptance do not trigger another restart.
+Active tasks, changed job configuration, custom/unknown saved providers and
+missing resident coverage block restart. A cross-dashboard lock prevents races.
+No account tokens are copied and no failed inputs or model turns are submitted.
+
+The real owner adopted the current saved account and seven original conversations
+returned idle. An eighth could not resume because its saved custom model provider
+was absent from current configuration. It remains unresolved pending the user's
+choice of provider; no provider fallback was silently applied. This live result
+is partial conversation restoration and successful account API access, not proof
+of model execution. The missing-provider case now has a pre-restart guard and
+regression coverage. Raw operational logs remain outside Git.
+
+Verification: 279 source tests passed in 55.478 seconds. Thirteen reconnect
+regressions cover account changes, busy/uncovered tasks, stale plans, missing
+providers, concurrent dashboards and restart-command timeout reconciliation.
+A disposable PTY verified preview, explicit second activation, wrapped results
+and clean exit with a fake backend. The initial PTY driver stopped draining
+output before exit and timed out; the corrected driver drains through exit.
+
+The versioned wheel upgrade is installed. Source/installed hashes for the
+dashboard, reconnect backend and RPC transport match. Receiver readiness,
+configuration/credential preservation and a read-only seven-conversation
+reconnect preview passed. Existing dashboard processes must be reopened.
+
+## Manual authentication retry and native error details (2026-09-27)
+
+The Python dashboard now shows the newest failed turn's redacted error message
+for explicit owners reporting systemError. A one-turn, item-free history read
+keeps the request bounded; unsupported history is reported explicitly.
+Retry auth is an explicit background action: one managed-token refresh followed
+by an account-access check, one action in flight and a 30-second interval per
+dashboard instance. It does not restart owners, switch accounts or replay work.
+Failed work must still be inspected and retried in the native Codex client.
+
+Validation: 266 source tests passed in 55.267 seconds, including 64 focused
+owner/dashboard checks. A disposable real PTY verified visible native error text,
+keyboard activation, wrapped recovery results and clean exit against a fake owner.
+A read-only live probe retrieved the reported logged-out/account-changed refresh
+error on three existing routes. No operational credentials were refreshed and no
+model turn was started; this is not evidence of repaired login or completed work.
+Rust dashboard parity and automatic authentication recovery remain out of scope.
+
+The wheel was installed through the versioned upgrade path. Installed dashboard
+modules match the source; receiver readiness and preserved configuration and
+credential files were verified. The installed reader retrieved the same three
+native authentication error details. Reopen existing dashboards to load the UI.
+
+## Project-scoped resource presentation (2026-09-26)
+
+The shared resource panel has been removed. Each project card reports only its explicitly
+owned monitor sampler workers, their sampled RSS and CPU. No shared receiver CPU or global
+CPU is shown on the dashboard. The authenticated supervisor maps worker PIDs to conversation
+IDs; OS samples must confirm the receiver as parent before attribution. Missing ownership or
+samples display Unknown. Zero active samplers does not mean an idle Codex agent.
+Agent-owner CPU/RAM and shared database/log storage cannot currently be attributed per project;
+the detail overlay states this limitation rather than dividing shared totals arbitrarily.
+Shared resource data remains available in diagnostic JSON; process-safety warnings remain.
+This supersedes the shared panel presentation described below.
+
+
+## Resource and delivery observations (2026-09-26)
+
+The dashboard includes the oldest unresolved event age and per-route queue-acceptance
+median from the latest 100 accepted events. Failed, uncertain and retrying counts are
+separate from completed work. Reply completion latency remains explicitly unknown.
+A resource panel reports receiver-tree process count, sampled zombies, RSS and CPU,
+sampler occupancy/limit and spawn suspension, plus state-directory DB/log/logical bytes
+and change per hour over the displayed measurement window. The receiver reports its
+own PID and supervisor state through authenticated status. Detached agent owners,
+dashboard processes, watched files and installed runtimes are outside this scope.
+
+Process/storage observations are cached for 30 seconds. The single ps child is owned
+by subprocess.run with a one-second timeout and reaping; failed collection is unknown,
+not zero. Directory scans have an entry/time budget and skip symlinks. No model calls,
+telemetry history files or alert messages are created. A point sample can miss short-lived
+workers/zombies; CPU is the operating system ps value, and aggregate RSS may count shared
+pages more than once. Process-limit headroom and restart/spawn rates are not yet collected.
+Resource panels appear at 32+ rows; resource alerts remain visible in shorter views.
+Zombie alerts require two consecutive samples; a single exited child awaiting reap
+is still shown in the sampled count but does not imply a leak.
+
+
+## Terminal dashboard rebuild (2026-09-25)
+
+Replaced the list-plus-inspector presentation with a status summary, attention panel and
+responsive bordered project panels. Enter/click opens a bounded overlay; Esc restores the
+unchanged overview. Arrow keys navigate spatially, and visible actions replace memorized
+management shortcuts. Details retain route selection, delivery and explicit work reports.
+Mouse reporting is disabled during Codex handoff and on exit. Snapshot/JSON diagnostics remain
+separate. This supersedes the earlier expanding-inspector layout described in historical entries.
+
+Verification: all 248 Python tests and 40 focused dashboard tests pass, including bounded rendering, reachable spatial
+navigation, pointer targets, terminal input parsing and existing identity-safe action tests.
+Refresh retains thread and route identity; disappearing routes close the overlay. Cell-aware
+wrapping preserves Korean diagnostic text, and detail scrolling is bounded.
+Actual terminal inspection covers the overview, Enter-to-details, mouse inspection and Esc return.
+The rebuilt wheel is installed locally and the managed receiver was restarted. This is UI
+verification, not evidence of successful model execution or repaired authentication.
+
+## Dashboard execution visibility (2026-09-25)
+
+Implemented conversation-specific bounded owner probes, explicit `systemError`
+attention, enabled-route wording, and oldest unresolved delivery warnings after
+one hour. Queue acceptance remains separate from execution success. Paused
+routes no longer override active owner health. No automatic replay or restart.
+
+Remaining: producers must report request completion/failure and remote reply
+outcomes; the dashboard does not validate credentials with a model call or send
+out-of-band alerts. Long-lived dashboard processes must be reopened after upgrade.
+
+
+Sampler ownership correction (2026-09-25): replace multiprocessing startup with
+explicitly owned subprocesses, retain bounded child accounting through reap, and
+stop all new sampler admission after startup/protocol failure. A broken runtime
+can no longer bypass the worker registry through a failed multiprocessing
+bootstrap. Receiver startup cleanup now also covers initialization/output errors.
+Validation: 229 tests in the clean full suite, then 28 final focused sampler tests;
+all 17 installed-wheel isolation checks passed. No new model or authentication test.
+See [process safety](PROCESS_SAFETY.md) for recovery and verification boundaries.
+Private incident transcripts and host-specific runtime evidence remain outside Git.
+
+
 Desktop setup restriction (2026-09-14): refuse monitoring on the requesting Desktop conversation,
 including attempts to transfer that same session to CLI. New setup must use an authorized new,
 separate CLI monitoring task with a distinct thread ID and verified owner/resident readiness.
@@ -627,3 +978,22 @@ short deadline now applies only to the deliberately dropped response; normal
 startup and reconciliation retain their existing bounded test budget. The
 focused test and 20 repetitions passed. Production timeouts are unchanged;
 the failed hosted run remains recorded.
+
+Expanded inspector readability: three ruled sections (current state, delivery,
+connections), aligned short fields and one recovery action. Raw endpoints, receipt
+IDs and duplicate caveats remain available in technical output, not the inspector.
+
+Independent product and interaction reviews led to a compact operational overview:
+separate attention/unchecked totals, explicit receiver health, three columns with
+last activity (not claimed delivery), and a short selected summary. Column headers
+and project identity stay pinned. The a key jumps to issues; connection mutations
+require opening details first. Error routes are preferred when inspecting issues.
+
+Resource-metrics verification (2026-09-26): 252 Python tests passed in 49.922 seconds;
+publication checks passed. Installed runtime upgraded and authenticated receiver readiness
+confirmed. Live macOS receiver-tree process/RSS/CPU/zombie and state-storage observations
+were returned successfully. These are point samples, not a guarantee against future leaks.
+
+Project resource attribution verification: 60 focused dashboard, sampler and resource tests passed.
+The supervisor publishes ownership at each completed scheduling pass; busy status requests may
+reuse it for at most five seconds. Older ownership is unknown. Installed locally and receiver restarted.

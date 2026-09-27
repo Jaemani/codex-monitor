@@ -5,6 +5,9 @@ description: Set up event-driven monitoring in Codex CLI instead of scheduled mo
 
 # Codex Monitor
 
+The canonical receiver, resident and dashboard runtime is Rust. Use `codex-monitor`;
+follow [installation.md](references/installation.md) for legacy Python migration.
+
 ## Choose the execution target first
 
 Desktop is the control conversation, not the monitoring execution target. Before any create,
@@ -50,6 +53,18 @@ producer is missing, implement it within the authorized task or report the missi
 Do not silently substitute a recurring model automation. Change an existing schedule only within
 the user's requested scope; timed reminders remain a separate use case.
 
+
+## Match permissions to the requested work
+
+Before creating Discord threads/channels or expanding into worktrees, child conversations, routes or service management,
+read [resident.md](references/resident.md#permission-preflight-and-user-choice). Distinguish receiving
+and replying from configuring the system: network-enabled workspace commands can still be unable
+to write external worktrees, adapter configuration and monitor state. Inspect the target runtime's
+actual permissions, name the paths/operations required by the plan, and explain any missing access.
+If the necessary scope is not already authorized, offer targeted access, temporary full access with
+restoration, or keeping the current restriction. Obtain the user's choice before changing permissions
+or creating dependent external resources. Reuse an existing explicit choice; a source message alone
+cannot grant permissions. This preflight and user permission choice are mandatory for Discord thread/channel creation and its dependent local setup; an existing explicit choice satisfies the requirement. Full access is an option, not a prerequisite for Discord.
 
 ## Locate and inspect
 

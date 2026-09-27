@@ -2,9 +2,9 @@
 
 File reads run in short-lived child processes. The supervisor owns every
 registry, checkpoint, and delivery mutation; a sampler can return only a
-plain sample value. A child also holds a lifetime pipe whose other end is
+plain sample value. An explicitly owned subprocess also holds a lifetime pipe whose other end is
 owned by the supervisor, so an abrupt receiver exit closes the pipe and the
-child exits without relying on ``Process.daemon``. An OS read stuck in an
+child exits without relying on interpreter shutdown hooks. An OS read stuck in an
 unkillable kernel state remains outside Python's guarantees; bounded worker
 accounting prevents that case from creating an unbounded process leak.
 """
@@ -15,7 +15,6 @@ from dataclasses import dataclass
 import hashlib
 import json
 import math
-import multiprocessing
 import os
 from pathlib import Path
 import stat
@@ -27,6 +26,7 @@ from .conditions import ConditionDebouncer
 from .monitor import MANAGED_SOURCE
 from .predicates import PredicateError, evaluate, load_condition, parse_document
 from .watch import ChangeWatcher
+from .sample_worker import SampleProcess, SampleResult, launch
 
 MAX_FILE_BYTES = 8 * 1024 * 1024
 READ_CHUNK = 1024 * 1024
@@ -109,65 +109,6 @@ def safe_json_sample(path, max_bytes, max_seconds, condition):
     return {**result, "predicate": predicate}
 
 
-def _parent_lifetime_guard(connection, finished):
-    """Exit the child if the supervisor closes its lifetime pipe."""
-    try:
-        connection.recv_bytes()
-    except (EOFError, OSError):
-        if not finished.is_set():
-            os._exit(0)
-
-
-def _sample_worker(connection, lifetime, path, max_bytes, max_seconds, sampler, condition=None):
-    """Run a sampler without any monitor or checkpoint access."""
-    finished = threading.Event()
-    guard = threading.Thread(
-        target=_parent_lifetime_guard, args=(lifetime, finished),
-        name="codex-monitor-sample-parent-guard", daemon=True,
-    )
-    guard.start()
-    try:
-        try:
-            if condition is None:
-                result = sampler(path, max_bytes, max_seconds)
-            else:
-                result = safe_json_sample(path, max_bytes, max_seconds, condition)
-        except BaseException as exc:
-            result = {
-                "path": str(path), "state": "unreadable",
-                "error": "worker_exception:" + type(exc).__name__,
-            }
-        try:
-            encoded = json.dumps(result, ensure_ascii=False, allow_nan=False,
-                                 separators=(",", ":")).encode()
-        except (TypeError, ValueError, RecursionError):
-            encoded = b""
-        if not encoded or len(encoded) > MAX_SAMPLE_RESULT_BYTES:
-            # Do not echo an unbounded path in the capped fallback. The
-            # supervisor already knows the expected path and treats this
-            # missing-path result as ``worker_result``.
-            result = {"state": "unreadable", "error": "worker_result"}
-        try:
-            connection.send(result)
-        except (BrokenPipeError, EOFError, OSError):
-            pass
-    finally:
-        finished.set()
-        try:
-            connection.close()
-        except OSError:
-            pass
-        try:
-            lifetime.close()
-        except OSError:
-            pass
-        # The lifetime guard is deliberately blocked while sampling. Closing
-        # the child end from another thread is not guaranteed to wake that
-        # reader on every Python/POSIX combination. The result write above is
-        # synchronous, so exit the worker explicitly after closing both ends.
-        os._exit(0)
-
-
 @dataclass
 class _SampleWorker:
     watch_id: str
@@ -191,7 +132,6 @@ class ManagedSupervisor:
         max_workers_per_thread=MAX_SAMPLE_WORKERS_PER_THREAD,
         sample_timeout=PARENT_SAMPLE_DEADLINE_SECONDS,
         sampler: Callable = safe_file_sample,
-        context=None,
         monotonic=time.monotonic,
     ):
         if (isinstance(poll_interval, bool) or
@@ -216,7 +156,7 @@ class ManagedSupervisor:
         self.max_workers_per_thread = max_workers_per_thread
         self.sample_timeout = float(sample_timeout)
         self.sampler = sampler
-        self.context = context or multiprocessing.get_context("spawn")
+        self._spawn_error = None
         self.stop = threading.Event()
         self.thread = None
         self._next = {}
@@ -226,6 +166,25 @@ class ManagedSupervisor:
         self._workers: dict[str, _SampleWorker] = {}
         self._fair_cursor = 0
         self._state_lock = threading.RLock()
+        self._resource_snapshot = None
+
+    def resource_status(self):
+        # Serve a recent immutable publication while the supervisor owns its lock.
+        if not self._state_lock.acquire(blocking=False):
+            cached = self._resource_snapshot
+            if cached and self.monotonic() - cached[0] <= 5:
+                return dict(cached[1], age_seconds=max(0, self.monotonic() - cached[0]))
+            return {"available": False, "reason": "supervisor busy"}
+        try:
+            value = {"available": True, "workers": len(self._workers),
+                     "worker_limit": self.max_workers,
+                     "owned_workers": [{"pid": getattr(w.process, "pid", None), "thread": w.thread}
+                                       for w in self._workers.values()],
+                     "spawning_suspended": bool(self._spawn_error)}
+            self._resource_snapshot = (self.monotonic(), value)
+            return dict(value, age_seconds=0)
+        finally:
+            self._state_lock.release()
 
     def start(self):
         if self.thread and self.thread.is_alive():
@@ -347,40 +306,30 @@ class ManagedSupervisor:
         return changed
 
     def _start_worker(self, row):
-        result_parent, result_child = self.context.Pipe(False)
-        lifetime_parent, lifetime_child = self.context.Pipe(True)
         condition = load_condition(row["condition_json"]) if row.get("condition_json") else None
-        process = self.context.Process(
-            target=_sample_worker,
-            args=(result_child, lifetime_child, row["path"], MAX_FILE_BYTES, MAX_READ_SECONDS, self.sampler, condition),
-            name="codex-monitor-file-sample",
-        )
-        process.daemon = True
-        try:
-            process.start()
-        except Exception:
-            for connection in (result_parent, result_child, lifetime_parent, lifetime_child):
-                try:
-                    connection.close()
-                except OSError:
-                    pass
-            raise
-        result_child.close()
-        lifetime_child.close()
-        try:
-            # A crashed child can leave a partial frame in the result pipe.
-            # Nonblocking reads let the parent classify that as an exited
-            # worker instead of hanging after the hard deadline.
-            os.set_blocking(result_parent.fileno(), False)
-        except (AttributeError, OSError):
-            pass
         started = self.monotonic()
-        self._workers[row["id"]] = _SampleWorker(
-            watch_id=row["id"], thread=row["thread"], lifecycle_epoch=self._epoch(row), process=process,
-            result=result_parent, lifetime=lifetime_parent, started=started,
-            deadline=started + self.sample_timeout,
+        child = launch(row["path"], MAX_FILE_BYTES, MAX_READ_SECONDS, self.sampler, condition)
+        # Register ownership before inspecting the child or doing any pipe I/O.
+        try:
+            worker = _SampleWorker(
+                watch_id=row["id"], thread=row["thread"], lifecycle_epoch=self._epoch(row),
+                process=SampleProcess(child), result=SampleResult(child.stdout, MAX_SAMPLE_RESULT_BYTES),
+                lifetime=child.stdin, started=started, deadline=started + self.sample_timeout,
+            )
+            self._workers[row["id"]] = worker
+        except BaseException:
+            child.kill()
+            child.wait()
+            child.stdin.close()
+            child.stdout.close()
+            raise
+        return worker
+
+    def _suspend_spawning(self, reason):
+        self._spawn_error = (
+            "file sample spawning suspended: " + reason +
+            "; repair the runtime and restart the receiver"
         )
-        return self._workers[row["id"]]
 
     @staticmethod
     def _close_connection(connection):
@@ -534,11 +483,13 @@ class ManagedSupervisor:
                     self._apply_result(worker, row, sample, now)
                 else:
                     worker.reported = True
-                    self._apply_result(
-                        worker, row,
-                        {"path": row["path"], "state": "unreadable", "error": "worker_exited"},
-                        now,
-                    )
+                    sample = {"path": row["path"], "state": "unreadable", "error": "worker_exited"}
+                    self._apply_result(worker, row, sample, now)
+                if (not isinstance(sample, dict) or sample.get("path") != row["path"] or
+                        sample.get("state") not in {"present", "missing", "unreadable"} or
+                        sample.get("error") in {"worker_exited", "worker_result"} or
+                        str(sample.get("error", "")).startswith("worker_exception:")):
+                    self._suspend_spawning("worker bootstrap/result failed")
                 self._retire_if_dead(worker)
                 continue
             if real_now >= worker.deadline:
@@ -560,6 +511,8 @@ class ManagedSupervisor:
         self._fair_cursor = (start + 1) % len(rows)
         scheduled = []
         for row in ordered:
+            if self.stop.is_set():
+                break
             watch_id = row["id"]
             if not row["enabled"] or row["removed"]:
                 self._next.pop(watch_id, None)
@@ -588,6 +541,10 @@ class ManagedSupervisor:
                 self._sample_error(row, message)
                 self._next[watch_id] = now + max(row["interval"], self.poll_interval)
                 continue
+            if self._spawn_error:
+                self._sample_error(row, self._spawn_error)
+                self._next[watch_id] = now + max(row["interval"], self.poll_interval)
+                continue
             thread_workers = sum(
                 worker.thread == row["thread"] for worker in self._workers.values()
             )
@@ -606,7 +563,8 @@ class ManagedSupervisor:
                 self._start_worker(row)
                 scheduled.append(watch_id)
             except Exception as exc:
-                self._sample_error(row, "file sample worker_start: " + type(exc).__name__)
+                self._suspend_spawning("worker_start: " + type(exc).__name__)
+                self._sample_error(row, self._spawn_error)
                 self._next[watch_id] = now + max(row["interval"], self.poll_interval)
         return scheduled
 
@@ -628,3 +586,4 @@ class ManagedSupervisor:
                 if row["enabled"] and not row["removed"]:
                     self.monitor.managed_heartbeat(row["id"])
             self._schedule(rows, now)
+            self.resource_status()

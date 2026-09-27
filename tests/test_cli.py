@@ -55,9 +55,11 @@ class CLITest(unittest.TestCase):
             signals.return_value = "previous-handler"
             self.assertEqual(cli.main(["--state", str(Path(tmp) / "absent"), "resident",
                                        "--endpoint", "unix:///tmp/owned.sock", "--thread", "one",
-                                       "--thread", "two"]), 0)
+                                       "--thread", "two", "--sandbox", "workspace-write", "--network-access"]), 0)
             self.assertFalse((Path(tmp) / "absent").exists())
             self.assertEqual(factory.call_args.args, ("unix:///tmp/owned.sock", ["one", "two"]))
+            self.assertEqual(factory.call_args.kwargs["sandbox"], "workspace-write")
+            self.assertIs(factory.call_args.kwargs["network_access"], True)
             self.assertEqual(signals.call_count, 4)
             self.assertEqual(signals.call_args.args[1], "previous-handler")
 

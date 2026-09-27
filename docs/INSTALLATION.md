@@ -1,243 +1,102 @@
-# Local installation and upgrades
+# Installation and migration
 
-`codex-monitor` is not assumed to exist on a public package registry. Install it from a trusted checkout, a local wheel, or the project release archive. The installer requires Python 3.11 or newer and currently supports macOS and Linux. Its atomic release switch uses POSIX symlinks; this installer has not been validated on Windows and refuses to run there.
+Rust is the canonical runtime. Build requirements are Rust/Cargo 1.97.1 or newer
+and a C compiler for bundled SQLite. The installed executable needs no Python
+interpreter. Codex CLI is required for owner connections. No registry release is
+assumed; use a trusted checkout or a verified native executable.
 
-The runtime and the optional `$codex-monitor` skill are separate. Plugin-only installation adds Codex integration assets; it does not register an OS command. The trusted installer below installs the runtime, registers the command, and optionally installs the skill in one invocation. Installing either one does not initialize monitor state, start the receiver, attach a conversation, or create an event producer.
-
-## Install from a checkout
-
-From the repository root, run:
-
-```bash
-python3 scripts/install.py install
-```
-
-This builds a wheel from the current checkout, creates a fresh versioned virtual environment, installs dependencies, runs `pip check`, validates `codex-monitor --help`, and atomically switches the stable launcher.
-
-To install the bundled skill at the same time:
+## Fresh installation
 
 ```bash
-python3 scripts/install.py --with-skill install
-```
-
-The default runtime prefix is `~/.local/share/codex-monitor`. The default skill root is `$CODEX_HOME/skills` when `CODEX_HOME` is set, or `~/.codex/skills` otherwise. Start a new Codex session after installing the skill so it can be discovered.
-
-## Install from a release archive or local wheel
-
-A release archive contains the installer, one project wheel under `wheels/`, the skill/plugin files, and `SHA256SUMS.json`. It is a local artifact, not evidence of publication to a registry. Verify the archive checksum supplied alongside the archive and the file hashes inside it before installation.
-
-From the extracted release directory, use the relative wheel path printed in `INSTALL.txt`:
-
-```bash
-python3 scripts/install.py \
-  --wheel wheels/codex_monitor-VERSION-py3-none-any.whl \
-  --with-skill install
-```
-
-`--wheel` accepts an existing relative or absolute `.whl` path and normalizes it to an absolute path before staging. The installer validates that the wheel metadata names `codex-monitor`; it never substitutes a package with the same name from an index. `pip` may still use the configured Python package index to resolve declared third-party dependencies such as `websockets`.
-
-To build an unpublished release archive from a checkout:
-
-```bash
-python3 scripts/build-release.py --out /absolute/output/directory
-```
-
-## Installed paths
-
-Every successful install or upgrade prints JSON containing the exact absolute executable path. With the default prefix it is:
-
-```text
-~/.local/share/codex-monitor/bin/codex-monitor
-```
-
-With the default prefix, the installer also creates an owned command link at
-`~/.local/bin/codex-monitor`. Once that directory is on `PATH`, commands and flags work from any
-working directory:
-
-```bash
-codex-monitor --help
+./scripts/install.sh --with-skill
+codex-monitor --version
+codex-monitor init
+codex-monitor service install
 codex-monitor dashboard
-codex-monitor dashboard --thread "$THREAD_ID" --no-animate
-codex-monitor --state /absolute/state dashboard --once --json
 ```
 
-The installer does not edit shell startup files. It reports command visibility and prints a `PATH`
-hint when needed. You can always invoke the printed absolute executable, or set `CODEX_MONITOR_BIN`
-to it for the bundled skill helper.
+The executable is registered at `~/.local/bin/codex-monitor`, pointing into
+`~/.local/share/codex-monitor-rust/current/bin/codex-monitor`. Add `~/.local/bin`
+to PATH if necessary. Native releases are immutable and identified by SHA-256.
+`--prefix` and `--bin-dir` select absolute custom locations. `--with-skill` installs
+the bundled skill; it does not create a conversation, route, or external resource.
+The optional skill helper script uses Python only when invoked; daemon, resident,
+dashboard, storage, migration and service operations are native Rust.
 
-For an already installed runtime, register the command without rebuilding or restarting the receiver:
+The default state directory remains `~/.local/state/codex-monitor` and honors
+`CODEX_MONITOR_HOME`. `CODEX_MONITOR_RUST_HOME` remains a fallback for earlier isolated
+Rust installations. Existing state is never silently initialized or migrated.
+
+`service` supports macOS user LaunchAgents. On Linux, run `codex-monitor serve`
+under the chosen supervisor; the native macOS service command does not claim Linux
+supervision support.
+
+## Adopt an existing Python installation
+
+Keep the old executable path and service definitions for rollback. Build first,
+then stop the receiver. Do not run both receivers against the same endpoint.
 
 ```bash
-python3 scripts/install.py link
+cargo build --locked --release --manifest-path rust/Cargo.toml
+codex-monitor service stop
+rust/target/release/codex-monitor-rs migrate
+rust/target/release/codex-monitor-rs install --adopt-python --with-skill
+codex-monitor service install
+codex-monitor dashboard --once --json
 ```
 
-Use `--no-command` on install or upgrade to skip new command registration and use the absolute
-launcher instead. This preserves any previously registered link's ownership; it does not unlink it.
-`--no-command` and `--bin-dir` are mutually exclusive.
+Migration requires the receiver lock to be free. It snapshots SQLite databases,
+including committed WAL pages, into a private migration backup; preserves binding,
+event, native client, reply and request identifiers; copies watch baselines and
+keeps credentials unchanged. The new database is `rust.sqlite3`; the original
+Python databases and configuration backup remain available. A pending uncommitted
+watch event blocks adoption until reconciled. Custom legacy limit overrides also
+block adoption until explicitly mapped; they are not silently discarded. No model turn or failed input is
+replayed by migration. Normal receiver dispatch resumes pending input afterward.
 
-The link targets the stable launcher, so upgrades retain the same command. Existing foreign commands
-are never overwritten; a user-replaced owned link is preserved and reported for review.
+The owned legacy `~/.local/share/codex-monitor/bin/codex-monitor` entry point also
+forwards to Rust after adoption; immutable historical releases remain available
+for deliberate recovery.
 
-The prefix layout is:
+Resident services must also be restarted with the native executable, retaining
+their exact endpoint, thread list, environment and permission flags. Coordinate
+this at an idle boundary. Receiver replacement alone does not update an already
+running resident. Owner servers and account credentials need not change.
 
-```text
-PREFIX/
-  .codex-monitor-installer.json
-  bin/codex-monitor        -> ../current/bin/codex-monitor
-  current                  -> releases/RELEASE_ID
-  releases/RELEASE_ID/     # complete virtual environment
-```
+Rollback is safe only before Rust accepts new work: stop Rust, restore the saved
+configuration and executable/service definitions, then restart the old receiver.
+Once Rust has accepted events or replies, do not simply switch back to the old
+Python database; reconcile those newer records first to prevent loss or duplication.
 
-Each upgrade installs into a new release directory. It never runs `pip install --upgrade` against the active environment. The `current` symlink changes only after the candidate passes dependency and CLI validation. Earlier releases remain available for inspection until uninstall.
+## Upgrade Rust
 
-The atomic guarantee applies to the runtime `current` switch. With `--with-skill`, installer-owned skill files are updated individually before the runtime switch; the skill directory and runtime do not form one filesystem transaction. A process or machine failure during that short phase can require review with `--with-skill status`, while the previously selected runtime remains active.
+Build a release, stop the receiver, install the native release, and reinstall the
+receiver service to record its new immutable executable. Restart residents at an
+idle boundary. Existing state, credentials, permission flags and external routes
+are preserved. The native installer does not silently restart services.
 
-Monitor state is separate. Its default remains `~/.local/state/codex-monitor`, or the path in `CODEX_MONITOR_HOME`/`--state`. The installer does not read, rewrite, migrate, or delete state configuration, source tokens, receipts, or reply data.
+`python3 scripts/install.py install` is a compatibility entry point to the Rust
+build/install path. Wheel-based Python installation requires an explicit
+`--legacy-python` flag and is retained only for historical recovery.
 
-## Custom locations
+## Native archives
 
-Use an absolute runtime prefix when the default is unsuitable:
+`python3 scripts/build-release.py --out dist` packages the host-native Rust
+executable, embedded skill and reviewed installation instructions with SHA-256
+checksums. Python 3.11+ is a packaging-tool dependency only. This command does not
+publish an archive. After verifying and extracting a matching host archive, run
+`./bin/codex-monitor install --with-skill`. Archives contain no Python wheel.
 
-```bash
-python3 scripts/install.py \
-  --prefix /absolute/user-owned/codex-monitor \
-  install
-```
+## Existing processes after an upgrade
 
-Custom runtime prefixes do not write to `~/.local/bin` by default. Add an explicit command directory
-when you want a global command for that runtime:
+Changing the installed command does not replace code already running in a terminal.
+Close an idle legacy dashboard through its normal quit control and launch
+`codex-monitor dashboard` again. If it currently hosts a Codex TUI, preserve that
+client until the user returns with `/quit`; do not kill its parent or process group.
+A remote terminal also requires coordination with its owner before restarting its
+view. These interactive processes are distinct from supervised receiver/resident
+services. Audit actual executable paths, not just the current symlink.
 
-```bash
-python3 scripts/install.py --prefix /absolute/user-owned/codex-monitor \
-  --bin-dir /absolute/user-owned/bin install
-```
-
-Use `--with-skill` and an absolute `--skill-root` to manage the skill elsewhere:
-
-```bash
-python3 scripts/install.py \
-  --prefix /absolute/user-owned/codex-monitor \
-  --with-skill \
-  --skill-root /absolute/codex-home/skills \
-  install
-```
-
-The installer places only `codex-monitor` below the selected skill root. It does not change other skills, plugins, marketplace configuration, or shell files.
-
-## Status
-
-Status is read-only:
-
-```bash
-python3 scripts/install.py status
-python3 scripts/install.py --with-skill status
-```
-
-It reports ownership, the active version and release, the stable executable, retained releases, launchd services that reference the managed runtime, and optional skill modifications. A missing or unknown ownership marker is reported rather than adopted.
-
-After runtime installation, monitor lifecycle checks use the installed executable, for example:
-
-```bash
-/absolute/prefix/bin/codex-monitor --version
-/absolute/prefix/bin/codex-monitor init
-/absolute/prefix/bin/codex-monitor sessions
-```
-
-## Upgrade
-
-Upgrade from the checkout:
-
-```bash
-python3 scripts/install.py upgrade
-```
-
-Upgrade from an extracted archive or explicit wheel:
-
-```bash
-python3 scripts/install.py \
-  --wheel wheels/codex_monitor-VERSION-py3-none-any.whl \
-  upgrade
-```
-
-Add `--with-skill` to upgrade the bundled skill too. The skill ownership manifest records installed file hashes. Files that still match the previous manifest are updated; user-modified, deleted, or conflicting files are preserved and listed in the result. The installer refuses to replace a pre-existing unowned `codex-monitor` skill directory.
-
-A failed build, wheel install, dependency check, or CLI validation removes the candidate and leaves `current` on the prior working release.
-
-Stop every foreground receiver and receiver managed by another service manager
-before upgrading, including receivers using other state directories. The
-installer cannot discover all such processes. Restart each receiver with the
-new executable and its original state path after the upgrade. A running old
-process does not change code when the launcher changes.
-
-Retained release directories are not a supported rollback interface. Older
-versions can ignore newer state fields, including JSON predicates, and turn a
-conditional monitor into an ordinary file-change monitor. Do not switch
-`current` manually against newer state. Recovery to an older runtime requires
-a compatible state backup and an explicit migration plan.
-
-### Upgrade with a macOS launchd receiver
-
-The launchd plist records the virtual environment's lexical Python path. Changing `current` alone would leave the service running the old release. Therefore upgrade refuses whenever a `com.codex.monitor.*` LaunchAgent still references any release under the managed prefix, even if that job is stopped.
-
-The error prints commands using the exact old executable, state path, installer path, wheel, prefix, and optional skill root. Follow them in order:
-
-```bash
-/absolute/old-release/bin/codex-monitor --state /absolute/state service stop
-/absolute/old-release/bin/codex-monitor --state /absolute/state service uninstall
-python3 /absolute/install.py --prefix /absolute/prefix --wheel /absolute/wheel upgrade
-/absolute/prefix/bin/codex-monitor --state /absolute/state service install
-```
-
-`service install` writes a new plist using the upgraded release's Python path and loads it. The installer never edits or restarts the service silently.
-
-## Uninstall
-
-Remove the managed runtime:
-
-```bash
-python3 scripts/install.py uninstall
-```
-
-Uninstall removes the registered command only when it still matches its ownership record.
-
-This removes only a prefix with the installer's valid ownership marker and expected managed entries. It refuses a non-empty unowned prefix, a changed launcher, untracked prefix entries, untracked release directories, or a runtime referenced by a launchd service. Stop and uninstall the service with the exact commands in the error before retrying.
-
-Every installed release has a file-and-symlink inventory. Uninstall refuses when a release contains changed or untracked data, including state accidentally written below a virtual environment, rather than deleting it recursively without review.
-
-The skill remains unless removal is explicitly requested:
-
-```bash
-python3 scripts/install.py --with-skill uninstall
-```
-
-Skill removal requires the installer's ownership marker and byte-for-byte matches for all owned files, with no untracked files. If a skill was customized, uninstall refuses and preserves both the skill and runtime so the user can review them first. Running uninstall without `--with-skill` removes the runtime and leaves the skill untouched.
-
-Monitor state belongs outside the managed runtime. If `CODEX_MONITOR_HOME` points inside the prefix, uninstall refuses rather than deleting it. A normal uninstall reports the preserved state path.
-
-## Ownership and recovery rules
-
-- The runtime prefix and skill use separate ownership markers. One marker never grants permission to alter the other location.
-- Mutating commands serialize through a persistent, user-owned sibling lock file named from a hash of the prefix. The file is intentionally retained to avoid lock-inode replacement races; it contains only its owner tag and absolute prefix, not credentials.
-- An existing non-empty directory without the expected marker is never claimed, overwritten, or removed.
-- Installer failures do not modify shell configuration, Codex settings, plugins, marketplaces, other skills, or monitor state.
-- A partially prepared release is not selected. `status` identifies the active `current` release and all releases recorded by the installer.
-- Release archives and wheels are local inputs. If a trusted artifact is unavailable, obtain it from the project owner; do not install an unrelated registry package as a substitute.
-
-The service guard inspects the current user's standard macOS `~/Library/LaunchAgents/com.codex.monitor.*.plist` files. It does not discover services installed by another account or service manager. Stop those explicitly before changing or removing their runtime.
-
-## Reconnect an existing external route
-
-Verify that the same saved task is loaded on the intended owner with `doctor`
-before changing a route. Rebinding preserves the route name, source allowlist,
-paused state and receipts; it never resumes a task or replays an event.
-
-```sh
-codex-monitor doctor --endpoint ws://127.0.0.1:8767 --thread THREAD_ID
-codex-monitor rebind ROUTE --thread THREAD_ID \
-  --from-endpoint shared-local --endpoint ws://127.0.0.1:8767
-```
-
-The exact previous endpoint and task must match. Rebinding refuses retired or
-managed routes and any in-flight/uncertain delivery. Settle or inspect those
-receipts first; do not recreate a route to bypass the guard. A writer conflict
-requires resolving the existing owner, not forcibly taking over its task.
+Discord producer adoption has a separate database and service boundary; follow
+[the native Gateway cutover procedure](DISCORD-GATEWAY.md). Keep unrelated Python
+applications and one-shot project reply adapters outside the runtime cutover.

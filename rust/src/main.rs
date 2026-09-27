@@ -1,5 +1,11 @@
+mod board;
+mod discord_gateway;
+mod migration;
 mod owner_health;
+mod reconnect;
+mod resources;
 mod runtime;
+mod service;
 mod ui;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
@@ -23,17 +29,31 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Parser)]
 #[command(
+    name = "codex-monitor",
     version,
-    about = "Rust event monitoring runtime; isolated state, experimental Codex queue"
+    about = "Codex Monitor — native Rust event monitoring runtime"
 )]
 struct Cli {
-    #[arg(long, global = true, env = "CODEX_MONITOR_RUST_HOME")]
+    #[arg(long, global = true, env = "CODEX_MONITOR_HOME")]
     state: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Receive Discord events with durable local deduplication.
+    DiscordGateway {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        check: bool,
+        #[arg(long)]
+        verify: bool,
+        #[arg(long)]
+        since_id: Option<String>,
+    },
     Init {
         #[arg(long, default_value_t = 8876)]
         port: u16,
@@ -56,6 +76,22 @@ enum Command {
         action: Conversation,
     },
     Serve,
+    /// Adopt existing Python state offline, preserving identifiers and credentials.
+    Migrate,
+    Install {
+        #[arg(long)]
+        prefix: Option<PathBuf>,
+        #[arg(long)]
+        bin_dir: Option<PathBuf>,
+        #[arg(long)]
+        adopt_python: bool,
+        #[arg(long)]
+        with_skill: bool,
+    },
+    Service {
+        #[arg(value_parser=["status","install","uninstall","start","stop","restart"])]
+        action: String,
+    },
     Status,
     Sessions {
         name: Option<String>,
@@ -155,6 +191,12 @@ enum Command {
         endpoint: String,
         #[arg(long, required = true)]
         thread: Vec<String>,
+        #[arg(long, value_parser=["read-only","workspace-write","danger-full-access"])]
+        sandbox: Option<String>,
+        #[arg(long, conflicts_with = "no_network_access")]
+        network_access: bool,
+        #[arg(long)]
+        no_network_access: bool,
     },
     #[command(name = "__sample-worker", hide = true)]
     SampleWorker,
@@ -404,6 +446,20 @@ async fn run(cli: Cli) -> Result<()> {
     if matches!(cli.command, Command::SampleWorker) {
         return collector::worker_main().await;
     }
+    if let Command::Install {
+        prefix,
+        bin_dir,
+        adopt_python,
+        with_skill,
+    } = &cli.command
+    {
+        let mut installed = service::install(prefix.as_deref(), bin_dir.as_deref(), *adopt_python)?;
+        if *with_skill {
+            installed["skill"] = service::install_skill()?;
+        }
+        output(installed);
+        return Ok(());
+    }
     let pool = SessionPool::new();
     match &cli.command {
         Command::Doctor {
@@ -449,18 +505,63 @@ async fn run(cli: Cli) -> Result<()> {
             thread,
             cwd,
         } => return connect(endpoint, thread.as_deref(), cwd.as_deref()).await,
-        Command::Resident { endpoint, thread } => {
-            return runtime::resident(pool, endpoint, thread).await;
+        Command::Resident {
+            endpoint,
+            thread,
+            sandbox,
+            network_access,
+            no_network_access,
+        } => {
+            let policy = codex_monitor_rs::session::ResumePolicy {
+                sandbox: sandbox.clone(),
+                network: if *network_access {
+                    Some(true)
+                } else if *no_network_access {
+                    Some(false)
+                } else {
+                    None
+                },
+            };
+            policy.params("validation")?;
+            return runtime::resident(pool, endpoint, thread, policy).await;
         }
         _ => {}
     }
     let root = std::path::absolute(cli.state.unwrap_or_else(|| {
-        PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
-            .join(".local/state/codex-monitor-rust")
+        std::env::var_os("CODEX_MONITOR_RUST_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+                    .join(".local/state/codex-monitor")
+            })
     }))?;
-    if root.join("monitor.sqlite3").exists() {
+    if let Command::DiscordGateway {
+        config,
+        source,
+        check,
+        verify,
+        since_id,
+    } = &cli.command
+    {
+        return discord_gateway::run(config, source, &root, *check, *verify, since_id.as_deref())
+            .await;
+    }
+    if let Command::Service { action } = &cli.command {
+        output(service::action(&root, action).await?);
+        return Ok(());
+    }
+    if matches!(cli.command, Command::Migrate) {
+        output(migration::migrate(&root)?);
+        return Ok(());
+    }
+    if root.join("monitor.sqlite3").exists()
+        && !fs::read(root.join("config.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .is_some_and(|v| v["runtime"] == "rust")
+    {
         bail!(
-            "Python state detected; use a separate Rust directory. Automatic migration is unavailable"
+            "Legacy Python state detected; stop its receiver and run migrate before starting Rust"
         );
     }
     if let Command::Init { port } = cli.command {

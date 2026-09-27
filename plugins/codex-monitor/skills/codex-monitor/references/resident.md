@@ -14,7 +14,7 @@ resident --endpoint ENDPOINT --thread THREAD_ID
 ```
 
 Repeat `--thread` for additional explicit conversations. This deliberately calls `thread/resume` to
-attach subscriptions. Existing queued events may begin processing on registration. It changes no
+attach subscriptions. Existing queued events may begin processing on registration. Without explicit permission options it changes no
 permission policy and submits no synthetic prompt. Keep the process under the user's authorized
 OS supervisor for unattended use; do not occupy the assistant's tool loop indefinitely.
 
@@ -54,3 +54,48 @@ end-to-end consumption. Provide the route controls: Tab selects a route; `p` sto
 not restart external producers. Approval requests must be handled in the same-owner native TUI.
 For unattended use, report supervision for the owner and resident as well as the receiver; an open
 foreground tool process is not a durable installation. Keep unchanged status checks outside chat.
+
+## Permission preflight and user choice
+
+A successful Discord reply verifies only the reply path. It does not establish permission to create
+worktrees, child conversations, bindings or services. Before provisioning these resources, including Discord thread/channel creation, perform this mandatory preflight:
+
+1. Map the requested operations to the effective runtime policy, required write locations and
+   service/API permissions. Shared Git metadata, worktree roots, adapter configuration, monitor
+   state and service definitions may all be outside the project workspace. Inspect the exact paths;
+   do not claim the whole home directory is required. Host file modes or an unsandboxed access
+   check alone do not establish access from the target Codex runtime.
+2. Prepare the concrete setup plan and explain which operations are currently allowed or blocked.
+   Distinguish sandbox denial, operating-system permissions and Discord API permissions. List only
+   access actually needed. Existing authorization counts; do not repeatedly ask for the same scope.
+3. If expanding permissions is necessary and not yet authorized, ask the user to choose:
+   - Targeted access to the identified paths and required operations, retaining other restrictions.
+   - Temporary full access for this setup, followed by restoration of the prior policy.
+   - Keep current restrictions and leave the dependent setup pending.
+   Explain that full access removes filesystem and network isolation. Targeted write access may not
+   cover service management or protected paths; verify native support rather than promising it.
+4. Apply only the authorized choice. Check active turns, queued work and other conversations sharing
+   the owner before a policy change or restart. Save the prior policy if temporary access was chosen.
+   Do not create Discord threads or other dependent external resources until the required local
+   configuration is feasible, unless the user explicitly requests partial setup.
+5. Verify effective permissions in the actual target runtime. After provisioning, restore temporary
+   access and verify the restored state before declaring setup complete. Report readiness for normal
+   monitoring separately from readiness for later administrative changes.
+
+For ordinary reply commands, supported resident versions can use
+`resident --endpoint ENDPOINT --thread THREAD_ID --sandbox workspace-write --network-access`.
+This permits outbound networking but does not grant writes outside the workspace. Persist matching
+owner configuration for clients that resume first; verify installed options before use. Do not
+silently select full access after a filesystem error or present it as the only possible solution.
+
+User-facing explanation example: "Replies can reach Discord, but creating these worktrees and
+updating these routing files needs additional write access: [verified paths]. Choose targeted access,
+temporary full access for setup with restoration, or leave setup pending."
+
+The dashboard provides a separate Change Permission menu with Full Access, Read-only and Project Access. Ordinary Reconnect preserves permissions.
+Each requires a preview and the same action again within 60 seconds. These actions change the
+persistent defaults for all conversations sharing the verified owner, not just the selected row.
+Full access is not automatically temporary; after temporary setup authorization, explicitly restore
+the approved restricted mode and verify it. Read-only also disables command networking, so local
+Discord reply commands will fail; an external reply adapter has separate permissions. Do not click
+a permission action on the user's behalf unless the chosen scope is authorized.

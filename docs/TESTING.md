@@ -1,5 +1,132 @@
 # Test design and results
 
+## Native Gateway adoption checks (2026-09-27)
+
+The complete Rust suite passes 61 tests; the frozen Python reference suite passes
+322. Run `cargo test --locked --manifest-path rust/Cargo.toml` and strict Clippy.
+`discord_gateway` fixtures exercise scoped authorization, preserved adapter rows,
+durable dispatch, identical retry IDs and WebSocket Identify/Resume with saved
+sequence numbers. These fixtures use local HTTP/WebSocket peers, not Discord or a
+model. Read-only production verification and live Gateway health were observed
+separately; no synthetic Discord test post was sent.
+
+## Canonical Rust adoption checks (2026-09-27)
+
+Run `cargo test --locked --manifest-path rust/Cargo.toml` and strict Clippy on
+all targets. The current local suite has 53 tests, including policy response
+mismatch, latest-error redaction without resume/refresh, inactive-route summaries,
+width-based action layout, preserved migration identifiers/checkpoints, receiver
+lock rejection, pending-checkpoint rejection and legacy launcher adoption.
+
+A real local PTY verified overview/detail/menu navigation, six actions on one row
+and clean exit. Snapshot refresh does not block input. A copied production state
+and the eventual offline cutover preserved route metadata and native deduplication
+IDs. These are storage/UI/service observations, not a claim of new Discord posting
+or completed model work. No production permission mode was changed for testing.
+
+The native archive has 12 verified manifest entries and passed an isolated install.
+Runtime executables are native; Python remains available for packaging, optional
+skill helpers and historical reference tests. Hosted CI changes are prepared but
+have not been pushed or observed running for this revision.
+
+## Optional provider handling (2026-09-27)
+
+Reconnect no longer rejects every custom provider. Built-in OpenAI needs no
+custom entry; other saved provider IDs are checked against effective model_providers
+from config/read in each conversation's own project directory. Missing or
+unverifiable definitions still block restart. No provider is required by name,
+installed automatically, or substituted silently. Configuration presence does not
+validate a custom provider's credentials or model execution. This supersedes the
+blanket custom-provider restriction described in the earlier reconnect entry.
+
+Validation: 101 focused reconnect, auth, dashboard and RPC tests passed, including
+17 reconnect tests. Cases cover default OpenAI without custom configuration,
+an optional configured provider, per-project absence and redacted config-read
+failure. A live read confirmed that the unresolved task refers to a provider
+absent from its effective project configuration. No login or provider was changed.
+See ACCOUNT-MANAGER-INTEGRATION.md for the independent account-manager handoff.
+
+The updated wheel is installed and receiver readiness and source/installed backend
+hashes passed. Monitor credentials and Codex configuration were preserved. A
+disposable real App Server config/read probe retained an optional provider passed
+as a command-line override; it made no model call and changed no user config.
+
+## Reconnect with the current saved account (2026-09-27)
+
+The Python dashboard now replaces Retry auth with a two-action Reconnect flow.
+The preview enumerates conversations sharing a verified local macOS LaunchAgent.
+Confirmation verifies the current saved login and saved tasks in a short-lived
+unsubscribed App Server, rechecks idle states and resident coverage, and restarts
+only the exact loaded owner job. A PID/account/access/loaded-thread verification
+follows; timeouts after restart acceptance do not trigger another restart.
+Active tasks, changed job configuration, custom/unknown saved providers and
+missing resident coverage block restart. A cross-dashboard lock prevents races.
+No account tokens are copied and no failed inputs or model turns are submitted.
+
+The real owner adopted the current saved account and seven original conversations
+returned idle. An eighth could not resume because its saved custom model provider
+was absent from current configuration. It remains unresolved pending the user's
+choice of provider; no provider fallback was silently applied. This live result
+is partial conversation restoration and successful account API access, not proof
+of model execution. The missing-provider case now has a pre-restart guard and
+regression coverage. Raw operational logs remain outside Git.
+
+Verification: 279 source tests passed in 55.478 seconds. Thirteen reconnect
+regressions cover account changes, busy/uncovered tasks, stale plans, missing
+providers, concurrent dashboards and restart-command timeout reconciliation.
+A disposable PTY verified preview, explicit second activation, wrapped results
+and clean exit with a fake backend. The initial PTY driver stopped draining
+output before exit and timed out; the corrected driver drains through exit.
+
+The versioned wheel upgrade is installed. Source/installed hashes for the
+dashboard, reconnect backend and RPC transport match. Receiver readiness,
+configuration/credential preservation and a read-only seven-conversation
+reconnect preview passed. Existing dashboard processes must be reopened.
+
+## Manual authentication retry and native error details (2026-09-27)
+
+The Python dashboard now shows the newest failed turn's redacted error message
+for explicit owners reporting systemError. A one-turn, item-free history read
+keeps the request bounded; unsupported history is reported explicitly.
+Retry auth is an explicit background action: one managed-token refresh followed
+by an account-access check, one action in flight and a 30-second interval per
+dashboard instance. It does not restart owners, switch accounts or replay work.
+Failed work must still be inspected and retried in the native Codex client.
+
+Validation: 266 source tests passed in 55.267 seconds, including 64 focused
+owner/dashboard checks. A disposable real PTY verified visible native error text,
+keyboard activation, wrapped recovery results and clean exit against a fake owner.
+A read-only live probe retrieved the reported logged-out/account-changed refresh
+error on three existing routes. No operational credentials were refreshed and no
+model turn was started; this is not evidence of repaired login or completed work.
+Rust dashboard parity and automatic authentication recovery remain out of scope.
+
+The wheel was installed through the versioned upgrade path. Installed dashboard
+modules match the source; receiver readiness and preserved configuration and
+credential files were verified. The installed reader retrieved the same three
+native authentication error details. Reopen existing dashboards to load the UI.
+
+Dashboard recovery visibility validation (2026-09-25): full local suite passed
+235 tests; final owner-health/dashboard focused suite passed 37 tests. Coverage
+includes a loaded conversation reporting systemError, different results on a
+shared endpoint, paused routes, and old backlog hidden by newer acceptance.
+Live read-only observation detected an existing execution error; it did not
+validate repaired credentials or a successful external reply.
+
+
+## Sampler ownership verification: 2026-09-25
+
+On macOS with a separately retained Python 3.13.14 runtime, the clean full Python
+suite passed 229 tests in 49.754 seconds. Additional malformed-result and stopped
+supervisor admission regressions were added afterward and verified with the
+focused sampler suite. The installed-wheel isolation canary passed all 17 checks,
+including hung-worker isolation, receiver SIGKILL cleanup, stale-result rejection,
+and restart/debounce recovery. These are local process and fake-owner checks;
+no real model or Discord authentication success is implied.
+
+See [process safety](PROCESS_SAFETY.md) for the ownership contract and circuit
+recovery behavior. Host-specific incident and deployment logs remain outside Git.
+
 ## Full candidate verification: 2026-09-12
 
 Rust runtime: `c8a1a28`, with the subsequent TUI-driver compatibility/cleanup fix.
@@ -606,3 +733,47 @@ The matching Rust UI update passed 38 full Rust tests (11 binary/UI tests),
 strict Clippy and formatting. Its static refresh label is separate from receiver
 health; active/paused counts and a five-route inspection window are covered.
 This adds source UI coverage, not a new real Codex TUI acceptance claim.
+
+Dashboard layout checks: 27 rendering/reader tests cover the status-first overview,
+selected connection context, history navigation, narrow viewports and terminal safety.
+
+In-place inspector validation (2026-09-25): 28 dashboard tests passed. Native
+terminal screenshots verified overview, expansion, and retained conversation
+selection; local screenshots remain outside Git. Screen-reader compliance and
+all terminal implementations were not verified.
+
+Overall readability validation: 29 dashboard tests passed; installed overview and
+error inspector captured and reviewed in a native terminal. Layout changes do not
+validate model execution or remote reply success.
+
+Expanded inspector readability: three ruled sections (current state, delivery,
+connections), aligned short fields and one recovery action. Raw endpoints, receipt
+IDs and duplicate caveats remain available in technical output, not the inspector.
+
+Independent-review revision: full suite passed 238 tests; final dashboard suite
+passed 32 tests. Coverage includes 14 conversations at 96x30, 80x24/60x20/40x16
+viewports, historical paused errors, and selection of the failing connection.
+
+
+## Terminal panel dashboard (2026-09-25)
+
+Run `python3 -m unittest tests.test_dashboard tests.test_dashboard_board -q` for the
+40 focused reader, renderer, identity, keyboard and pointer regressions. The board tests
+cover spatial reachability, 24-160 column bounds, preserved selection after refresh,
+removed routes, bounded overlay scrolling and lossless wide-character wrapping.
+These are local regressions, not successful model-execution evidence. The full suite passed 248 tests in 49.107 seconds after the review fixes.
+The final display-label changes also passed all 40 focused dashboard tests.
+
+Resource metrics: tests cover receiver-descendant attribution, zombie detection,
+symlink exclusion, bounded incomplete scans, cached process sampling, timeout-to-unknown
+behavior and short-screen resource warnings. Scope is local observations, not proof of
+completed model work or resolution of external authentication failures.
+
+Resource-metrics verification (2026-09-26): 252 Python tests passed in 49.922 seconds;
+publication checks passed. Installed runtime upgraded and authenticated receiver readiness
+confirmed. Live macOS receiver-tree process/RSS/CPU/zombie and state-storage observations
+were returned successfully. These are point samples, not a guarantee against future leaks.
+
+Project resource attribution verification: 60 focused dashboard, sampler and resource tests passed.
+The supervisor publishes ownership at each completed scheduling pass; busy status requests may
+reuse it for at most five seconds. Older ownership is unknown. Installed locally and receiver restarted.

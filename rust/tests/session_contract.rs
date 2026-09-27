@@ -249,3 +249,57 @@ async fn unix_owner_websocket_handshake_has_required_client_headers() {
     pool.close().await;
     task.await.unwrap();
 }
+
+#[tokio::test]
+async fn explicit_resident_policy_is_sent_and_mismatched_response_is_rejected() {
+    use codex_monitor_rs::session::ResumePolicy;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut ws = accept_async(socket).await.unwrap();
+        let mut seen = Vec::new();
+        while let Some(Ok(message)) = ws.next().await {
+            if !message.is_text() {
+                continue;
+            }
+            let v: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+            let Some(id) = v.get("id") else { continue };
+            let result = match v["method"].as_str().unwrap_or("") {
+                "initialize" => json!({}),
+                "thread/queue/list" => json!({"data":[]}),
+                "thread/resume" => {
+                    seen.push(v.clone());
+                    json!({"sandbox":{"type":"workspaceWrite","networkAccess":false}})
+                }
+                other => panic!("Unexpected operation {other}"),
+            };
+            ws.send(tokio_tungstenite::tungstenite::Message::Text(
+                json!({"id":id,"result":result}).to_string().into(),
+            ))
+            .await
+            .unwrap();
+            if !seen.is_empty() {
+                return seen;
+            }
+        }
+        seen
+    });
+    let pool = SessionPool::new();
+    let policy = ResumePolicy {
+        sandbox: Some("workspace-write".into()),
+        network: Some(true),
+    };
+    assert!(
+        pool.subscribe_with_policy(&endpoint, "saved-thread", &policy)
+            .await
+            .is_err()
+    );
+    let seen = task.await.unwrap();
+    assert_eq!(seen[0]["params"]["sandbox"], "workspace-write");
+    assert_eq!(
+        seen[0]["params"]["config"]["sandbox_workspace_write.network_access"],
+        true
+    );
+    pool.close().await;
+}

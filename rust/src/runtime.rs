@@ -70,10 +70,13 @@ pub async fn snapshot(
     root: &FsPath,
     pool: &SessionPool,
 ) -> Result<Value> {
-    let mut bindings = store.bindings()?;
+    let mut bindings = store.dashboard_bindings()?;
     owner_health::attach(&mut bindings, pool).await;
+    crate::reconnect::attach_permissions(&mut bindings);
+    let receiver = health(c, root).await;
+    let resources = crate::resources::sample(root, &receiver).await;
     Ok(
-        json!({"runtime":"rust","generated_at":now(),"receiver":health(c,root).await,"bindings":bindings,"conversations":store.metadata_list(None)?,"monitors":store.watches(None)?,"delivery":store.status()?,"scope":{"event_delivery":"persisted_observations","model_telemetry":"not_collected","tool_telemetry":"not_collected"}}),
+        json!({"runtime":"rust","generated_at":now(),"receiver":receiver,"resources":resources,"bindings":bindings,"conversations":store.metadata_list(None)?,"monitors":store.watches(None)?,"delivery":store.status()?,"scope":{"event_delivery":"persisted_observations","model_telemetry":"not_collected","tool_telemetry":"not_collected"}}),
     )
 }
 #[derive(Clone)]
@@ -245,7 +248,7 @@ async fn ingest(
 async fn status(State(app): State<App>, h: HeaderMap) -> Result<Json<Value>, ApiError> {
     admin(&app, &h)?;
     Ok(Json(
-        json!({"ready":true,"runtime":"rust","delivery":app.store.status().map_err(storage_error)?,"collector":collector::stats(),"capabilities":{"managed_file_monitor":true,"managed_json_predicates":true,"reply_outbox":true,"request_lifecycle":true,"request_cli":true,"request_maintenance":true,"request_http":true},"consumer_ready":"unknown","generated_at":now()}),
+        json!({"ready":true,"runtime":"rust","pid":std::process::id(),"delivery":app.store.status().map_err(storage_error)?,"collector":collector::stats(),"capabilities":{"managed_file_monitor":true,"managed_json_predicates":true,"reply_outbox":true,"request_lifecycle":true,"request_cli":true,"request_maintenance":true,"request_http":true},"consumer_ready":"unknown","generated_at":now()}),
     ))
 }
 async fn sessions(State(app): State<App>, h: HeaderMap) -> Result<Json<Value>, ApiError> {
@@ -851,17 +854,22 @@ async fn deliver_one(store: &Store, pool: &SessionPool, e: Value) -> Result<()> 
     }
     Ok(())
 }
-pub async fn resident(pool: SessionPool, endpoint: &str, threads: &[String]) -> Result<()> {
+pub async fn resident(
+    pool: SessionPool,
+    endpoint: &str,
+    threads: &[String],
+    policy: codex_monitor_rs::session::ResumePolicy,
+) -> Result<()> {
     codex_monitor_rs::session::validate_endpoint(endpoint)?;
     if endpoint == "shared-local" {
         bail!("resident requires the exact existing owner, not an independent shared-local writer");
     }
     let mut previous = Value::Null;
-    let mut interval = tokio::time::interval(Duration::from_secs(2));
+    let mut interval = tokio::time::interval(Duration::from_secs(10));
     loop {
         tokio::select! {_=shutdown_signal()=>break,_=interval.tick()=>{
             let mut states=Vec::new();for thread in threads {
-                let result=pool.ensure_subscribed(endpoint,thread).await;
+                let result=pool.subscribe_with_policy(endpoint,thread,&policy).await;
                 states.push(json!({"thread":thread,"subscribed":result.is_ok(),"error":result.err().map(|_|"owner unavailable, unsupported, or conflicting") }));
             }
             let current=json!({"endpoint":endpoint,"targets":states,"model_polling":false,"approvals":"native client required"});if current!=previous{output(current.clone());previous=current;}

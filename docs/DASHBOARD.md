@@ -1,10 +1,78 @@
 # Live connection dashboard
 
+The canonical dashboard is native Rust. `Change Permission` is a shared-server
+action: its separate menu identifies the server and its preview lists every
+affected conversation, including other projects. Project groups are navigation
+labels, not permission isolation boundaries. Reconnect retains permissions.
+The receiver resource totals exclude Codex owners and their tools; reusable sampler
+workers are shared and are not billed as project-owned agent processes.
+
+## Reconnect with the current login
+
+The dashboard's **Reconnect** action replaces the earlier **Retry auth**
+button. Refreshing a cached token does not switch a long-lived owner from an old
+account to the current saved login.
+
+Select a connection and choose Reconnect. The first action inspects the matching
+local macOS user LaunchAgent and lists all loaded conversations sharing it.
+Select Reconnect again within 60 seconds to confirm. The action verifies the
+current saved ChatGPT login in a short-lived, unsubscribed App Server, verifies
+that every saved conversation exists, rechecks the owner configuration and idle
+states, then restarts that exact registered owner. Existing resident services
+reattach the same conversation IDs. Completion requires a changed owner PID,
+matching account information, authenticated account access and restoration of all
+previously loaded conversations. Failed input is not replayed; use Open in Codex
+to continue it. Queued input may run when residents reconnect.
+
+Existing Codex windows disconnect during the shared restart. Active or unverified
+conversations, missing or unverifiable saved model providers, missing resident coverage, different Codex homes, changed service
+configuration and expired previews block the action. Idle-state checks are a
+preflight observation, not an atomic guarantee against new input arriving during
+a restart. A cross-dashboard lock prevents simultaneous reconnects of the same
+endpoint, and each dashboard limits restart attempts to one per 30 seconds.
+Verification failure after restart is reported without another automatic restart.
+The background worker retains responsibility for its temporary child even if the
+UI closes during recovery.
+
+This implementation supports direct Codex user LaunchAgents with exact explicit
+local endpoints and running codex-monitor resident LaunchAgents. It does not
+infer arbitrary process ownership, modify plists, copy tokens, change account
+configuration, restart remote hosts, or manage Desktop's internal server.
+Unsupported setups must reconnect using their own process supervisor.
+
+No named custom provider is required. The built-in OpenAI provider needs no custom
+provider entry. For another saved provider, preflight reads effective configuration
+for that conversation's project directory and requires its provider definition to
+exist. This preserves optional custom providers without copying configuration,
+forcing a provider name or silently replacing the conversation's provider. The
+check establishes configuration presence, not successful custom-provider model
+execution or credentials.
+
+For explicit owners reporting systemError, details show the newest failed turn's
+native error message near the top, with common credential forms redacted. Only one
+turn without items is read; older failures do not replace the current error.
+Unsupported history reads are stated explicitly. Dashboard refreshes remain
+read-only and never invoke Reconnect. JSON snapshots include execution_error.
+
+Protocol reference: [App Server authentication and thread history](https://learn.chatgpt.com/docs/app-server).
+
+## Resource and delivery observations
+
+The native dashboard shows receiver-tree RSS, CPU and process count in its shared
+header. It excludes Codex owners, their tools and other dashboards. Sampling workers
+are reusable and shared across projects; project ownership is not inferred from
+those workers. Unknown attribution stays unknown. RSS samples can miss short-lived
+processes and do not represent macOS compressed physical memory.
+
+Process and storage observations are cached for 30 seconds. Storage scans skip
+symlinks and have a time/entry budget. Event ages describe unresolved delivery,
+not model completion. External producer health requires its own observation.
+
 The dashboard is a separate terminal view of one local codex-monitor state directory. It reads
 configured conversations, managed collector observations, delivery receipts and explicit request
 reports. Refreshes use bounded read-only probes for explicit Codex owners; they do not create model turns or change monitoring
-configuration. Explicit keyboard actions can stop, resume or remove the selected monitor route. Enter launches
-the ordinary Codex TUI for the selected conversation.
+configuration. Explicit actions in the detail overlay can pause, resume or remove the selected route,
+or open its ordinary Codex TUI. Enter on the overview opens details.
 
 ```bash
 codex-monitor dashboard
@@ -22,32 +90,30 @@ Use snapshot mode in scripts and redirected output.
 
 The dashboard observes **event delivery**, managed collector observations and explicit request work
 reports. It does not collect live model/tool execution, token usage, cost or inferred completion
-percentages. `Recent delivery` shows recorded queue delivery, not completed agent work. Active/paused
-counts refer to registered event routes, not live sockets or running agents.
+percentages. `Last activity` shows the latest stored event observation, not completed agent work.
+Connection counts refer to registered routes, not live sockets or running agents.
 JSON snapshots include a `scope` object describing this boundary, including on read failures. A scope
 field describes what the view can report, not whether a producer or consumer is currently healthy.
 
 ## Controls
 
-- `q` or Ctrl-C: leave the dashboard. The receiver and monitors continue running.
-- `j` / `k` or down / up: select a conversation and scroll the inventory.
-- Home / End and Page Up / Page Down: navigate longer inventories.
-- Tab or `]` / `[`: browse the next/previous route, including paused entries.
-- `d`: open/close the route inspector with a scrolling window of every registered route.
-  Page Up / Page Down scroll long details while the inspector is open.
-- `p`: stop monitoring on the selected connection.
-- `r`: resume monitoring on that connection.
-- `x`, then `y`: remove the selected connection. Any other key cancels the confirmation.
-  The confirmation holds its original selection even if the inventory changes.
-- Enter or `o`: open the selected conversation in the ordinary Codex TUI on its saved owner endpoint.
-  Exit that TUI to return to the dashboard in the same terminal.
-- Resize the terminal to fit your workspace; the next render adapts to its dimensions.
+- Arrow keys: move spatially between conversations in project panels.
+- Enter or click a conversation: open its detail overlay.
+- Esc: close details; from the overview, exit the dashboard. `q` and Ctrl-C also exit.
+- Up/Down or mouse wheel in details: scroll long content.
+- Tab in details: inspect the next registered connection, including paused entries.
+- Left/Right in details: select a visible action; Enter activates it. Actions are also clickable.
+- Open in Codex: launch the saved conversation on its explicit owner. Exit that TUI to return.
+- Reconnect: preview a shared owner restart with the current login, then select again to confirm.
+- Pause/Resume: change monitoring for the displayed connection.
+- Remove: ask for confirmation. Enter confirms; Esc or another key cancels. The confirmation
+  retains its exact original target even if the inventory changes.
+- Resize: project panels reflow into one, two or three columns. Selection stays visible.
 
-The dashboard preserves the terminal's input settings on normal exit. Refreshes remain read-only;
-only deliberate control keys change monitoring. Controls apply to the route shown below the list,
-not every route in the conversation or project. Use Tab to choose the intended route first.
-Do not infer authentication or completed work from an enabled route; use `d` to inspect
-the selected route and its observed owner status. The action notice names the route that changed.
+The dashboard restores terminal settings and disables mouse reporting on exit or TUI handoff.
+Refreshes remain read-only. Route controls apply to the connection displayed in the overlay. Reconnect is owner-wide
+and previews all affected conversations before confirmation. Use Tab to inspect the intended route first.
+Do not infer authentication or completed work from an enabled route.
 For managed file monitors, stop/resume also updates the collector lifecycle. For external sources,
 resume re-enables intake and delivery; it does not restart a separate producer process or load an
 unloaded native conversation. Stopping or removing monitoring does not terminate a Codex turn, archive the conversation or erase
@@ -76,8 +142,8 @@ The assignment is local to the selected monitor state directory and does not mod
 
 ## Open a conversation and interact
 
-Run `codex-monitor dashboard`, select a conversation with the arrow keys, then press Enter. For
-multiple connections, inspect the route shown below the list and use Tab to choose another.
+Run `codex-monitor dashboard`, select a conversation and press Enter for details. Use the
+Open in Codex action to launch it. For multiple connections, use Tab to choose the intended route.
 Selecting a conversation initially prefers an enabled explicit owner route. The dashboard
 temporarily hands the terminal to `codex --remote ENDPOINT resume THREAD_ID`. In that TUI you can
 read the conversation, watch new event responses, send messages and answer native approvals.
@@ -101,36 +167,23 @@ the selected conversation's normal model and permissions.
 
 ## Reading the screen
 
-The fixed header shows **Auto-refresh** without a pulse; wide screens also show snapshot age
-in the footer. This describes inventory refresh, not producer or model connectivity.
-Refreshes do not invoke the model.
+The top summary separates receiver readiness, observed execution failures, pending events on
+enabled routes, and conversations whose delivery readiness has not been verified. These are
+observations, not live generation telemetry. The attention panel shows up to four actionable
+conversation issues; all conversation states remain available in the project panels.
 
-The compact Graphite overview shows one single-height row per conversation, with active/paused route counts and recent delivery
-in aligned columns. Thin dividers, a subtle selection background and an emerald leading marker
-separate the list from the selected-conversation context directly below it.
-Rows do not expand with terminal height; the selected background covers only its text row.
-The live panel is at most 96 columns wide. Its keyboard hints follow the context rather than
-sitting at the bottom edge of a tall terminal. The selected route
-is visible before Enter; changing presentation never changes its stored conversation identity.
-Managed monitors use their collector names instead of generated binding IDs. UUIDs, server addresses,
-receipt IDs and raw delivery states appear in `d` details. An em dash means no recorded event activity.
-Narrow layouts prioritize names and the selected route. Neither a dash nor a green dot means a model
-is idle. Conversation labels use saved display names, with route-derived fallbacks; they are not fetched native titles.
+Project panels use saved names and neutral borders. Cyan identifies selection and delivery
+readiness; red indicates failures, amber indicates review or unverified state, and gray indicates
+paused routes. Every state also has a text label, so color is not required.
+Taller terminals add last activity beneath each conversation. Shorter terminals retain compact
+rows and automatically scroll to the selected conversation. Wide terminals show inventory age
+in the footer when space permits. None of these ages establishes completed work.
 
-- **Green dot:** binding enabled or receiver ready, according to the field.
-- **Red dot:** binding paused or receiver stopped.
-- **Amber dot:** old or unhealthy observations; inspect the details.
-- **Muted dot:** unavailable observations.
-
-A conversation row summarizes its routes: green means at least one route is enabled, red means all
-routes are paused, and a stale collector can make the summary amber. It is not a count of connected
-Codex clients. Inspect the selected route and details when a conversation mixes enabled and paused routes.
-
-Status cells use dots rather than ON/OFF labels. Without color, dot shapes and descriptive details
-provide the distinction. Use `--color auto|always|never`; auto honors `NO_COLOR`
-and `TERM=dumb`. Use `--no-animate` for a steady live indicator. Text snapshots are plain by default;
-`--color always` opts into ANSI colors, while JSON remains machine-readable.
-
+Details appear in a centered, bounded overlay over the dimmed overview. Delivery observations,
+explicit execution reports, recorded errors and source paths have separate labeled sections.
+Scrolling details does not move the selected conversation. Closing restores the same overview.
+Diagnostic `--once` and JSON output retain the detailed inventory independently of this layout.
+Use `--color auto|always|never`; auto honors `NO_COLOR` and `TERM=dumb`.
 
 | Field | Meaning |
 |---|---|
@@ -179,17 +232,73 @@ future features. OS-timed probes can already feed failure events using the [heal
 Validation is recorded in [TESTING.md](TESTING.md). A dashboard PTY test verifies this terminal view,
 not a Codex CLI conversation or Desktop event-delivery flow.
 
-## Reading the route inspector
+## Inspecting connections
 
-One conversation can receive events through many routes. The overview separates active
-and paused registrations; paused entries remain inspectable and are not running agents.
-The detail window follows Tab or bracket navigation through the entire list, showing
-file/external type, registration state and the selected route's source or watched path.
-Long paths wrap; Page Up / Page Down reveal overflow. Delivery history and receipt IDs
-remain separate from explicit work reports. Queue acceptance does not establish consumption
-or task completion. A queue-only route explains why Enter cannot open a TUI.
+A conversation can receive events through many connections. Tab in the overlay cycles through
+all registered connections, including paused entries. The connection name, enabled state and
+position are shown together above delivery and execution facts. Up/Down scroll long content.
+Queue acceptance does not establish native consumption or task completion. Opening requires
+an explicit owner endpoint; queue-only routes cannot infer an owner.
 
-Auto-refresh is a static label. Snapshot age measures the last inventory read; the latest
-receipt age measures an event observation. Neither means the model is running. Amber
-means an observed attention/stale condition, not a heartbeat animation. Closing this view
-with `q` leaves the receiver and monitoring active.
+## Reconnect with a permission mode
+
+Conversation details keep **Reconnect** (preserve permissions) separate from
+**Change Permission**. Open Change Permission to see the current saved policy and
+choose **Full Access**, **Read-only**, or **Project Access**. Use Left/Right
+and Enter; Back or Esc returns to the details without applying a choice.
+The first activation of a permission mode previews
+all configured conversations affected by the shared owner and the persistent
+policy change. Activate the same action again within 60 seconds to confirm.
+Changing actions discards the previous confirmation. Ordinary Reconnect retains
+service configuration.
+
+| Mode | Filesystem | Command network |
+| --- | --- | --- |
+| Full | Unrestricted by the Codex sandbox | Enabled |
+| Read-only | Writes disabled | Disabled |
+| Workspace+Net | Project workspace writes; external paths restricted | Enabled |
+
+These are shared-owner service settings, not per-conversation overrides. The
+preview lists the configured conversation IDs, including currently unloaded ones.
+Active work, nonempty queues or an unverified local service block the operation.
+Saved owner/resident definitions are backed up before modification. The owner and
+residents are reloaded, and permissions on previously loaded conversations are
+verified. Failed updates attempt to restore the previous definitions; any partial
+restoration is reported. No failed prompt is replayed and no synthetic model turn
+is started. This currently requires verified macOS user LaunchAgents.
+
+The choice persists until changed; Full does not expire automatically. If full
+access was authorized only for setup, select the prior restricted mode after the
+work and verify it. Read-only can prevent both configuration work and Discord
+reply commands. Workspace+Net does not enable writes to external configuration,
+worktree or service paths. Discord thread/channel creation requires the permission
+preflight and user choice described in OWNER-LIFECYCLE.md; full access itself is
+not mandatory and does not grant missing Discord bot permissions.
+
+The overview and details show saved permission labels in English: `Read-only`,
+`Full Access`, `Project Access`, `Workspace`, `Check permissions` or `Access unknown`.
+These observations come from saved service settings, not verified live permissions;
+this distinction is explained in details rather than repeated on each overview row:
+they read matching resident service definitions without resuming a conversation.
+The completed permission-change operation separately verifies the effective mode.
+
+All detail actions remain visible: the footer wraps buttons into rows instead of
+paging them. Project Access means editing files in the project workspace and
+using the internet; writes outside that workspace remain restricted. This label
+renames the existing workspace-write plus network policy without changing access.
+
+When active connections exist, permission summaries exclude disabled legacy
+connections. Conflicting or partially unknown active connections require inspection
+and display Check permissions. All action buttons occupy one horizontal row when
+they fit; wrapping occurs only when the terminal is too narrow. The detail dialog
+uses up to 112 columns, with Change Permission and Close always present.
+
+## Back to codex-monitor Dashboard
+
+Opening Codex from a connection temporarily hands the terminal to the native Codex
+TUI. The dashboard displays **Back to codex-monitor Dashboard: use /quit in Codex**
+before handoff and the same return label afterwards. `/quit` is a built-in Codex
+command; codex-monitor does not rename its native command-picker description.
+For an explicit remote owner this detaches the TUI and returns to the waiting
+dashboard. The shared owner, residents and receiver continue running. Do not stop
+the owner process to return to the dashboard.

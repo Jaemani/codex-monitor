@@ -113,6 +113,71 @@ the full conversation history to retain a subscription. This leaves persisted hi
 avoids an unnecessary large resume response. It does not remove transport limits on other responses
 or live notifications.
 
+### Discord reply permissions
+
+Discord does not require `danger-full-access`. A reply adapter executed by Codex
+needs outbound HTTPS, while the Gateway producer runs under its own process
+permissions. Configure the owner and resident explicitly so legacy saved threads
+do not fall back to network-disabled workspace defaults on resume.
+
+For workspace-restricted commands with network access, start the owner with:
+
+```bash
+codex -c 'sandbox_mode="workspace-write"' -c 'sandbox_workspace_write.network_access=true' app-server --listen ws://127.0.0.1:8765
+```
+
+Retain the selected conversations with the same policy:
+
+```bash
+codex-monitor resident --endpoint ws://127.0.0.1:8765 --thread "$THREAD_ID" --sandbox workspace-write --network-access
+```
+
+Save these arguments in the corresponding service definitions if supervised.
+They apply on every start and reconnect, including recovery after account changes.
+The owner settings cover clients that load a thread before the resident. The
+resident checks both returned sandbox mode and network permission before marking
+registration ready; mismatches are errors, not an automatic full-access fallback.
+`--no-network-access` explicitly disables workspace networking. The network
+options require `--sandbox workspace-write`; omitting them preserves native
+network resolution. Approval policy and model provider configuration are unchanged.
+
+Open the existing owner normally:
+
+```bash
+codex-monitor dashboard
+codex-monitor connect --endpoint ws://127.0.0.1:8765 --thread "$THREAD_ID"
+```
+
+Do not rely on remote TUI sandbox flags to repair server permissions: the tested
+Codex 0.157.1 remote resume path clears permission overrides. Already loaded
+threads may retain their old policy. Before restarting an owner to apply changed
+settings, check for active work, queued input and attached clients. Verify the
+resulting server policy and use read-only API checks before sending messages.
+
+Network access here permits outbound connections generally; it is not a
+Discord-only allowlist. Workspace filesystem restrictions remain in place.
+There is no automatic Discord detection or global full-access default. An external
+adapter that sends replies outside Codex can keep networking disabled for Codex
+commands. See [the confirmed root cause](RESUME-PERMISSION-ROOT-CAUSE.md).
+
+### Provisioning needs additional permissions
+
+Network-enabled workspace execution supports reply commands, but can still block writes to external
+worktree roots, shared Git metadata, adapter configuration, monitor state and service definitions.
+A working bot connection is not proof that a PM can provision new conversations and routing.
+Service management and Discord channel/thread creation also have independent permission checks.
+
+Before Discord thread/channel creation or other setup/expansion, this preflight and user permission choice are mandatory. Prepare the resource plan and list the exact required paths and operations.
+Explain which are blocked under the effective target runtime policy. If the required scope has not
+already been authorized, ask the user to choose targeted additional access, temporary full access
+for setup followed by restoration, or keeping the current restrictions. Do not require full access
+as the sole solution or treat a new Discord request as permission to expand the sandbox.
+
+Finish this check before creating dependent external resources, so a missing local route or resident
+does not leave a partially configured Discord thread. Preserve active work when changing policy;
+verify the selected access and restore temporary permissions after setup. Subsequent administrative
+changes may need permission again even when ordinary monitoring and replies are working.
+
 Configure the receiver binding or managed monitor with this same `--endpoint`. Existing shared-local
 bindings are not silently migrated. For a new file monitor in initialized receiver state:
 
@@ -210,3 +275,18 @@ manipulation and periodically creating turns are outside the design.
 The original incident remains queued and must be reconciled as the same client message. The diagnosis
 and compatibility patch does not implement this missing lifecycle, and must not be described as fixing
 the unattended Desktop response failure.
+
+## Explicit dashboard reconnect
+
+The native dashboard can preview and restart an existing, exactly matched local
+macOS owner LaunchAgent after verifying idle conversations and running resident
+coverage. It does not install or assume ongoing supervision of that owner. See
+[Reconnect with the current login](DASHBOARD.md#reconnect-with-the-current-login)
+for account validation, confirmation, unsupported configurations and restoration
+limits. Snapshot refreshes remain read-only.
+
+The dashboard can reconnect the verified shared owner in Full, Read-only or
+Workspace+Net mode after an explicit preview and confirmation. These settings
+persist for every conversation on that owner. Full access is not automatically
+temporary; restore the selected restricted mode after temporary setup work.
+See [permission reconnect controls](DASHBOARD.md#reconnect-with-a-permission-mode).

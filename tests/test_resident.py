@@ -50,6 +50,78 @@ class FakeRpc:
 
 
 class ResidentTest(unittest.TestCase):
+    def test_explicit_sandbox_is_sent_on_each_registration(self):
+        class PolicyRpc(FakeRpc):
+            def call(self, method, params):
+                result = super().call(method, params)
+                if method == "thread/resume":
+                    result["sandbox"] = {"type": "dangerFullAccess"}
+                return result
+
+        keeper = ResidentKeeper("unix:///owner.sock", ["thread-a"], sandbox="danger-full-access")
+        for rpc in (PolicyRpc([]), PolicyRpc([])):
+            keeper._set_connected(rpc)
+            keeper._attach(rpc, threading.Event())
+            params = next(p for m, p in rpc.calls if m == "thread/resume")
+            self.assertEqual(params["sandbox"], "danger-full-access")
+            self.assertNotIn("approvalPolicy", params)
+
+    def test_explicit_sandbox_mismatch_is_not_ready(self):
+        keeper = ResidentKeeper("unix:///owner.sock", ["thread-a"], sandbox="danger-full-access")
+        rpc = FakeRpc([])
+        keeper._set_connected(rpc)
+        keeper._attach(rpc, threading.Event())
+        self.assertFalse(keeper.status()["threads"]["thread-a"]["ready"])
+        self.assertIn("sandbox", keeper.status()["threads"]["thread-a"]["error"]["message"])
+
+    def test_workspace_network_policy_survives_reconnect(self):
+        class PolicyRpc(FakeRpc):
+            def call(self, method, params):
+                result = super().call(method, params)
+                if method == "thread/resume":
+                    result["sandbox"] = {"type": "workspaceWrite", "networkAccess": True}
+                return result
+
+        keeper = ResidentKeeper("unix:///owner.sock", ["thread-a"],
+                                sandbox="workspace-write", network_access=True)
+        for rpc in (PolicyRpc([]), PolicyRpc([])):
+            keeper._set_connected(rpc)
+            keeper._attach(rpc, threading.Event())
+            params = next(p for m, p in rpc.calls if m == "thread/resume")
+            self.assertEqual(params["sandbox"], "workspace-write")
+            self.assertEqual(params["config"], {"sandbox_workspace_write.network_access": True})
+            self.assertNotIn("approvalPolicy", params)
+            self.assertTrue(keeper.status()["threads"]["thread-a"]["ready"])
+
+    def test_network_denial_is_not_reported_ready(self):
+        class DeniedRpc(FakeRpc):
+            def call(self, method, params):
+                result = super().call(method, params)
+                if method == "thread/resume":
+                    result["sandbox"] = {"type": "workspaceWrite", "networkAccess": False}
+                return result
+        keeper = ResidentKeeper("unix:///owner.sock", ["thread-a"],
+                                sandbox="workspace-write", network_access=True)
+        rpc = DeniedRpc([])
+        keeper._set_connected(rpc)
+        retries = keeper._attach(rpc, threading.Event())
+        self.assertFalse(keeper.status()["threads"]["thread-a"]["ready"])
+        self.assertTrue(retries["thread-a"]["terminal"])
+
+    def test_network_override_requires_workspace_mode(self):
+        for sandbox in (None, "read-only", "danger-full-access"):
+            with self.assertRaises(ValueError):
+                ResidentKeeper("unix:///owner.sock", ["thread-a"],
+                               sandbox=sandbox, network_access=True)
+
+    def test_default_does_not_override_sandbox(self):
+        keeper = ResidentKeeper("unix:///owner.sock", ["thread-a"])
+        rpc = FakeRpc([])
+        keeper._set_connected(rpc)
+        keeper._attach(rpc, threading.Event())
+        params = next(p for m, p in rpc.calls if m == "thread/resume")
+        self.assertNotIn("sandbox", params)
+
     def wait_for(self, predicate, timeout=1):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:

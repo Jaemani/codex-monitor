@@ -40,6 +40,8 @@ class ResidentKeeper:
         endpoint: str,
         threads: Iterable[str],
         *,
+        sandbox: str | None = None,
+        network_access: bool | None = None,
         rpc_factory=None,
         clock=time.monotonic,
         health_interval: float = 10.0,
@@ -86,6 +88,12 @@ class ResidentKeeper:
         if backoff_initial > backoff_max:
             raise ValueError("backoff_initial must not exceed backoff_max")
 
+        if sandbox not in (None, "read-only", "workspace-write", "danger-full-access"):
+            raise ValueError("Unsupported resident sandbox mode")
+        self.sandbox = sandbox
+        if network_access is not None and (not isinstance(network_access, bool) or sandbox != "workspace-write"):
+            raise ValueError("Network override requires workspace-write sandbox mode")
+        self.network_access = network_access
         self.endpoint = endpoint
         self.threads = values
         self._rpc_factory = rpc_factory or Rpc
@@ -182,7 +190,24 @@ class ResidentKeeper:
             # Hydrating the entire persisted rollout can exceed the WebSocket
             # frame limit for long/MCP-heavy conversations before the server
             # can return the successful resume response.
-            rpc.call(_RESUME_METHOD, {"threadId": thread, "excludeTurns": True})
+            params = {"threadId": thread, "excludeTurns": True}
+            if self.sandbox is not None:
+                params["sandbox"] = self.sandbox
+            if self.network_access is not None:
+                params["config"] = {"sandbox_workspace_write.network_access": self.network_access}
+            result = rpc.call(_RESUME_METHOD, params)
+            if self.sandbox is not None:
+                expected = {"read-only": "readOnly", "workspace-write": "workspaceWrite",
+                            "danger-full-access": "dangerFullAccess"}[self.sandbox]
+                actual = result.get("sandbox") if isinstance(result, dict) else None
+                if not isinstance(actual, dict) or actual.get("type") != expected:
+                    raise RpcError({"code": -32600, "message":
+                        "Owner did not confirm the requested sandbox mode. Inspect the existing "
+                        "thread policy and restart the idle owner if required; no turn was submitted."})
+                if self.network_access is not None and actual.get("networkAccess") is not self.network_access:
+                    raise RpcError({"code": -32600, "message":
+                        "Owner did not confirm the requested network access. Inspect the effective "
+                        "workspace policy; no turn was submitted and full access was not enabled."})
         except RpcError as error:
             # A target-specific rejection does not stop other saved threads.
             classification = self._registration_classification("thread resume", error)
@@ -365,6 +390,8 @@ class ResidentKeeper:
             )
             return {
                 "endpoint": self.endpoint,
+                "requested_sandbox": self.sandbox,
+                "requested_network_access": self.network_access,
                 "connected": self._connected,
                 "subscribed": subscribed,
                 "threads": copy.deepcopy(self._states),

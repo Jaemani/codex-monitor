@@ -1,9 +1,7 @@
-name: Rust candidate
+name: Canonical Rust runtime
 on:
   push:
-    paths: ['rust/**', '.github/workflows/rust.yml']
   pull_request:
-    paths: ['rust/**', '.github/workflows/rust.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,3 +19,8 @@ jobs:
       - run: cargo +1.97.1 fmt --manifest-path rust/Cargo.toml --check
       - run: cargo +1.97.1 clippy --locked --manifest-path rust/Cargo.toml --all-targets -- -D warnings
       - run: cargo +1.97.1 test --locked --manifest-path rust/Cargo.toml
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - run: python scripts/check-publication.py
+      - run: python scripts/build-release.py --out dist

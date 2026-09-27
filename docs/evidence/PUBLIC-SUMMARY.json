@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-10",
+  "date": "2026-09-27",
   "kind": "curated summary; original logs retained locally, not independently reproducible evidence",
   "records": [
     {
@@ -2073,6 +2073,325 @@
       "native_delivery_verified": false,
       "desktop_ui_verified": false,
       "installed_runtime_upgraded": false
+    },
+    {
+      "date": "2026-09-25",
+      "result": "PASS",
+      "scope": "macOS Python sampler process ownership; real local children and installed-wheel fake-owner isolation; no model turn",
+      "python": "3.13.14",
+      "checks": {
+        "clean_full_suite_tests": 229,
+        "final_focused_sampler_tests": 28,
+        "installed_isolation_checks_passed": 17,
+        "early_child_exit_reaped": true,
+        "post_spawn_setup_failure_reaped": true,
+        "spawn_failure_circuit_global": true,
+        "malformed_result_circuit": true,
+        "shutdown_stops_admission": true,
+        "receiver_death_terminates_sampler": true
+      },
+      "limitations": "Full suite preceded the final two focused regressions. No new Linux run or real Codex/Discord authentication validation. Private incident and deployment logs retained outside Git."
+    },
+    {
+      "date": "2026-09-25",
+      "scope": "dashboard execution visibility",
+      "validation": "235 local tests passed; 37 final focused tests passed",
+      "observed": "Read-only live probe exposes conversation execution-error instead of ready-to-receive",
+      "limits": "No model execution, credential repair, remote reply delivery, or outbound alert verified"
+    },
+    {
+      "date": "2026-09-25",
+      "scope": "in-place dashboard inspector",
+      "validation": "28 dashboard tests passed; native terminal overview/expansion visually verified",
+      "limits": "Screen-reader and cross-terminal compatibility not established; no route or authentication changes"
+    },
+    {
+      "date": "2026-09-25",
+      "scope": "dashboard overall readability",
+      "validation": "29 dashboard tests passed; installed overview and error inspector visually reviewed",
+      "limits": "Terminal font settings and screen-reader conformance not changed or verified"
+    },
+    {
+      "date": "2026-09-25",
+      "scope": "independent product and interaction review revision",
+      "validation": "238 full-suite tests; 32 final dashboard tests; native overview and issue navigation checked",
+      "limits": "No model success, credential recovery, or screen-reader compliance established"
+    },
+    {
+      "date": "2026-09-27",
+      "result": "PASS_WITH_LIMITS",
+      "scope": "Python dashboard authentication retry and native execution error visibility",
+      "source_tests_passed": 266,
+      "focused_tests_passed": 64,
+      "pty": "Keyboard retry, error text, wrapped result and exit verified with a fake owner",
+      "live_read_only": "Reported token refresh failure retrieved from three explicit-owner routes",
+      "operational_authentication_retried": false,
+      "model_execution_verified": false,
+      "installed_modules_match_source": true,
+      "installed_receiver_ready": true,
+      "configuration_and_credentials_preserved": true
+    },
+    {
+      "date": "2026-09-27",
+      "result": "PARTIAL_LIVE_RESTORATION",
+      "scope": "Python dashboard explicit current-login owner reconnect",
+      "source_tests_passed": 279,
+      "reconnect_regressions": 13,
+      "pty": "Preview, second activation and result verified with fake backend",
+      "live_owner_current_account_verified": true,
+      "original_conversations_restored": 7,
+      "original_conversations_expected": 8,
+      "remaining_issue": "Saved custom model provider absent from configuration; provider change awaits user choice",
+      "guard_added": "Reject saved custom/unknown providers before restart",
+      "model_execution_verified": false,
+      "installed_source_match": true,
+      "installed_receiver_ready": true,
+      "configuration_and_credentials_preserved": true
+    },
+    {
+      "date": "2026-09-27",
+      "result": "PASS_WITH_LIMITS",
+      "scope": "Optional project-scoped model-provider validation",
+      "focused_tests_passed": 101,
+      "reconnect_tests_passed": 17,
+      "named_provider_required": false,
+      "configuration_changed": false,
+      "live_read_only": "Missing provider definition confirmed for the unresolved conversation",
+      "custom_provider_model_execution_verified": false,
+      "installed_backend_matches_source": true,
+      "installed_receiver_ready": true,
+      "real_optional_provider_config_read": true,
+      "user_configuration_preserved": true
+    },
+    {
+      "date": "2026-09-27",
+      "result": "RESUME_PERMISSION_RECOVERED",
+      "scope": "Codex 0.157.1 disposable resume protocol and installed local owner recovery",
+      "checks": {
+        "explicit_resume_policy_confirmed": true,
+        "restored_idle_threads": 7,
+        "owner_command_authenticated_discord_get_passed": true,
+        "discord_message_sent": false,
+        "model_turn_started": false,
+        "missing_provider_task_resolved": false
+      },
+      "limitations": [
+        "Permission metadata and command/exec GET verification are not a model tool turn or successful message POST.",
+        "Concurrent clients were observed during recovery but are not necessary to reproduce the legacy permission reset."
+      ],
+      "superseded_by": "Workspace networking repair: full access was an interim workaround, not a Discord requirement."
+    },
+    {
+      "date": "2026-09-27",
+      "result": "WORKSPACE_NETWORK_REPAIR_VERIFIED",
+      "scope": "Installed owner and resident; no model turn or Discord POST",
+      "checks": {
+        "source_tests": 289,
+        "loaded_idle_conversations": 7,
+        "sandbox": "workspaceWrite",
+        "networkAccess": true,
+        "authenticated_discord_get": true,
+        "outside_workspace_write_denied": true,
+        "full_access_service_flags_removed": true,
+        "missing_provider_task_resolved": false
+      },
+      "limitations": [
+        "Outbound networking is enabled generally, not restricted to Discord.",
+        "Read-only Discord verification does not assert successful message posting."
+      ]
+    },
+    {
+      "date": "2026-09-27",
+      "result": "PERMISSION_RECONNECT_CONTROLS_IMPLEMENTED",
+      "scope": "Simulated service transactions, dashboard rendering/actions, and disposable native App Server policy responses",
+      "checks": {
+        "mode_specific_confirmation": true,
+        "shared_scope_preview": true,
+        "queue_gate": true,
+        "service_backups_and_rollback_tests": true,
+        "effective_policy_verification_tests": true,
+        "native_full_readonly_workspace_responses_verified": true,
+        "installed_runtime_matches_source": true,
+        "live_owner_policy_changed_for_validation": false,
+        "discord_post_sent": false
+      },
+      "limitations": [
+        "Full access persists until another mode is selected; no automatic expiry.",
+        "Live production mode switching was not performed to test the feature.",
+        "Read-only disables command networking; filesystem mode does not grant Discord API permissions."
+      ]
+    },
+    {
+      "date": "2026-09-27",
+      "result": "DASHBOARD_READABILITY_REGRESSIONS_PASSED",
+      "scope": "Local rendering and saved-service configuration tests",
+      "checks": {
+        "focused_tests_passed": 92,
+        "wide_actions_single_row": true,
+        "disabled_routes_excluded_from_active_summary": true,
+        "live_permissions_changed": false,
+        "discord_messages_sent": false
+      }
+    },
+    {
+      "date": "2026-09-27",
+      "result": "CANONICAL_RUST_RUNTIME_ADOPTED",
+      "scope": "Local Rust contracts, real PTY, offline state migration, native macOS receiver/resident cutover and archive installation",
+      "checks": {
+        "rust_tests_passed": 53,
+        "strict_clippy": true,
+        "native_receiver_ready": true,
+        "native_resident_services": 2,
+        "bindings_preserved": 65,
+        "events_migrated": 224,
+        "managed_watches_preserved": 43,
+        "conversation_metadata_rows": 20,
+        "replies_preserved": 1,
+        "native_deduplication_ids_preserved": true,
+        "unchanged_baselines_generated_events": 0,
+        "installed_binary_matches_release": true,
+        "archive_manifest_entries_verified": 12,
+        "archive_contains_python_wheel": false,
+        "permission_modes_changed": false,
+        "discord_post_sent_for_validation": false
+      },
+      "limitations": [
+        "Hosted CI has not run for this unpublished revision.",
+        "Native service supervision remains macOS-only; Linux requires an external supervisor.",
+        "Production Full Access/Read-only mode switching was not performed during adoption.",
+        "Existing unavailable provider configurations are preserved rather than silently replaced."
+      ]
+    },
+    {
+      "date": "2026-09-27",
+      "result": "POST_ADOPTION_SHORT_RUN_CHECKS_PASSED",
+      "scope": "Installed Rust 0.2.0; disposable fake-owner outage and collector comparison",
+      "checks": {
+        "outage_seconds": 120,
+        "sigkill_restart_recovered_once": true,
+        "accepted_receipt_not_replayed": true,
+        "functional_checks_per_runtime": 61,
+        "functional_runtimes": 2,
+        "production_sample_errors": 0,
+        "production_samples_observed": 2240,
+        "model_turns_started_for_validation": 0
+      },
+      "collector_comparison": {
+        "watches": 7,
+        "file_bytes": 4077,
+        "interval_seconds": 2,
+        "seconds_per_phase": 60,
+        "python": {
+          "idle": {
+            "samples": 245,
+            "rss_kib_median": 20752,
+            "rss_kib_p95": 47664,
+            "rss_kib_peak": 68800,
+            "sampled_process_births": 179,
+            "before": {
+              "events": 0,
+              "db_bytes": 73728,
+              "wal_bytes": 4152
+            },
+            "after": {
+              "events": 0,
+              "db_bytes": 73728,
+              "wal_bytes": 4120032
+            }
+          },
+          "burst": {
+            "samples": 246,
+            "rss_kib_median": 17984.0,
+            "rss_kib_p95": 42208,
+            "rss_kib_peak": 66960,
+            "sampled_process_births": 168,
+            "before": {
+              "events": 0,
+              "db_bytes": 73728,
+              "wal_bytes": 4120032
+            },
+            "after": {
+              "events": 7,
+              "db_bytes": 81920,
+              "wal_bytes": 4120032
+            }
+          },
+          "whole_run_waited_cpu_seconds": 25.832940999999998
+        },
+        "rust": {
+          "idle": {
+            "samples": 243,
+            "rss_kib_median": 30832,
+            "rss_kib_p95": 35536,
+            "rss_kib_peak": 39712,
+            "sampled_process_births": 5,
+            "before": {
+              "events": 0,
+              "db_bytes": 151552,
+              "wal_bytes": 28872
+            },
+            "after": {
+              "events": 0,
+              "db_bytes": 151552,
+              "wal_bytes": 28872
+            }
+          },
+          "burst": {
+            "samples": 240,
+            "rss_kib_median": 28016.0,
+            "rss_kib_p95": 31392,
+            "rss_kib_peak": 31872,
+            "sampled_process_births": 0,
+            "before": {
+              "events": 0,
+              "db_bytes": 151552,
+              "wal_bytes": 28872
+            },
+            "after": {
+              "events": 7,
+              "db_bytes": 151552,
+              "wal_bytes": 1656272
+            }
+          },
+          "whole_run_waited_cpu_seconds": 0.43918199999999996
+        },
+        "both_no_loss": true
+      },
+      "limitations": [
+        "Short-run evidence, not a long-duration soak or Discord delivery certification.",
+        "Legacy Python working-tree source; not the exact former installed interpreter/release.",
+        "Sequential RSS measurements on a compressed, concurrently loaded host; short-lived workers may be missed.",
+        "Rust median RSS was higher; only sampled peaks and whole-run CPU decreased.",
+        "Owner, resident, dashboard and external-tool memory excluded.",
+        "Production permission switching was not exercised."
+      ]
+    },
+    {
+      "date": "2026-09-27",
+      "result": "NATIVE_DISCORD_GATEWAYS_ADOPTED",
+      "scope": "Two real Discord connections and local protocol tests, not model/reply completion",
+      "checks": {
+        "native_gateway_services": 2,
+        "fresh_ready_after_recovery": true,
+        "legacy_adapter_receipt_counts_preserved": [
+          77,
+          12
+        ],
+        "raw_pending_observed": 0,
+        "rust_tests_passed": 61,
+        "gateway_tests_passed": 8,
+        "legacy_python_tests_passed": 322,
+        "strict_clippy": true,
+        "operational_codex_owner_restarted": false,
+        "synthetic_discord_posts": 0,
+        "initial_registration_rollback_succeeded": true
+      },
+      "limitations": [
+        "One legacy dashboard remains while its child Codex TUI is open; replacement command already points to Rust.",
+        "Optional legacy request_lifecycle observer is rejected, not silently ignored; disabled in both deployments.",
+        "One-shot project reply CLIs remain separate integrations.",
+        "No long-duration soak or completed Discord reply claimed."
+      ]
     }
   ]
 }

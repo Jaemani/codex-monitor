@@ -3,9 +3,10 @@
 Date: 2026-09-10. Branch: `codex/rust-runtime`. Tracking:
 [#14](https://github.com/Jaemani/codex-monitor/issues/14).
 
-**Decision: keep the Rust implementation as an isolated candidate. Do not switch
-the installed Python runtime yet.** Lower resource use is useful evidence, but it
-does not close missing workflow or platform coverage.
+**Historical evaluation, superseded by the Rust adoption work on 2026-09-27.**
+Rust is now the canonical source implementation. The measurements and incomplete
+coverage recorded below describe their original dates, not current adoption status.
+See [installation and migration](INSTALLATION.md) and [current status](STATUS.md).
 
 ## Follow-up verification: 2026-09-12
 

@@ -1,4 +1,5 @@
 """Loopback ingress for webhooks, agents and external monitoring adapters."""
+import os
 import hmac
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -114,6 +115,8 @@ class Server:
         self.stop = threading.Event()
         self.worker = None
         self.worker_error = None
+        self.started_monotonic = time.monotonic()
+        self.resource_provider = None
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -308,6 +311,9 @@ class Server:
                         if path == "/v1/status":
                             self.reply(200, {
                                 **owner.monitor.status(), "worker_error": owner.worker_error,
+                                "runtime": {"pid": os.getpid(),
+                                            "uptime_seconds": time.monotonic() - owner.started_monotonic,
+                                            "sampler": owner.resource_provider() if owner.resource_provider else {"available": False}},
                                 "capabilities": {
                                     "request_lifecycle": True,
                                     "managed_json_predicates": True,

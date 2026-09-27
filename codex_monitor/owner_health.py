@@ -11,7 +11,9 @@ from __future__ import annotations
 from collections import OrderedDict
 import json
 import math
+import re
 import time
+import unicodedata
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
@@ -258,6 +260,47 @@ def _account_observation(result: Any) -> dict[str, Any]:
     }
 
 
+def _safe_error_message(message: str, token: str | None = None) -> str:
+    """Bound native error text and redact common credential representations."""
+    if token:
+        message = message.replace(token, "<REDACTED>")
+    message = re.sub(r"(?i)\bBearer\s+[^\s,;]+", "Bearer <REDACTED>", message)
+    message = re.sub(r"\bsk-[A-Za-z0-9_-]+", "<REDACTED>", message)
+    message = re.sub(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", "<REDACTED>", message)
+    message = re.sub(
+        r'''(?i)(["']?(?:access_token|refresh_token|id_token|api_key|password)["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}]+)''',
+        r"\1<REDACTED>", message,
+    )
+    message = re.sub(r"(?i)\b(?:https?|wss?)://\S+", "<URL REDACTED>", message)
+    message = "".join(" " if unicodedata.category(c).startswith("C") else c for c in message)
+    return message[:2000]
+
+
+def _latest_execution_error(rpc: Any, thread: str, *, timeout: float,
+                            token: str | None) -> dict[str, Any]:
+    """Read only the newest turn; older failures must not become current errors."""
+    try:
+        page = rpc.call("thread/turns/list", {
+            "threadId": thread, "limit": 1, "sortDirection": "desc", "itemsView": "notLoaded",
+        }, timeout=timeout)
+    except _RpcError as exc:
+        return {"status": "unsupported" if _unsupported(exc) else "unavailable"}
+    except Exception:
+        return {"status": "unavailable"}
+    rows = page.get("data") if isinstance(page, dict) else None
+    if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+        return {"status": "unavailable"}
+    turn = rows[0]
+    error = turn.get("error")
+    message = error.get("message") if isinstance(error, dict) else None
+    if turn.get("status") != "failed" or not isinstance(message, str) or not message.strip():
+        return {"status": "unavailable"}
+    # Classify the actual failed turn, never an older error or account presence.
+    auth = _auth_error(RuntimeError(message))
+    return {"status": "observed", "kind": "authentication" if auth else "execution",
+            "message": _safe_error_message(message, token)}
+
+
 def _base(endpoint: str, thread: str) -> dict[str, Any]:
     return {
         "endpoint": _display_endpoint(endpoint),
@@ -346,6 +389,7 @@ def probe_owner(
             result.update(status="unloaded", state="unloaded", reason="conversation is not loaded by this owner")
             return result
 
+        status = None
         try:
             thread_read = rpc.call(
                 "thread/read", {"threadId": thread, "includeTurns": False}, timeout=timeout
@@ -370,6 +414,11 @@ def probe_owner(
                 if status is None and isinstance(thread_read.get("thread"), dict):
                     status = _status_value(thread_read["thread"].get("status"))
             result["thread_read"] = {"status": status or "observed"}
+        if status == "systemError":
+            result.update(status="execution-error", state="execution-error", ready=False,
+                          reason="conversation reports systemError; inspect execution error before restarting")
+            result["execution_error"] = _latest_execution_error(rpc, thread, timeout=timeout, token=token)
+            return result
         result.update(status="ready-to-receive", state="ready-to-receive", ready=True,
                       reason="owner transport reachable and conversation loaded")
         return result

@@ -58,6 +58,144 @@ class DashboardError(RuntimeError):
     """A state inventory could not be read safely."""
 
 
+class AuthRetry:
+    """One bounded background action; repeated clicks cannot spawn more work."""
+
+    def __init__(self, reader, *, retry=None, clock=time.monotonic):
+        from .owner_recovery import retry_owner_auth
+        self.reader = reader
+        self.retry = retry or retry_owner_auth
+        self.clock = clock
+        self.lock = threading.Lock()
+        self.running = False
+        self.target = None
+        self.message = None
+        self.next_attempt = 0.0
+
+    def start(self, target):
+        target = dict(target)
+        with self.lock:
+            if self.running:
+                return "An authentication retry is already running."
+            if self.clock() < self.next_attempt:
+                return "Wait 30 seconds between authentication retries."
+            # A retry affects the owner, which may serve several conversations.
+            self.reader.selected_binding(target["binding"], target["thread"], target["endpoint"])
+            self.target = dict(target)
+            self.running = True
+            self.message = "Retrying owner authentication once; other conversations may share this owner."
+            self.next_attempt = self.clock() + 30.0
+
+        def run():
+            try:
+                # Recheck after scheduling; never retarget a changed binding.
+                binding = self.reader.selected_binding(target["binding"], target["thread"], target["endpoint"])
+                message = self.retry(binding["endpoint"], token=server_token())
+            except DashboardError as exc:
+                message = str(exc)
+            except Exception:
+                message = "Could not prepare owner authentication. Check the configured connection credentials."
+            with self.lock:
+                self.message = message
+                self.running = False
+
+        try:
+            threading.Thread(target=run, name="codex-monitor-auth-retry", daemon=True).start()
+        except Exception:
+            with self.lock:
+                self.running = False
+                self.message = "Could not start authentication retry. Try again later."
+        return None
+
+    def notice(self, target):
+        with self.lock:
+            return self.message if target == self.target else None
+
+
+class ReconnectAction(AuthRetry):
+    """Preview a shared restart, then execute only on a second explicit action."""
+
+    def __init__(self, reader, *, backend=None, clock=time.monotonic):
+        from .owner_reconnect import OwnerReconnect
+        super().__init__(reader, clock=clock)
+        self.backend = backend or OwnerReconnect(reader.root)
+        self.plan = None
+
+    def inspect_permissions(self, target):
+        target = dict(target)
+        with self.lock:
+            if self.running:
+                return "An owner inspection is already running."
+            self.reader.selected_binding(target["binding"], target["thread"], target["endpoint"])
+            self.target, self.plan, self.running = target, None, True
+            self.message = "Reading saved owner permissions..."
+        def run():
+            try:
+                owner, residents = self.backend._configuration(target["endpoint"])
+                from .owner_reconnect import _option
+                modes = set()
+                for job in residents:
+                    mode = _option(job.args, "--sandbox")
+                    label = {"danger-full-access": "Full Access", "read-only": "Read-only", "workspace-write": "Workspace"}.get(mode, "Unknown")
+                    if mode == "workspace-write" and "--network-access" in job.args:
+                        label = "Project Access"
+                    modes.add(label)
+                modes = sorted(modes)
+                message = "Current saved resident policy: " + ", ".join(modes) + ". Effective permissions are verified after applying a change."
+            except Exception:
+                message = "Current saved policy unavailable. Select a mode to run the full compatibility check."
+            with self.lock:
+                self.message, self.running = message, False
+        threading.Thread(target=run, name="codex-monitor-permission-inspection", daemon=False).start()
+        return None
+
+    def start(self, target, policy=None):
+        from .owner_reconnect import ReconnectError
+        target = dict(target)
+        with self.lock:
+            if self.running:
+                return "An owner reconnect check is already running."
+            if self.clock() < self.next_attempt:
+                return "Wait 30 seconds between owner restarts."
+            self.reader.selected_binding(target["binding"], target["thread"], target["endpoint"])
+            plan = self.plan if self.target == target and getattr(self.plan, "policy", None) == policy else None
+            if plan and self.clock() - plan.created > 60:
+                plan = None
+            self.plan = None
+            self.target = target
+            self.running = True
+            self.message = "Reconnecting owner with the current login..." if plan else "Checking shared owner and affected conversations..."
+            if plan:
+                self.next_attempt = self.clock() + 30
+
+        def run():
+            prepared = None
+            try:
+                self.reader.selected_binding(target["binding"], target["thread"], target["endpoint"])
+                if plan:
+                    message = self.backend.execute(plan)
+                else:
+                    prepared = (self.backend.plan(target["endpoint"], target["thread"], policy=policy) if policy
+                                else self.backend.plan(target["endpoint"], target["thread"]))
+                    message = prepared.summary()
+            except (DashboardError, ReconnectError) as exc:
+                message = str(exc)
+            except Exception:
+                message = "Owner reconnect could not complete. Inspect owner status and current login before retrying."
+            with self.lock:
+                self.message, self.plan, self.running = message, prepared, False
+
+        try:
+            # Keep cleanup alive if the dashboard closes during a fresh-login
+            # probe or a restart. Rpc owns and reaps its short-lived child.
+            threading.Thread(target=run, name="codex-monitor-owner-reconnect", daemon=False).start()
+        except Exception:
+            with self.lock:
+                self.running = False
+                self.message = "Could not start reconnect. Try again later."
+        return None
+
+
 def _open_endpoint(endpoint: Any) -> str:
     """Validate one stored owner endpoint for an explicit TUI resume."""
 
@@ -441,6 +579,8 @@ class DashboardReader:
     ):
         self.root = Path(root).expanduser().resolve()
         self.thread = thread
+        from .resource_metrics import ResourceSampler
+        self._resources = ResourceSampler(self.root)
         self.clock = clock
         self._owner_health = bool(owner_health)
         if owner_probe is False:
@@ -455,7 +595,6 @@ class DashboardReader:
         """Attach cached owner observations without creating local runtimes."""
 
         deadline = time.monotonic() + OWNER_HEALTH_BUDGET
-        endpoint_observations: dict[str, dict[str, Any]] = {}
         for connection in connections:
             thread = connection.get("thread")
             for binding in connection.get("bindings") or []:
@@ -497,37 +636,9 @@ class DashboardReader:
                     )
                     continue
                 try:
-                    observed = endpoint_observations.get(endpoint)
-                    if observed is None:
-                        observed = self._owner_cache.get(endpoint, thread)
-                        endpoint_observations[endpoint] = observed
-                    elif isinstance(observed.get("loaded_threads"), list):
-                        # One endpoint probe already fetched the bounded loaded
-                        # list. Reuse that observation for sibling routes and
-                        # avoid reconnecting once per thread every refresh.
-                        observed = copy.deepcopy(observed)
-                        loaded = set(observed.get("loaded_threads") or ())
-                        observed["thread"] = thread
-                        observed["thread_loaded"] = thread in loaded
-                        if observed["status"] in {"ready-to-receive", "unloaded"}:
-                            if thread in loaded:
-                                observed.update(
-                                    status="ready-to-receive",
-                                    state="ready-to-receive",
-                                    ready=True,
-                                    reason="owner transport reachable and conversation loaded",
-                                )
-                            else:
-                                observed.update(
-                                    status="unloaded",
-                                    state="unloaded",
-                                    ready=False,
-                                    reason="conversation is not loaded by this owner",
-                                )
-                        observed.pop("thread_read", None)
-                    else:
-                        observed = copy.deepcopy(observed)
-                        observed["thread"] = thread
+                    # Health is conversation-specific; never copy another
+                    # conversation's success or failure across an endpoint.
+                    observed = self._owner_cache.get(endpoint, thread)
                     binding["owner_health"] = observed
                 except Exception:
                     # An injected probe is test/application code; retain the
@@ -589,6 +700,7 @@ class DashboardReader:
             missing = sorted(required - tables)
             if missing:
                 raise DashboardError("monitor database is missing table(s): " + ", ".join(missing))
+            event_columns = _columns(db, "events")
             binding_columns = _columns(db, "bindings")
             managed_columns = _columns(db, "managed_watches") if "managed_watches" in tables else set()
             connections: dict[str, dict[str, Any]] = {}
@@ -622,7 +734,29 @@ class DashboardReader:
                     )
                 }
                 latest = _latest_event(db, row["name"], now)
-                item["events"] = {"counts": counts, "latest": latest}
+                oldest = db.execute(
+                    "SELECT min(created) FROM events WHERE binding=? AND state IN ('pending','submitting','uncertain')",
+                    (row["name"],),
+                ).fetchone()[0]
+                item["events"] = {"counts": counts, "latest": latest,
+                                  "oldest_unresolved_age_seconds": _age(oldest, now)}
+                if {"created", "updated", "attempts"} <= event_columns:
+                    accepted = db.execute(
+                        "SELECT created,updated FROM events WHERE binding=? AND state='accepted' "
+                        "ORDER BY updated DESC LIMIT 100", (row["name"],)
+                    ).fetchall()
+                    durations = sorted(max(0, event["updated"] - event["created"]) for event in accepted)
+                    retries = db.execute(
+                        "SELECT count(*) FROM events WHERE binding=? AND attempts>1 "
+                        "AND state IN ('pending','submitting','uncertain')", (row["name"],)
+                    ).fetchone()[0]
+                    item["events"]["delivery_metrics"] = {
+                        "accepted_sample_size": len(durations),
+                        "acceptance_latency_median_seconds": durations[len(durations) // 2] if durations else None,
+                        "last_accepted_at": accepted[0]["updated"] if accepted else None,
+                        "retrying_unresolved": retries,
+                        "scope": "latest 100 queue acceptances; elapsed since local ingest, not reply latency",
+                    }
                 for state, count in counts.items():
                     value["events"]["counts"][state] = value["events"]["counts"].get(state, 0) + count
                 if latest and (
@@ -692,6 +826,8 @@ class DashboardReader:
         # Network probes run after the SQLite snapshot is closed. This keeps a
         # slow or unavailable owner from holding a read transaction open.
         self._attach_owner_health(inventory)
+        from .permission_status import configured_permissions
+        configured_permissions(self.root, inventory)
         return inventory, []
 
     def _receiver(self) -> dict[str, Any]:
@@ -757,6 +893,7 @@ class DashboardReader:
             degraded = bool(payload.get("worker_error"))
             result.update({
                 "status_checked": True,
+                "runtime": payload.get("runtime") if isinstance(payload.get("runtime"), dict) else {},
                 "ready": True,
                 "health": "degraded" if degraded else "ready",
                 "capabilities": {
@@ -790,13 +927,16 @@ class DashboardReader:
                 "receiver": self._receiver(),
                 "connections": [],
             }
+        receiver = self._receiver()
+        resources = self._resources.sample(receiver.get("runtime"), connections)
         return {
             "ok": True,
             "read_only": True,
+            "resources": resources,
             "generated_at": now,
             "scope": _dashboard_scope(),
             "thread_filter": _safe(self.thread) if self.thread is not None else None,
-            "receiver": self._receiver(),
+            "receiver": receiver,
             "connections": connections,
             "warnings": warnings,
             "note": "Dashboard scope: persisted event-delivery observations, explicit request lifecycle work reports, and bounded read-only explicit-owner readiness probes; live model, tool, and external source telemetry are not collected.",
@@ -865,7 +1005,7 @@ def _paint(text: Any, code: int | None, color: bool) -> str:
 _STATUS_DOTS = {
     "ERROR": ("●", 31),
     "ON": ("●", 32),
-    "OFF": ("●", 31),
+    "OFF": ("○", 90),
     "STALE": ("●", 33),
     "UNKNOWN": ("●", 90),
 }
@@ -908,7 +1048,7 @@ def _owner_health_status(binding: dict[str, Any]) -> str:
 
     health = binding.get("owner_health") or {}
     status = health.get("status") or health.get("state")
-    if status == "auth-required":
+    if status in {"auth-required", "execution-error"}:
         return "ERROR"
     if status in {"unavailable", "unloaded"}:
         return "STALE"
@@ -954,7 +1094,7 @@ def _work_report_summary(value: dict[str, Any]) -> str:
 def _event_state(value: Any, *, technical: bool = False) -> str:
     known = {
         "pending": "pending",
-        "accepted": "sent to Codex",
+        "accepted": "queue accepted",
         "in_progress": "in progress",
         "completed": "completed",
         "failed": "failed",
@@ -1007,14 +1147,35 @@ def _preferred_route(connection: dict[str, Any]) -> int:
             1 if binding.get("enabled") is True else
             2 if explicit else 3
         )
+        if binding.get("enabled") and (
+            (binding.get("owner_health") or {}).get("status") in {"auth-required", "execution-error", "unavailable"}
+            or ((binding.get("events") or {}).get("latest") or {}).get("error")
+        ):
+            rank = -1
         ranked.append((rank, index))
     return min(ranked, default=(0, 0))[1]
+
+
+def _backlog_attention(connection: dict[str, Any]) -> str | None:
+    for binding in connection.get("bindings") or []:
+        if binding.get("enabled") is False:
+            continue
+        events = binding.get("events") or {}
+        if events.get("counts", {}).get("uncertain", 0):
+            return "Delivery uncertain · inspect receipts before replay"
+        age = _number(events.get("oldest_unresolved_age_seconds"))
+        if age is not None and age >= 3600:
+            return f"Delivery backlog {_age_text(age)} · inspect receipts"
+    return None
 
 
 def _conversation_status(connection: dict[str, Any]) -> str:
     """Report known faults without treating enabled delivery as model readiness."""
 
     bindings = connection.get("bindings") or []
+    if bindings and all(b.get("enabled") is False for b in bindings):
+        return "OFF"
+    bindings = [b for b in bindings if b.get("enabled") is not False]
     for binding in bindings:
         events = binding.get("events") or {}
         latest = events.get("latest") or {}
@@ -1027,7 +1188,9 @@ def _conversation_status(connection: dict[str, Any]) -> str:
     collector_states = [_collector_status(item) for item in connection.get("collectors") or []]
     if "STALE" in collector_states:
         return "STALE"
-    owner_states = [_owner_health_status(binding) for binding in bindings]
+    if _backlog_attention(connection):
+        return "STALE"
+    owner_states = [_owner_health_status(binding) for binding in bindings if binding.get("enabled")]
     if "ERROR" in owner_states:
         return "ERROR"
     statuses = [_binding_status(binding) for binding in bindings]
@@ -1094,14 +1257,21 @@ def _conversation_activity(connection: dict[str, Any]) -> str:
 
     owner_states = [
         (binding.get("owner_health") or {}).get("status")
-        for binding in connection.get("bindings") or []
+        for binding in connection.get("bindings") or [] if binding.get("enabled")
     ]
+    if "execution-error" in owner_states:
+        return "Execution error · inspect owner; do not blindly restart"
     if "auth-required" in owner_states:
         return "Owner authentication required"
     if "unavailable" in owner_states:
         return "Owner unavailable"
     if "unloaded" in owner_states:
         return "Conversation unloaded from owner"
+    if not any(b.get("enabled") for b in connection.get("bindings") or []):
+        return "Routes paused"
+    attention = _backlog_attention(connection)
+    if attention:
+        return attention
 
     counts: dict[str, int] = {}
     latest: dict[str, Any] | None = None
@@ -1131,6 +1301,8 @@ def _conversation_activity(connection: dict[str, Any]) -> str:
     if latest is not None:
         state = latest.get("state")
         count = counts.get(state, 1)
+        if state == "accepted":
+            return "Queue accepted · execution unverified"
         return f"{count} {_event_state(state)} · {_age_text(latest.get('age_seconds'))} ago"
     state, count = max(counts.items(), key=lambda item: item[1])
     return f"{count} {_event_state(state)}"
@@ -1211,7 +1383,48 @@ def _fit(text: Any, width: int) -> str:
 
 def _route_counts(bindings: list[dict[str, Any]]) -> str:
     active = sum(binding.get("enabled") is True for binding in bindings)
-    return f"{active} active / {len(bindings) - active} paused"
+    return f"{active} enabled / {len(bindings) - active} paused"
+
+
+def _connection_state_label(connection: dict[str, Any]) -> str:
+    state = _conversation_status(connection)
+    owners = {(b.get("owner_health") or {}).get("status")
+              for b in connection.get("bindings") or [] if b.get("enabled")}
+    if "auth-required" in owners:
+        return "Login required"
+    if "execution-error" in owners:
+        return "Execution error"
+    return {"ON": "Connected", "OFF": "Paused", "ERROR": "Delivery error",
+            "STALE": "Needs review", "UNKNOWN": "Not verified"}.get(state, "Not verified")
+
+
+def _connection_next_step(connection: dict[str, Any]) -> str:
+    label = _connection_state_label(connection)
+    if label == "Login required":
+        return "Sign in to the execution service"
+    if label == "Execution error":
+        return "Check the failed run"
+    if _backlog_attention(connection):
+        return "Review undelivered messages"
+    return {"Connected": "No connection issue detected",
+            "Paused": "No new deliveries",
+            "Delivery error": "Inspect delivery details",
+            "Needs review": "Check connection and delivery",
+            "Not verified": "Check the execution service"}.get(label, "Inspect details")
+
+
+def _connection_last_seen(connection: dict[str, Any]) -> str:
+    latest = [b.get("events", {}).get("latest") for b in connection.get("bindings") or []]
+    ages = [age for item in latest if item
+            if (age := _number(item.get("age_seconds"))) is not None]
+    return _age_text(min(ages)) + " ago" if ages else "No activity"
+
+
+def _last_delivery(binding: dict[str, Any]) -> str:
+    latest = (binding.get("events") or {}).get("latest") or {}
+    if not latest:
+        return "No delivery recorded"
+    return _event_state(latest.get("state")) + " · " + _age_text(latest.get("age_seconds")) + " ago"
 
 
 def _open_hint(binding: dict[str, Any]) -> str:
@@ -1231,49 +1444,35 @@ def _connection_panel(snapshot, selected, selected_route, width, height, color, 
         return ["No routes registered"]
     index = selected_route % len(bindings)
     binding = bindings[index]
-    lines = ["  " + _safe(connection.get("project") or "Ungrouped") + " / " + _conversation_label(connection),
-             "  Routes: " + _route_counts(bindings) + " · Tab / [ ] browse all"]
-    receiver = snapshot.get("receiver") or {}
-    if receiver.get("reason"):
-        lines.insert(1, "  Receiver: " + _safe(receiver["reason"]))
-    count = max(1, min(5, height - 17))
-    start = min(max(0, index - count // 2), max(0, len(bindings) - count))
-    lines.append(f"  Registered event routes · showing {start + 1}–{min(start + count, len(bindings))}/{len(bindings)}")
-    for i in range(start, min(start + count, len(bindings))):
-        item = bindings[i]
-        state = "active" if item.get("enabled") else "paused"
-        kind = "file" if "managed/file" in (item.get("sources") or []) else "external"
-        lines.append(f"  {'›' if i == index else ' '} {i + 1:>2}  {state:<6} {kind:<8} " + _binding_label(connection, item))
-    lines.append("─" * width)
-    lines.append(f"  Selected: {_binding_label(connection, binding)}")
-    collectors = [c for c in connection.get("collectors") or [] if c.get("binding") == binding.get("name")]
-    owner = binding.get("owner_health") or {}
-    state = owner.get("status") or owner.get("state") or "unverified"
-    lines.append("  Delivery target: " + _safe(state) + " · " + _safe(binding.get("endpoint")))
-    if owner.get("reason") and state != "ready-to-receive":
-        lines.append("  Target note: " + _safe(owner["reason"]))
-    if collectors:
-        collector = collectors[0]
-        lines.append("  Watches: " + _safe(collector.get("path")))
-        lines.append("  Sampling: " + _safe(collector.get("worker_state")) + " · seen " + _age_text(collector.get("worker_seen_age_seconds")) + " ago")
-    else:
-        lines.append("  Event sources: " + ", ".join(_safe(x) for x in binding.get("sources") or []))
     events = binding.get("events") or {}
-    counts = events.get("counts") or {}
-    lines.append("  Delivery history: " + (", ".join(f"{value} {_event_state(key)}" for key, value in counts.items()) or "none"))
     latest = events.get("latest") or {}
-    if latest:
-        lines.append("  Latest: " + _event_state(latest.get("state")) + " · " + _age_text(latest.get("age_seconds")) + " ago")
+    owner = binding.get("owner_health") or {}
+    collectors = [c for c in connection.get("collectors") or [] if c.get("binding") == binding.get("name")]
     error = latest.get("error") or binding.get("schema_error")
+    error = (owner.get("execution_error") or {}).get("message") or error
     if collectors:
         error = error or collectors[0].get("last_error") or collectors[0].get("last_sample_error")
-    lines.append("  " + ("Attention: " + _safe(error) if error else "Queue delivery does not confirm completed work"))
+    if owner.get("status") in {"auth-required", "execution-error", "unavailable", "unloaded"}:
+        error = error or owner.get("reason")
+    lines = ["  STATUS      " + _connection_state_label(connection)]
+    if error:
+        lines.append("  ISSUE       " + _safe(error, 120))
+    receiver = snapshot.get("receiver") or {}
+    if receiver.get("reason"):
+        lines.append("  RECEIVER    " + _safe(receiver["reason"], 100))
+    attention = _backlog_attention(connection)
+    if attention:
+        lines.append("  DELIVERY    " + attention)
+    else:
+        lines.append("  LAST EVENT  " + _last_delivery(binding))
     requests = connection.get("requests") or {}
-    if requests.get("available"):
-        lines.append("  Work reports: " + _work_report_summary(requests))
-    if latest.get("delivery_id"):
-        lines.append("  Receipt: " + _safe(latest.get("delivery_id")))
-    lines.append("  " + _open_hint(binding))
+    lines.append("  WORK        " + (_work_report_summary(requests) if requests.get("counts") else "Completion not reported"))
+    lines.append("")
+    lines.append("  CONNECTION  " + _binding_label(connection, binding) + (" · enabled" if binding.get("enabled") else " · paused"))
+    lines.append(f"  {index + 1}/{len(bindings)} · Tab / [ ] change connection · p pause · r resume · x remove")
+    if collectors:
+        lines.append("  FILE        " + _safe(collectors[0].get("path")))
+
     if notice:
         lines.append(notice_kind + ": " + notice)
     return lines
@@ -1319,6 +1518,9 @@ def _detail_lines(connection: dict[str, Any], binding: dict[str, Any], color: bo
         thread_read = owner.get("thread_read") or {}
         if thread_read.get("status"):
             lines.append("    thread status observed: " + _safe(thread_read.get("status")))
+        execution_error = owner.get("execution_error") or {}
+        if execution_error.get("message"):
+            lines.append("    execution error: " + _safe(execution_error["message"], 2000))
     requests = connection.get("requests") or {}
     lines.append("    work reports (request lifecycle): " + (_work_report_summary(requests) if requests.get("available") else _safe(requests.get("reason", "unavailable"))))
     if legacy_owner_line:
@@ -1326,7 +1528,7 @@ def _detail_lines(connection: dict[str, Any], binding: dict[str, Any], color: bo
         # their compact detail layout.
         lines.append("    Codex authentication and model readiness: unverified")
     else:
-        lines.append("    model execution: unverified (dashboard does not poll turns)")
+        lines.append("    model execution: unverified (dashboard does not start turns)")
     collectors = [item for item in connection.get("collectors", []) if item.get("binding") == binding.get("name")]
     for collector in collectors:
         observation = collector.get("checkpoint", {}).get("last_observation") or {}
@@ -1370,7 +1572,7 @@ def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = Fa
         if receiver.get("reason"):
             receiver_text += " · " + _safe(receiver.get("reason"))
     else:
-        receiver_text = f"{_status_dot(receiver_state, color)} Receiver"
+        receiver_text = f"{_status_dot(receiver_state, color)} Receiver " + ("online" if receiver.get("ready") else "unavailable")
     if not snapshot.get("ok"):
         lines.append(receiver_text)
         lines.append("ERROR: " + _safe(snapshot.get("error"), max(1, width - 7)))
@@ -1382,7 +1584,9 @@ def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = Fa
     rows = _binding_rows(snapshot)
     connection_word = "registered route" if len(rows) == 1 else "registered routes"
     conversation_word = "conversation" if len(connections) == 1 else "conversations"
-    summary = f"{len(connections)} {conversation_word}  /  {len(rows)} {connection_word}"
+    attention_count = sum(_conversation_status(c) in {"ERROR", "STALE"} for c in connections)
+    unchecked = sum(_conversation_status(c) == "UNKNOWN" for c in connections)
+    summary = f"{attention_count} need attention · {unchecked} unchecked · {len(connections)} {conversation_word}"
     gap = max(2, width - len(summary) - len(_ANSI_SGR.sub("", receiver_text)))
     lines.append(summary + " " * gap + receiver_text)
     if detail:
@@ -1398,38 +1602,38 @@ def render_lines(snapshot: dict[str, Any], width: int = 100, *, color: bool = Fa
     if not rows:
         lines.append("  No bindings yet")
     if width >= 60:
-        conversation_width = min(28, max(16, width // 3))
-        connections_width = 21
+        conversation_width = min(44, max(18, width - 46))
+        connections_width = 20
+        last_seen_width = max(0, width - 6 - conversation_width - connections_width)
         lines.append(
             "      " + _fit("Conversation", conversation_width) +
-            _fit("Active / paused", connections_width) + "Recent delivery"
+            _fit("Status", connections_width) + "Last activity"
         )
         lines.append(_paint("─" * width, 90, color))
     previous_project = None
     for conversation_index, connection in enumerate(connections):
         project = connection.get("project") or "Ungrouped"
         if project != previous_project:
-            if previous_project is not None:
-                lines.append("")
             lines.append("  " + _paint(_safe(project), 1, color))
             previous_project = project
         bindings = connection.get("bindings") or []
-        marker = _paint("▶", 36, color) if conversation_index == selected and not color else " "
+        marker = " "
         label = _conversation_label(connection)
-        activity = _conversation_activity(connection)
+        activity = _connection_last_seen(connection)
         if width >= 60:
-            bar = _paint("▌", 32, color) if conversation_index == selected else " "
+            bar = _paint("▌", 36, color) if conversation_index == selected else " "
             prefix = f"{bar} {marker} {_status_dot(_conversation_status(connection), color)} "
             label_display = _paint(label, 1, color)
-            activity_width = max(1, width - 6 - conversation_width - connections_width)
+            activity_width = max(1, width - 6 - conversation_width - connections_width - last_seen_width)
             line = (
                 prefix + _fit(label_display, conversation_width) +
-                _fit(_route_counts(bindings), connections_width) + _fit(activity, activity_width)
+                _fit(_connection_state_label(connection), connections_width) +
+                _fit(activity, last_seen_width)
             )
         else:
             line = (
                 f"{'▌' if conversation_index == selected else ' '} {marker} {_status_dot(_conversation_status(connection), color)} "
-                f"{_paint(label, 1, color)} · {_route_counts(bindings)} · {activity}"
+                f"{_paint(label, 1, color)} · {_connection_state_label(connection)} · {activity}"
             )
         if conversation_index == selected and color:
             background = "\x1b[48;5;236m"
@@ -1465,16 +1669,23 @@ def _selection_context(snapshot: dict[str, Any], selected: int, selected_route: 
     route = selected_route % len(bindings)
     binding = bindings[route]
     label = _safe(connection.get("project") or "Ungrouped") + " / " + _conversation_label(connection)
-    route_label = _binding_label(connection, binding)
-    route_line = f"  Route {route + 1}/{len(bindings)} · {route_label}"
-    return [
-        divider,
-        "  " + _paint(label, 1, color),
-        "  " + _conversation_summary(connection),
-        route_line,
-        "  " + _open_hint(binding),
-        divider,
-    ]
+    owners = [b.get("owner_health") or {} for b in bindings if b.get("enabled")]
+    state = _conversation_status(connection)
+    if state == "OFF":
+        message = "Paused. New messages are not delivered through these connections."
+    elif state == "ON":
+        message = "Ready to receive messages. Completed work is tracked separately."
+    elif state == "UNKNOWN":
+        message = "Delivery readiness has not been verified."
+    elif any(o.get("status") == "auth-required" for o in owners):
+        message = "Sign in to the account used by this conversation's execution service."
+    elif any(o.get("status") == "execution-error" for o in owners):
+        message = "The execution service reports an error. Open the conversation to inspect the failed run."
+    else:
+        message = _backlog_attention(connection) or "Delivery needs review. Expand details for the recorded error."
+    return [divider, "  " + _paint(label, 1, color), "  " + message, divider]
+
+
 
 
 def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24, scroll: int = 0,
@@ -1482,79 +1693,12 @@ def render_text(snapshot: dict[str, Any], *, width: int = 100, height: int = 24,
                 detail: bool | str = False, live: bool = False,
                 frame: bool = False, animate: bool = True, now: float | None = None,
                 notice: str | None = None, notice_kind: str = "OPEN", detail_scroll: int = 0) -> str:
-    """Render a bounded viewport with a persistent header and compact table."""
+    """Render the terminal dashboard; diagnostic snapshots use render_lines."""
+    from .dashboard_board import build
+    return build(snapshot, width=width, height=height, color=color, selected=selected,
+                 selected_route=selected_route, detail=detail, detail_scroll=detail_scroll,
+                 notice=notice, notice_kind=notice_kind, now=now).render()
 
-    width = min(96, max(1, int(width or 1)))
-    height = max(2, int(height or 2))
-    if detail is True:
-        panel = _connection_panel(snapshot, selected, selected_route, width, height, color, notice, notice_kind)
-        panel = [part for line in panel for part in (textwrap.wrap(line, width=max(1, width), subsequent_indent="    ", replace_whitespace=False) or [""])]
-        offset = min(max(0, detail_scroll), max(0, len(panel) - height + 1))
-        footer = "Tab/[ ] route · PgUp/Dn scroll · d back · q quit (monitoring stays on)"
-        if width < 65:
-            footer = "q quit · d back · Tab/[ ] browse"
-        return "\n".join(_clip(line, width) for line in panel[offset:offset + height - 1] + [footer])
-    body = render_lines(snapshot, width, color=color, selected=selected, selected_route=selected_route, detail=detail,
-                        live=live, frame=frame, animate=animate, now=now)
-    context = _selection_context(snapshot, selected, selected_route, width, color)
-    # Keep the title, receiver state and summary pinned. The conversation list
-    # scrolls while the selected context and controls stay visible.
-    detail_header_count = 4 if detail and len(body) > 3 and body[3].startswith("Status:") else 3
-    if detail and len(body) > 4 and body[4].startswith("Scope:"):
-        detail_header_count = 5
-    header_count = min(detail_header_count, len(body))
-    header = body[:header_count]
-    table = body[header_count:]
-    if height >= 20:
-        header.append("")
-    if height < 16:
-        # Keep route identity and exit keys visible even in very short terminals.
-        context = [context[3]] if len(context) >= 6 else context[1:2]
-    header_count = len(header)
-    footer_lines = len(context) + (1 if notice else 0) + 1
-    available = max(0, height - footer_lines)
-    body_slots = max(0, available - header_count)
-    maximum = max(0, len(table) - body_slots)
-    offset = min(max(int(scroll), 0), maximum)
-    # Selection is global across grouped conversation headers.  Keep the
-    # highlighted row visible even when the table has many groups.
-    selected_line = next(
-        (index for index, line in enumerate(table) if "▌" in _ANSI_SGR.sub("", line) or "▶" in _ANSI_SGR.sub("", line)),
-        None,
-    )
-    if selected_line is not None and body_slots:
-        if detail is True:
-            # Details are inserted immediately after the selected row. Start
-            # that panel at the selected row so ``d`` is useful even for the
-            # last binding in a long, multi-conversation inventory.
-            offset = min(maximum, max(0, selected_line - 1))
-        elif selected_line < offset:
-            offset = selected_line
-        elif selected_line >= offset + body_slots:
-            offset = min(maximum, selected_line - body_slots + 1)
-    visible = header + table[offset:offset + body_slots]
-    visible = visible[:available]
-    conversation_total = len(snapshot.get("connections") or [])
-    conversation_position = min(max(int(selected), 0), max(0, conversation_total - 1)) + 1 if conversation_total else 0
-    footer = (
-        f"↑↓ Tab · Enter TUI · p/r · x remove · d details · q quit · "
-        f"{conversation_position}/{conversation_total}"
-    )
-    if width >= 90:
-        freshness = _refresh_line(snapshot, time.time() if now is None else now)
-        if len(footer) + len(freshness) + 2 <= width:
-            footer += " " * (width - len(footer) - len(freshness)) + freshness
-    if width < 65:
-        footer = "q quit · d details · ↑↓ Tab Enter p/r x"
-    if width < 36:
-        footer = "q quit · d details · ↑↓ Tab Enter p/r x"
-    if height < 16:
-        trailing = context + ([notice_kind + ": " + notice] if notice else []) + [footer]
-    else:
-        trailing = context[:-1] + ([notice_kind + ": " + notice] if notice else []) + [context[-1], footer]
-    # Keep the whole panel together instead of stretching to the terminal edges.
-    content = visible + trailing[:-1]
-    return "\n".join(_clip(line, width) for line in (content + trailing[-1:])[-height:])
 
 
 def _action_target(snapshot: dict[str, Any], selected: int, selected_route: int) -> dict[str, str]:
@@ -1592,16 +1736,30 @@ def _key(stdin: TextIO) -> str | None:
     sequence = bytearray(value)
     # Read only the short escape sequences used for navigation.  Reading
     # from the file descriptor avoids TextIO buffering arrow bytes.
-    while len(sequence) < 6:
+    while len(sequence) < 40:
         ready, _, _ = select.select([fd], [], [], .015)
         if not ready:
             break
         sequence.extend(os.read(fd, 1))
-        if sequence[-1:] in (b"A", b"B", b"H", b"F"):
+        if sequence[-1:] in (b"A", b"B", b"C", b"D", b"H", b"F", b"M", b"m"):
             break
         if sequence[-1:] == b"~":
             break
+    raw = bytes(sequence)
+    if raw.startswith(b"\x1b[<") and raw.endswith((b"M", b"m")):
+        try:
+            button, x, y = map(int, raw[3:-1].split(b";"))
+            if button == 64:
+                return "up"
+            if button == 65:
+                return "down"
+            if button == 0 and raw.endswith(b"M"):
+                return f"mouse:{x - 1}:{y - 1}"
+        except ValueError:
+            pass
+        return None
     return {
+        b"\x1b": "escape", b"\x1b[C": "right", b"\x1b[D": "left",
         b"\x1b[A": "up", b"\x1b[B": "down", b"\x1b[5~": "pageup",
         b"\x1b[6~": "pagedown", b"\x1b[H": "home", b"\x1b[F": "end",
     }.get(bytes(sequence))
@@ -1686,7 +1844,7 @@ def _draw_frame(stdout: TextIO, rendered: str) -> None:
 def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: bool = False,
                   interval: float = 2.0, thread: str | None = None,
                   color: str = "auto", animate: bool = True,
-                  stdout: TextIO | None = None, stdin: TextIO | None = None) -> int:
+                                stdout: TextIO | None = None, stdin: TextIO | None = None) -> int:
     """Run one dashboard render or the interactive TTY view."""
 
     if not isinstance(interval, (int, float)) or isinstance(interval, bool) or not math.isfinite(interval) or interval <= 0:
@@ -1702,6 +1860,7 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
     if once and color == "auto":
         color_enabled = False
     reader = DashboardReader(root, thread=thread)
+    auth_retry = ReconnectAction(reader)
     if once:
         snapshot = reader.snapshot()
         if as_json:
@@ -1724,15 +1883,18 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
     selected = 0
     selected_route = 0
     detail = False
+    permission_menu = False
     open_status: str | None = None
     notice_kind = "OPEN"
     delete_target: dict[str, str] | None = None
+    action = 0
+    from .dashboard_board import build, navigate, retain_selection
 
     def suspend_dashboard() -> None:
         """Return the terminal to the user's shell state for the child TUI."""
 
         termios.tcsetattr(fd, termios.TCSAFLUSH, old)
-        stdout.write("\x1b[?25h\x1b[0m\x1b[?1049l")
+        stdout.write("\x1b[?1000l\x1b[?1006l\x1b[?25h\x1b[0m\x1b[?1049l")
         stdout.flush()
 
     def restore_dashboard() -> None:
@@ -1743,12 +1905,12 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
         # flush that input before applying cbreak again.
         termios.tcsetattr(fd, termios.TCSAFLUSH, old)
         tty.setcbreak(fd)
-        stdout.write("\x1b[?1049h\x1b[?25l")
+        stdout.write("\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h")
         stdout.flush()
 
     try:
         tty.setcbreak(fd)
-        stdout.write("\x1b[?1049h\x1b[?25l")
+        stdout.write("\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h")
         # The first snapshot is synchronous so a healthy state appears
         # immediately.  Later reads run in a daemon worker; a slow status
         # probe therefore cannot freeze the 0.5 second live animation.
@@ -1801,19 +1963,34 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
                 frame = not frame
                 next_frame = now_mono + (0.5 if animate else float(interval))
                 size = shutil.get_terminal_size((100, 24))
+                selected, selected_route, retained = retain_selection(
+                    displayed_snapshot, snapshot, selected, selected_route)
+                if detail and not retained:
+                    permission_menu, action = False, 0
+                    detail, detail_scroll, open_status = False, 0, "Selected connection changed; inspect it again."
                 connections = snapshot.get("connections") or []
                 selected = min(max(selected, 0), max(0, len(connections) - 1))
                 if connections and connections[selected].get("bindings"):
                     selected_route %= len(connections[selected]["bindings"])
                 else:
                     selected_route = 0
-                rendered = render_text(
+                retry_notice = None
+                if detail:
+                    try:
+                        retry_notice = auth_retry.notice(_action_target(snapshot, selected, selected_route))
+                    except DashboardError:
+                        pass
+                board = build(
                     snapshot, width=size.columns, height=size.lines, scroll=scroll,
                     color=color_enabled, selected=selected, selected_route=selected_route,
                     detail=detail, live=True,
-                    frame=frame, animate=animate, notice=open_status, notice_kind=notice_kind, detail_scroll=detail_scroll,
+                    frame=frame, animate=animate,
+                    notice=(retry_notice or open_status) if notice_kind == "AUTH" else (open_status or retry_notice),
+                    notice_kind=notice_kind if open_status else "AUTH", detail_scroll=detail_scroll, action=action,
+                    permission_menu=permission_menu,
                 )
-                _draw_frame(stdout, rendered)
+                detail_scroll = board.detail_offset
+                _draw_frame(stdout, board.render())
                 stdout.flush()
                 # Keep activation tied to the inventory the user actually
                 # saw. A poll may finish between this draw and the next key
@@ -1828,10 +2005,8 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
                 return 0
             connections = displayed_snapshot.get("connections") or []
             if delete_target is not None:
-                target = delete_target
-                delete_target = None
-                notice_kind = "MONITOR"
-                if value in ("y", "Y"):
+                target, delete_target = delete_target, None
+                if value in ("y", "Y", "\r", "\n"):
                     try:
                         open_status = _apply_action(reader.root, target, "remove")
                     except DashboardError as exc:
@@ -1840,79 +2015,108 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
                         inventory_epoch += 1
                         pending_snapshot = None
                     snapshot = reader.snapshot()
-                    next_poll = 0.0
                 else:
-                    open_status = "Deletion cancelled"
+                    open_status = "Removal cancelled"
                 next_frame = 0.0
                 continue
-            if value in ("p", "r", "x"):
-                notice_kind = "MONITOR"
-                try:
-                    target = _action_target(displayed_snapshot, selected, selected_route)
-                    if value == "x":
-                        delete_target = target
-                        notice_kind = "DELETE"
-                        open_status = f"y confirm / other key cancel · {target['binding']}"
+            if value == "escape":
+                if permission_menu:
+                    permission_menu, action, detail_scroll, open_status = False, 4, 0, None
+                    next_frame = 0.0
+                    continue
+                if not detail:
+                    return 0
+                detail, detail_scroll, open_status = False, 0, None
+                next_frame = 0.0
+                continue
+            if value and value.startswith("mouse:"):
+                _, mx, my = value.split(":")
+                target = board.hits.get((int(mx), int(my)))
+                if not target:
+                    continue
+                kind, index = target
+                if kind == "conversation":
+                    selected = index
+                    selected_route = _preferred_route(connections[selected])
+                    permission_menu = False
+                    detail, detail_scroll, action, open_status = True, 0, 0, None
+                    next_frame = 0.0
+                    continue
+                action = index
+                value = "\r"
+            if detail:
+                if value in ("up", "down", "pageup", "pagedown"):
+                    delta = {"up": -1, "down": 1, "pageup": -5, "pagedown": 5}[value]
+                    detail_scroll = min(board.detail_limit, max(0, detail_scroll + delta))
+                elif value in ("left", "right"):
+                    action = (action + (1 if value == "right" else -1)) % (4 if permission_menu else 6)
+                elif value == "\t":
+                    permission_menu, action = False, 0
+                    selected_route = _cycle_route(connections[selected], selected_route)
+                    detail_scroll, open_status = 0, None
+                elif value in ("\r", "\n"):
+                    if permission_menu:
+                        if action == 3:
+                            permission_menu, action, detail_scroll, open_status = False, 4, 0, None
+                        else:
+                            notice_kind, detail_scroll = "PERMISSION", 0
+                            try:
+                                open_status = auth_retry.start(_action_target(displayed_snapshot, selected, selected_route),
+                                                               policy=("full", "read-only", "workspace-network")[action])
+                            except DashboardError as exc:
+                                open_status = str(exc)
+                    elif action == 5:
+                        detail, open_status = False, None
+                    elif action == 4:
+                        permission_menu, action, detail_scroll, notice_kind = True, 0, 0, "PERMISSION"
+                        try:
+                            open_status = auth_retry.inspect_permissions(_action_target(displayed_snapshot, selected, selected_route))
+                        except DashboardError as exc:
+                            open_status = str(exc)
+                    elif action == 3:
+                        notice_kind = "AUTH"
+                        detail_scroll = 0
+                        try:
+                            open_status = auth_retry.start(_action_target(displayed_snapshot, selected, selected_route))
+                        except DashboardError as exc:
+                            open_status = str(exc)
+                    elif action == 0:
+                        notice_kind = "OPEN"
+                        try:
+                            open_status = _launch_selected(
+                                reader, displayed_snapshot,
+                                _selected_binding_index(displayed_snapshot, selected, selected_route),
+                                suspend_dashboard, restore_dashboard,
+                            )
+                        except DashboardError as exc:
+                            open_status = str(exc)
                     else:
-                        open_status = _apply_action(reader.root, target, "pause" if value == "p" else "resume")
-                        with poll_lock:
-                            inventory_epoch += 1
-                            pending_snapshot = None
-                        snapshot = reader.snapshot()
-                        next_poll = 0.0
-                except DashboardError as exc:
-                    open_status = str(exc)
-                next_frame = 0.0
-                continue
-            if detail and value in ("pageup", "pagedown"):
-                detail_scroll = max(0, detail_scroll + (5 if value == "pagedown" else -5))
-                next_frame = 0.0
-                continue
-            if value in ("j", "down", "k", "up", "pageup", "pagedown", "home", "end", "\t", "[", "]"):
+                        notice_kind = "MONITOR"
+                        try:
+                            target = _action_target(displayed_snapshot, selected, selected_route)
+                            if action == 2:
+                                delete_target = target
+                                open_status = "Remove this connection? Enter confirms · Esc cancels"
+                            else:
+                                binding = connections[selected]["bindings"][selected_route]
+                                open_status = _apply_action(reader.root, target, "pause" if binding.get("enabled") else "resume")
+                                with poll_lock:
+                                    inventory_epoch += 1
+                                    pending_snapshot = None
+                                snapshot = reader.snapshot()
+                        except DashboardError as exc:
+                            open_status = str(exc)
+                else:
+                    continue
+            elif value in ("up", "down", "left", "right"):
+                selected = navigate(connections, size.columns, selected, value, size.lines)
+                selected_route = _preferred_route(connections[selected]) if connections else 0
                 open_status = None
-                detail_scroll = 0
-                notice_kind = "OPEN"
-            if value in ("j", "down"):
-                selected = min(selected + 1, max(0, len(connections) - 1))
-                selected_route = _preferred_route(connections[selected]) if connections else 0
-            elif value in ("k", "up"):
-                selected = max(0, selected - 1)
-                selected_route = _preferred_route(connections[selected]) if connections else 0
-            elif value == "pageup":
-                selected = max(0, selected - max(1, size.lines - 8))
-                selected_route = _preferred_route(connections[selected]) if connections else 0
-            elif value == "pagedown":
-                selected = min(max(0, len(connections) - 1), selected + max(1, size.lines - 8))
-                selected_route = _preferred_route(connections[selected]) if connections else 0
-            elif value == "home":
-                selected = 0
-                selected_route = _preferred_route(connections[selected]) if connections else 0
-            elif value == "end":
-                selected = max(0, len(connections) - 1)
-                selected_route = _preferred_route(connections[selected]) if connections else 0
-            elif value in ("\t", "[", "]"):
-                bindings = connections[selected].get("bindings") or [] if connections else []
-                if bindings:
-                    selected_route = (selected_route - 1) % len(bindings) if value == "[" else _cycle_route(connections[selected], selected_route)
-            elif value == "d":
-                detail_scroll = 0
-                detail = not detail
-            elif value in ("\r", "\n", "o", "O"):
-                notice_kind = "OPEN"
-                try:
-                    open_status = _launch_selected(
-                        reader, displayed_snapshot,
-                        _selected_binding_index(displayed_snapshot, selected, selected_route),
-                        suspend_dashboard, restore_dashboard,
-                    )
-                except DashboardError as exc:
-                    open_status = str(exc)
-                next_frame = 0.0
+            elif value in ("\r", "\n") and connections:
+                permission_menu = False
+                detail, detail_scroll, action = True, 0, 0
             else:
                 continue
-            # Keep the selected row visible while preserving the old scroll
-            # behavior for callers that use render_text directly.
-            scroll = max(0, selected - max(1, size.lines - 7))
             next_frame = 0.0
     except KeyboardInterrupt:
         return 0
@@ -1921,5 +2125,5 @@ def run_dashboard(root: str | os.PathLike[str], *, once: bool = False, as_json: 
         # control back to the shell. On macOS TCSADRAIN also leaves PENDIN set
         # when switching from cbreak to canonical input.
         termios.tcsetattr(fd, termios.TCSAFLUSH, old)
-        stdout.write("\x1b[?25h\x1b[0m\x1b[?1049l")
+        stdout.write("\x1b[?1000l\x1b[?1006l\x1b[?25h\x1b[0m\x1b[?1049l")
         stdout.flush()

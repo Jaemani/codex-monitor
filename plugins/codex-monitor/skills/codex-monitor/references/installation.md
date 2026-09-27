@@ -1,27 +1,20 @@
 # Installation
 
-The skill/plugin and receiver runtime are separate. The source repository is
-https://github.com/Jaemani/codex-monitor. Use a trusted checkout or release archive;
-no public package-registry release is established.
+The canonical runtime is native Rust. Use a trusted checkout of
+https://github.com/Jaemani/codex-monitor and run `./scripts/install.sh --with-skill`.
+Building requires Rust/Cargo 1.97.1+ and a C compiler; installed runtime commands
+need no Python interpreter. The optional context helper uses Python.
 
-From the checkout: `python3 scripts/install.py --with-skill install`.
-From an archive: `python3 scripts/install.py --wheel /absolute/release/wheels/codex_monitor-0.1.0-py3-none-any.whl --with-skill install`.
+Default command: `~/.local/bin/codex-monitor`. Its native release is under
+`~/.local/share/codex-monitor-rust/current/bin/codex-monitor`. Add the command
+directory to PATH or set CODEX_MONITOR_BIN to an absolute executable path.
 
-The default runtime installer also registers `~/.local/bin/codex-monitor`; use
-`codex-monitor dashboard` from any directory once that directory is on `PATH`. Follow the installer's
-printed visibility result and shell hint. For an existing runtime, `python3 scripts/install.py link`
-registers the command without restarting the receiver. Custom prefixes require explicit `--bin-dir`
-for command registration. Plugin-only installation does not execute the runtime installer.
+For existing Python state, use the repository's docs/INSTALLATION.md migration
+procedure: stop the receiver, run native migrate, install with --adopt-python,
+and reinstall the receiver. Preserve credentials, routes and original databases.
+Restart resident services with the native executable at an idle boundary, retaining
+endpoints, threads and permissions. Never run competing receivers or reset state.
 
-Default stable executable: `~/.local/share/codex-monitor/bin/codex-monitor`. For a custom prefix set
-`CODEX_MONITOR_BIN` to the installed executable's absolute path. The installer prints actual paths.
-Standalone skill installation uses `CODEX_HOME/skills` or `~/.codex/skills`. A new Codex session may be
-needed for discovery. Installing a skill does not attach a conversation or start a producer.
-
-Installer `status` reports ownership and paths. `upgrade` stages a validated new environment before
-switching. Follow its exact service stop/update/reinstall instructions when it detects an active
-service; never overwrite a live service interpreter in place. `uninstall` preserves monitor state,
-tokens and receipts. `--with-skill` also manages only the installer's owned skill.
-
-If trusted release files are unavailable, report the missing input rather than inventing a download URL
-or installing an unrelated public package with the same name.
+The default state stays ~/.local/state/codex-monitor. Runtime status reports rust.
+Native service management supports macOS LaunchAgents; Linux requires an external
+supervisor. Installing a skill does not attach conversations or start producers.

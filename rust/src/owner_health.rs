@@ -309,6 +309,18 @@ async fn probe_thread(
             result["thread_loaded"] = json!(true);
             result["thread_read"] =
                 json!({"status": status_value(&value).unwrap_or_else(|| "observed".into())});
+            if status_value(&value).as_deref() == Some("systemError") {
+                result["status"] = json!("execution-error");
+                result["state"] = json!("execution-error");
+                result["ready"] = json!(false);
+                result["reason"] = json!("Conversation reports an execution error");
+                result["execution_error"] = match call(pool, endpoint, "thread/turns/list", json!({"threadId":thread,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}), deadline).await {
+                    Ok(page) => latest_error(&page),
+                    Err(Failure::Unsupported) => json!({"status":"unsupported"}),
+                    Err(_) => json!({"status":"unavailable"}),
+                };
+                return result;
+            }
             result["status"] = json!("ready-to-receive");
             result["state"] = json!("ready-to-receive");
             result["ready"] = json!(true);
@@ -481,7 +493,7 @@ fn status_value(value: &Value) -> Option<String> {
         }
     }
     value.as_object().and_then(|object| {
-        ["type", "status", "state"]
+        ["type", "status", "state", "thread"]
             .iter()
             .find_map(|key| object.get(*key).and_then(status_value))
     })
@@ -510,6 +522,53 @@ fn thread_failure(
     value["loaded_threads"] = json!(loaded);
     value["thread_loaded"] = json!(true);
     value
+}
+
+fn latest_error(page: &Value) -> Value {
+    let turn = &page["data"][0];
+    if turn["status"] != "failed" {
+        return json!({"status":"unavailable"});
+    }
+    let Some(message) = turn["error"]["message"].as_str() else {
+        return json!({"status":"unavailable"});
+    };
+    let mut safe: String = message
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n')
+        .take(2000)
+        .collect();
+    if let Ok(Some(token)) = codex_monitor_rs::session::server_token() {
+        safe = safe.replace(&token, "[redacted]");
+    }
+    for (pattern, replacement) in [
+        (r"(?i)\bBearer\s+[^\s,;]+", "Bearer [redacted]"),
+        (r"\bsk-[A-Za-z0-9_-]+", "[redacted]"),
+        (
+            r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
+            "[redacted]",
+        ),
+        (
+            r#"(?i)(["']?(?:access_token|refresh_token|id_token|api_key|password)["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}]+)"#,
+            "${1}[redacted]",
+        ),
+        (r"(?i)\b(?:https?|wss?)://\S+", "[URL redacted]"),
+    ] {
+        safe = regex::Regex::new(pattern)
+            .expect("static redaction expression")
+            .replace_all(&safe, replacement)
+            .into_owned();
+    }
+    let lower = message.to_lowercase();
+    let auth = [
+        "token",
+        "logged out",
+        "sign in",
+        "unauthorized",
+        "authentication",
+    ]
+    .iter()
+    .any(|p| lower.contains(p));
+    json!({"status":"observed","kind":if auth {"authentication"} else {"execution"},"message":safe})
 }
 
 #[cfg(test)]

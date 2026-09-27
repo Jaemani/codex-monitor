@@ -13,6 +13,7 @@ use tokio_tungstenite::tungstenite::Message;
 enum FakeOwnerMode {
     MissingAccount,
     Ready,
+    ExecutionError,
 }
 
 struct FakeOwner {
@@ -50,14 +51,26 @@ impl FakeOwner {
                     (FakeOwnerMode::MissingAccount, Some("account/read")) => {
                         json!({"account":null,"requiresOpenaiAuth":true})
                     }
-                    (FakeOwnerMode::Ready, Some("account/read")) => {
+                    (
+                        FakeOwnerMode::Ready | FakeOwnerMode::ExecutionError,
+                        Some("account/read"),
+                    ) => {
                         json!({"account":{"type":"chatgpt"},"requiresOpenaiAuth":false})
                     }
-                    (FakeOwnerMode::Ready, Some("thread/loaded/list")) => {
+                    (
+                        FakeOwnerMode::Ready | FakeOwnerMode::ExecutionError,
+                        Some("thread/loaded/list"),
+                    ) => {
                         json!({"data":[thread]})
                     }
                     (FakeOwnerMode::Ready, Some("thread/read")) => {
                         json!({"status":"loaded"})
+                    }
+                    (FakeOwnerMode::ExecutionError, Some("thread/read")) => {
+                        json!({"thread":{"status":{"type":"systemError"}}})
+                    }
+                    (FakeOwnerMode::ExecutionError, Some("thread/turns/list")) => {
+                        json!({"data":[{"status":"failed","error":{"message":"Your access token could not be refreshed. Bearer private-secret refresh_token=another-secret"}}]})
                     }
                     _ => json!({}),
                 };
@@ -204,4 +217,35 @@ async fn status_owner_health_uses_read_only_rpc_observations() {
 
     auth.close().await;
     ready.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dashboard_reads_latest_execution_error_without_refresh_or_resume() {
+    let owner = FakeOwner::start(FakeOwnerMode::ExecutionError, "failed-thread").await;
+    let dir = TempDir::new().unwrap();
+    run_cli(dir.path(), &["init"]);
+    let store = Store::open(&dir.path().join("rust.sqlite3")).unwrap();
+    store
+        .bind(
+            "failure",
+            "failed-thread",
+            &owner.endpoint,
+            &["source".into()],
+        )
+        .unwrap();
+    let snapshot = run_cli(dir.path(), &["dashboard", "--once", "--json"]);
+    let b = binding(&snapshot, "failure");
+    assert_eq!(b["owner_health"]["status"], "execution-error");
+    assert_eq!(
+        b["owner_health"]["execution_error"]["kind"],
+        "authentication"
+    );
+    let message = b["owner_health"]["execution_error"]["message"]
+        .as_str()
+        .unwrap();
+    assert!(message.contains("could not be refreshed"));
+    assert!(!message.contains("private-secret"));
+    assert!(!message.contains("another-secret"));
+    assert_no_operational_methods(&owner.requests.lock().await);
+    owner.close().await;
 }
