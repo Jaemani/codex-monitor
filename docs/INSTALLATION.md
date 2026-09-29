@@ -29,7 +29,7 @@ Rust installations. Existing state is never silently initialized or migrated.
 
 `service` supports macOS user LaunchAgents. On Linux, run `codex-monitor serve`
 under the chosen supervisor; the native macOS service command does not claim Linux
-supervision support.
+supervision support. See the [isolated systemd pilot and placement matrix](OPERATIONS.md#linux-placement-and-supervision).
 
 ## Adopt an existing Python installation
 

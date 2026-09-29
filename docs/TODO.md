@@ -1,5 +1,14 @@
 # Project TODO
 
+## Linux readiness preparation (2026-09-29)
+
+- [x] Document component placement, private configuration, resource ceilings, backup/restore and single-writer rollback boundaries.
+- [x] Provide an isolated systemd receiver unit without enabling a second production writer.
+- [ ] Validate reboot recovery in an infrastructure-approved maintenance window.
+- [ ] Validate Linux dashboard interaction and implement reviewed Linux service/reconnect controls before claiming parity with macOS.
+- [ ] Verify project-specific filesystem permissions, source adapters, real replies and a populated-state restore before approving a production cutover.
+- [ ] Establish bounded log/data retention and repeat resource measurements with the intended production workload.
+
 ## Native Discord producer cutover and publication (2026-09-27)
 
 Both deployed Discord producers now use the installed Rust executable, in addition

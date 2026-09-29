@@ -1,5 +1,9 @@
 # Status and remaining verification
 
+## Linux readiness preparation (2026-09-29)
+
+Added a dependency-based [placement matrix and operations procedure](OPERATIONS.md#linux-placement-and-supervision) and an opt-in empty-state systemd user unit. Native systemd is the selected receiver pilot; container engines are not required. macOS service/reconnect controls remain platform-specific. Existing production processes, routes, account stores and data are preserved. Test results and production acceptance are separate gates.
+
 ## Native Discord producer cutover and publication (2026-09-27)
 
 Both deployed Discord producers now use the installed Rust executable, in addition

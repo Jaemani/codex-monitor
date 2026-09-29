@@ -1,0 +1,26 @@
+[Unit]
+Description=Codex Monitor isolated receiver pilot
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/codex-monitor --state %h/.local/state/codex-monitor-pilot serve
+Environment=PATH=%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-%h/.config/codex-monitor/pilot.env
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=control-group
+UMask=0077
+MemoryHigh=256M
+MemoryMax=512M
+CPUQuota=100%
+TasksMax=128
+StandardOutput=journal
+StandardError=journal
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+
+[Install]
+WantedBy=default.target
