@@ -4,6 +4,9 @@
 
 - [x] Document component placement, private configuration, resource ceilings, backup/restore and single-writer rollback boundaries.
 - [x] Provide an isolated systemd receiver unit without enabling a second production writer.
+- [x] Validate Linux Rust tests/build/Clippy and isolated systemd readiness, restart, shutdown and empty-state backup integrity.
+- [x] Validate bounded fake-owner outage recovery separately from actual-client acceptance.
+- [x] Verify an isolated actual Linux CLI consumer, resident and owner reconnect with exact native event IDs and a follow-up model response.
 - [ ] Validate reboot recovery in an infrastructure-approved maintenance window.
 - [ ] Validate Linux dashboard interaction and implement reviewed Linux service/reconnect controls before claiming parity with macOS.
 - [ ] Verify project-specific filesystem permissions, source adapters, real replies and a populated-state restore before approving a production cutover.

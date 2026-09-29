@@ -777,3 +777,54 @@ were returned successfully. These are point samples, not a guarantee against fut
 Project resource attribution verification: 60 focused dashboard, sampler and resource tests passed.
 The supervisor publishes ownership at each completed scheduling pass; busy status requests may
 reuse it for at most five seconds. Older ownership is unknown. Installed locally and receiver restarted.
+
+## Native Linux preparation (2026-09-29)
+
+An independent x86_64 CachyOS checkout of runtime commit `82197d4` passed all
+61 Rust tests, strict Clippy, formatting and a native release build with
+Rust/Cargo 1.97.1. The systemd 262 pilot used its own unit, random loopback
+port and empty state, with the release executable pinned to that checkout.
+Unit verification, authenticated readiness, SIGKILL auto-restart, explicit
+restart, clean SIGTERM exit, configured cgroup limits and empty-state backup
+SQLite integrity passed. The existing receiver PID remained unchanged; the
+test unit and temporary state were removed. An initial harness invocation
+preceded release-build completion and failed before starting a receiver; the
+corrected run followed successful build completion.
+
+The fake-owner outage test passed six checks over a 30.005-second owner outage
+(32.749 seconds total): backlog preservation, receiver crash/restart, one
+recovered submission, restart deduplication, no model lifecycle calls and
+cleanup. A WebSocket disconnect diagnostic was emitted during forced shutdown.
+This is bounded protocol/process evidence, not real-client delivery evidence.
+Reproduce using a private Python 3.11+ environment with `websockets>=15,<17`:
+
+```bash
+python3 rust/bench/outage_canary.py --run \
+  --binary rust/target/release/codex-monitor-rs --seconds 30 \
+  --report /tmp/codex-monitor-linux-outage.json
+```
+
+The native TUI canary additionally needs `pyte>=0.8,<0.9`, a compatible Codex
+CLI and an already authenticated account. It uses a disposable folder and
+conversation, not a production route. The trust prompt handler accepts only
+a recognized folder-trust screen containing that exact disposable path; it
+never approves a command. Codex 0.157.1 introduced a different folder-trust
+label, causing the initial Linux run to time out before creating a thread.
+That failure is retained separately from the updated harness result. A second
+run passed initial response, delivery, deduplication, closed-TUI consumption
+and receiver restart, but reopening stopped at the CLI update screen. The
+final driver recognizes that screen and presses Escape to skip installation;
+it never updates the shared CLI.
+
+The final ordinary Linux TUI run passed all 20 recorded checks in 39.374 seconds
+with Codex 0.157.1. It verified native input IDs exactly once, visible events, a
+subsequent actual model response, resident subscription after closing the TUI,
+receiver restart, same-thread reopening and owner restart/reconnection. It
+archived only its test conversation and removed its temporary state/processes.
+This is actual-client evidence, separate from the fake-peer outage run; it does
+not establish production tool permissions, Discord replies or business outcomes.
+
+No host reboot, populated production-state restore, real Discord reply,
+Linux dashboard interaction or sustained workload capacity is established by
+the unit and protocol tests. Host kernel/module mismatch and failed Docker
+startup were observed separately; neither was repaired by this project.

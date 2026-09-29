@@ -180,7 +180,7 @@ Node and Flutter are not monitor runtime dependencies. Python 3.11+ and
 | --- | --- | --- |
 | Rust receiver, storage, managed file collectors | Linux development/operation possible | Linux tests and isolated receiver checks; rewrite host-specific watched paths and check case/permissions before migration |
 | Terminal dashboard | Linux development possible; interactive acceptance pending | Unix terminal code builds; no Linux interactive dashboard acceptance claimed |
-| CLI owner and resident | Evidence insufficient for operational migration | Portable transport code and fake peers; fresh Linux login, actual consumer, reconnect and tool permissions still need acceptance |
+| CLI owner and resident | Linux development/operation possible with project acceptance | Isolated actual Codex 0.157.1 TUI consumption and owner restart passed; production account/workspace permissions still need acceptance |
 | Native Discord Gateway and project reply adapters | Linux after project configuration and validation | Rust Gateway builds; Mac producers remain active; paths, credentials, receipts, attachments and external replies require separate acceptance |
 | `service` and service reconnect controls | Mac retained; Linux requires implementation changes | `service.rs` and `reconnect.rs` depend on launchd; use external systemd for the Linux receiver only |
 | Desktop, GUI-dependent agent tools | Mac retained | Linux receiver cannot transfer Desktop ownership or supply macOS GUI tools |

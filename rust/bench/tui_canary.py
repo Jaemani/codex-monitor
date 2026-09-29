@@ -58,7 +58,25 @@ def main():
                 raise RuntimeError("remote resume rejected permission overrides")
             if "would you like to run the following command" in screen or "approve this command" in screen:
                 raise RuntimeError("unexpected approval; no approval sent")
-            if not trusted and str(work).lower() in screen and ("yes, i trust" in screen or "yes, continue" in screen):
+            if (
+                "update available" in screen
+                and "1. update now" in screen
+                and "2. skip" in screen
+                and "esc skip" in screen
+            ):
+                terminal.input("\x1b")
+                report["checks"]["update_prompt_skipped_without_installing"] = True
+                return
+            folder_trust = (
+                "yes, i trust" in screen
+                or "yes, continue" in screen
+                or (
+                    "trust this folder?" in screen
+                    and "1. trust and continue" in screen
+                    and "2. back to agent command center" in screen
+                )
+            )
+            if not trusted and str(work).lower() in screen and folder_trust:
                 terminal.input("\r")
                 trusted = True
 

@@ -4,6 +4,8 @@
 
 Added a dependency-based [placement matrix and operations procedure](OPERATIONS.md#linux-placement-and-supervision) and an opt-in empty-state systemd user unit. Native systemd is the selected receiver pilot; container engines are not required. macOS service/reconnect controls remain platform-specific. Existing production processes, routes, account stores and data are preserved. Test results and production acceptance are separate gates.
 
+An independent x86_64 Linux checkout passed 61 Rust tests, strict Clippy, formatting and a release build. The isolated systemd receiver passed readiness, crash/restart, clean shutdown and empty-state backup integrity checks; the existing receiver was preserved. Six fake-owner outage checks passed over a 30-second outage. The final actual Linux Codex 0.157.1 TUI canary passed 20 checks in 39.374 seconds, including native consumption, follow-up response, closed-TUI subscription, receiver restart and owner reconnect. Earlier folder-trust and update-screen harness failures remain separately recorded. See [verification details](TESTING.md#native-linux-preparation-2026-09-29); reboot recovery, populated-state restore and production source replies remain pending.
+
 ## Native Discord producer cutover and publication (2026-09-27)
 
 Both deployed Discord producers now use the installed Rust executable, in addition

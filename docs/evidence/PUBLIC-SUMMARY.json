@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-27",
+  "date": "2026-09-29",
   "kind": "curated summary; original logs retained locally, not independently reproducible evidence",
   "records": [
     {
@@ -2401,6 +2401,67 @@
         "One-shot project reply CLIs remain separate integrations.",
         "No long-duration soak or completed Discord reply claimed.",
         "Four historical receiver sample errors remain unattributed; no increase during the final 20-second observation."
+      ]
+    },
+    {
+      "date": "2026-09-29",
+      "result": "PASS",
+      "scope": "x86_64 Linux source build and isolated systemd 262 receiver; runtime commit 82197d4",
+      "rust_version": "1.97.1",
+      "rust_tests_passed": 61,
+      "strict_clippy": true,
+      "format_check": true,
+      "release_build": true,
+      "systemd_checks": [
+        "unit verification",
+        "authenticated readiness",
+        "crash restart",
+        "explicit restart",
+        "clean SIGTERM exit",
+        "configured resource limits",
+        "empty-state backup integrity",
+        "existing receiver PID unchanged",
+        "pilot unit removed"
+      ],
+      "fake_owner_outage": {
+        "checks_passed": 6,
+        "outage_seconds_observed": 30.005,
+        "elapsed_seconds": 32.749
+      },
+      "limitations": [
+        "No production-state migration or populated restore",
+        "No reboot acceptance",
+        "No Discord external reply",
+        "No sustained workload sizing"
+      ],
+      "initial_systemd_attempt": "Incomplete: release executable not built yet; no receiver started"
+    },
+    {
+      "date": "2026-09-29",
+      "result": "PASS",
+      "scope": "ordinary Linux Codex remote TUI in owned PTY; Rust release build",
+      "codex_version": "0.157.1",
+      "checks_passed": 20,
+      "elapsed_seconds": 39.374,
+      "verified": [
+        "actual initial and follow-up model responses",
+        "native event consumption once and deduplication",
+        "visible TUI events",
+        "closed-TUI resident subscription",
+        "receiver restart",
+        "same-thread reopening",
+        "owner restart and resident reconnection",
+        "test conversation archived and temporary state removed"
+      ],
+      "earlier_attempts": [
+        "Folder-trust wording mismatch before thread creation",
+        "Update prompt blocked same-thread reopening after partial actual-client success"
+      ],
+      "limitations": [
+        "No production tool permission acceptance",
+        "No Discord source reply",
+        "No reboot recovery",
+        "No production cutover"
       ]
     }
   ]
