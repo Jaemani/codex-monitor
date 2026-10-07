@@ -26,6 +26,18 @@ new runtime work belongs in `rust/`.
   described in [status](STATUS.md); retire any remaining legacy dashboard only
   after its child Codex client has exited.
 
+## Linux readiness acceptance
+
+- [ ] Validate reboot recovery in an infrastructure-approved maintenance window.
+- [ ] Validate Linux dashboard interaction and implement the remaining receiver
+  service and permission controls before claiming parity with macOS. The new
+  login-reload dashboard flow still needs acceptance; the older isolated CLI
+  owner-reconnect canary is recorded separately in [TESTING.md](TESTING.md).
+- [ ] Verify project-specific filesystem permissions, source adapters, real
+  replies and a populated-state restore before approving a production cutover.
+- [ ] Establish bounded log/data retention and repeat resource measurements with
+  the intended production workload.
+
 ## Existing issue backlog
 
 The previously unchecked items below are retained for continuity. Issue references

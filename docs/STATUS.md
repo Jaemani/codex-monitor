@@ -8,7 +8,7 @@ feature descriptions below; [TODO.md](TODO.md) contains unfinished work.
 
 | Area | Implemented | Remaining limits |
 |---|---|---|
-| Linux reconnect | Direct systemd user owner/resident discovery; loaded PID, arguments, environment and configuration checks; one owner restart with verification | No Linux dashboard permission rewriting or receiver service installer; real Codex reconnect acceptance remains unverified |
+| Linux reconnect | Direct systemd user owner/resident discovery; loaded PID, arguments, environment and configuration checks; one owner restart with verification | No Linux dashboard permission rewriting or receiver service installer; real login-reload dashboard reconnect acceptance remains unverified |
 | Session attention | Current approval and user-input flags; authentication and execution-error observations; separate transport/loaded-thread state | Prose questions, subprocess password prompts and unsupported owner flags are not inferred; no automatic response or sudo approval |
 | Notifications | Live-dashboard state changes, route deduplication, debounce and recovery; OSC 9/BEL auto selection and optional host-local desktop backend | Dashboard and SSH must remain connected; client popup visibility and background-daemon operation are not established |
 
@@ -22,7 +22,7 @@ Local validation: 77 Rust tests, strict Clippy, formatting and publication check
 A disposable systemd sleep-service test verified PID replacement; a read-only
 check matched the operational owner/resident configuration. Five PTY cases
 verified OSC 9, BEL, off, automatic selection and clean exit; one-shot JSON stayed
-silent. These checks do not establish real conversation restoration or a visible
+silent. These checks do not establish the new login-reload reconnect flow or a visible
 popup on a user's SSH client. See [TESTING.md](TESTING.md) and the
 [curated evidence](evidence/README.md).
 
@@ -36,7 +36,11 @@ The checkout originally tracked only `codex/rust-runtime`; its remote fetch rule
 excluded main. Remote main was an ancestor of that branch, with 14 Rust adoption
 commits not yet integrated. The current cleanup records the Linux reconnect and
 notification work, restores normal branch fetching, and integrates the existing
-history into main without rewriting or deleting other branches. This is source
+history into main without rewriting or deleting other branches. Two additional
+Linux readiness commits from `codex/linux-readiness` are integrated as well,
+including the isolated receiver pilot, TUI harness updates and dated evidence.
+The final local candidate also passed all 322 frozen Python reference tests in
+an isolated test environment; no operational runtime or conversation was restarted. This is source
 integration, not a package release or new production-model acceptance result.
 
 ## Historical implementation and validation
@@ -44,6 +48,12 @@ integration, not a package release or new production-model acceptance result.
 The dated entries below retain previous measurements and limitations. Runtime
 names, feature availability and test counts refer to their dates, not the current
 snapshot above.
+
+## Linux readiness preparation (2026-09-29)
+
+Added a dependency-based [placement matrix and operations procedure](OPERATIONS.md#linux-placement-and-supervision) and an opt-in empty-state systemd user unit. Native systemd is the selected receiver pilot; container engines are not required. At the time of this preparation, service/reconnect controls were macOS-specific; the current snapshot above describes subsequent Linux reconnect support. Existing production processes, routes, account stores and data are preserved. Test results and production acceptance are separate gates.
+
+An independent x86_64 Linux checkout passed 61 Rust tests, strict Clippy, formatting and a release build. The isolated systemd receiver passed readiness, crash/restart, clean shutdown and empty-state backup integrity checks; the existing receiver was preserved. Six fake-owner outage checks passed over a 30-second outage. The final actual Linux Codex 0.157.1 TUI canary passed 20 checks in 39.374 seconds, including native consumption, follow-up response, closed-TUI subscription, receiver restart and owner reconnect. Earlier folder-trust and update-screen harness failures remain separately recorded. See [verification details](TESTING.md#native-linux-preparation-2026-09-29); reboot recovery, populated-state restore and production source replies remain pending.
 
 ## Native Discord producer cutover and publication (2026-09-27)
 
@@ -972,7 +982,7 @@ stable client ID. A change while paused and a change after removal produced no
 new receipt or native history item. The receiver and collector were checked
 through authenticated HTTP and installed CLI status. The successful run took
 323.225 seconds; its report and pyte capture are preserved under
-[`docs/evidence/skill-workflow-2026-09-09/`](evidence/skill-workflow-2026-09-09/).
+[`docs/evidence/skill-workflow-2026-09-09/`](evidence/README.md).
 
 This result covers the installed basic managed-file workflow only. It does not
 claim model task success, Desktop discovery, predicate policies, request

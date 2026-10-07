@@ -46,7 +46,8 @@ Rust installations. Existing state is never silently initialized or migrated.
 `service` supports macOS user LaunchAgents. On Linux, run `codex-monitor serve`
 under the chosen supervisor; the native macOS service command does not claim Linux
 supervision support. Dashboard reconnect is a separate operation and supports
-[Linux systemd user owner/resident services](LINUX-RECONNECT.md).
+[Linux systemd user owner/resident services](LINUX-RECONNECT.md). For receiver
+supervision, see the [isolated systemd pilot and placement matrix](OPERATIONS.md#linux-placement-and-supervision).
 
 ## Adopt an existing Python installation
 

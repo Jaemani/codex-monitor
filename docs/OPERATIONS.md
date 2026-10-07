@@ -169,6 +169,123 @@ Native installation and macOS receiver/resident adoption have been verified.
 Disposable fake-owner tests cover forced termination, recovery and duplicate
 suppression. These checks do not prove Discord delivery or completed model work.
 
+## Linux placement and supervision
+
+The canonical Rust runtime is the Linux candidate. Use native systemd user
+services first: the receiver, owner and resident share local Codex state, Unix
+sockets and workspace permissions. No runtime dependency on Docker socket,
+Compose, Buildx, privileged containers, Xcode, Keychain, Metal or MLX was found.
+SQLite is bundled; TLS uses rustls. Build natively for each CPU architecture with
+Rust/Cargo 1.97.1+ and a C compiler. Do not copy a macOS executable to Linux.
+Node and Flutter are not monitor runtime dependencies. Python 3.11+ and
+`websockets>=15,<17` are required only for the optional outage test below.
+
+| Component | Placement classification | Evidence and remaining boundary |
+| --- | --- | --- |
+| Rust receiver, storage, managed file collectors | Linux development/operation possible | Linux tests and isolated receiver checks; rewrite host-specific watched paths and check case/permissions before migration |
+| Terminal dashboard | Linux development possible; interactive acceptance pending | Unix terminal code builds; no Linux interactive dashboard acceptance claimed |
+| CLI owner and resident | Linux development/operation possible with project acceptance | Isolated actual Codex 0.157.1 TUI consumption and owner restart passed; production account/workspace permissions still need acceptance |
+| Native Discord Gateway and project reply adapters | Linux after project configuration and validation | Rust Gateway builds; Mac producers remain active; paths, credentials, receipts, attachments and external replies require separate acceptance |
+| `service` and service reconnect controls | Mac retained; Linux requires implementation changes | `service.rs` and `reconnect.rs` depend on launchd; use external systemd for the Linux receiver only |
+| Desktop, GUI-dependent agent tools | Mac retained | Linux receiver cannot transfer Desktop ownership or supply macOS GUI tools |
+| Python implementation and benchmark drivers | Development/migration fixtures | Frozen reference; not an alternative production runtime |
+| Website, database hosting, public tunnel | Outside this repository's deployment | No project-owned cloud deployment identified; do not change another project's infrastructure |
+| Unused independent watcher/dashboard processes | Removal candidate only after ownership review | Process existence alone does not establish redundancy; preserve active conversations |
+
+Podman/Quadlet and Docker Compose are not selected for this pilot. Containers
+would add socket, UID, workspace mount and state-store mapping requirements
+without removing a monitor dependency. Podman installation and rootless network,
+volume ownership, health and reboot behavior have not been validated. This is
+not a claim that containers cannot work. Same-user processes are not mutually
+isolated; a dedicated user requires its own authenticated Codex environment and
+explicit filesystem access.
+
+### Isolated receiver pilot
+
+The [example user unit](../examples/systemd/codex-monitor-pilot.service) is for
+new empty state, not the existing receiver. Review the port with `ss -ltn` and
+choose an unused nonprivileged port. Install the native executable using
+[installation instructions](INSTALLATION.md). For development acceptance the
+unit can instead pin the absolute release-build executable from the independent
+checkout, avoiding changes to an installed command.
+
+```bash
+codex-monitor --state "$HOME/.local/state/codex-monitor-pilot" init --port 18766
+install -d -m 700 "$HOME/.config/systemd/user"
+install -m 600 examples/systemd/codex-monitor-pilot.service "$HOME/.config/systemd/user/"
+systemd-analyze --user verify "$HOME/.config/systemd/user/codex-monitor-pilot.service"
+systemctl --user daemon-reload
+systemctl --user start codex-monitor-pilot.service
+codex-monitor --state "$HOME/.local/state/codex-monitor-pilot" status
+systemctl --user show codex-monitor-pilot.service -p MainPID -p MemoryCurrent -p Result
+journalctl --user -u codex-monitor-pilot.service -n 50 --no-pager
+systemctl --user stop codex-monitor-pilot.service
+```
+
+Initialize only a new state directory. Do not add real bindings or enable a
+Gateway for this pilot. Check authenticated `receiver.ready` through `status`;
+`active` alone is not health and `consumer_ready` is unknown for empty state.
+The receiver handles SIGTERM; systemd bounds shutdown at 30 seconds and kills
+remaining children as one control group. Crash restart is limited to five
+starts per five minutes. Memory and CPU values are initial pilot ceilings,
+not measured production capacity. Watch the whole owner/resident/receiver stack
+before setting production budgets.
+
+No owner ordering is needed for an empty receiver. A production owner and
+resident need separate reviewed units and private endpoint configuration;
+startup ordering is not a substitute for readiness or restored subscriptions.
+Use the [Linux reconnect backend](LINUX-RECONNECT.md) for verified direct
+owner/resident units; never infer ownership from a service name alone.
+
+The optional private `~/.config/codex-monitor/pilot.env` must have mode 0600
+under a 0700 directory. Set `CODEX_HOME`, `CODEX_SQLITE_HOME` if required, and
+`CODEX_MONITOR_SERVER_TOKEN_FILE` only for the intended owner. The latter names
+a private credential file; never put a bearer token in a unit or Git. Check the
+unit's PATH resolves the intended `codex` command. Do not copy Mac account
+stores, session history or authentication tokens to establish a Linux owner.
+
+After separate boot-start approval, `systemctl --user enable
+codex-monitor-pilot.service` selects login startup; an administrator can enable
+lingering with `loginctl enable-linger USER` for operation without a login.
+Inspect `loginctl show-user USER -p Linger` first. Reboot and verify actual
+health before claiming unattended startup. The pilot is not enabled by this
+procedure. The example uses per-unit journal rate limits; disk retention is the
+host journal policy, not a per-unit byte cap. Coordinate journal/storage limits
+with the infrastructure owner rather than editing global settings here.
+
+See the installed `systemd.service(5)`, `systemd.exec(5)` and
+`systemd.resource-control(5)` manuals for the host's actual version.
+
+### Backup, update and rollback boundary
+
+Monitor records have no automatic retention. Track database, WAL, attachments,
+logs, Cargo targets and available disk separately; the build cache can greatly
+exceed the receiver state. Do not prune deduplication records as generic cache.
+Keep backups outside the checkout, encrypted and access-restricted, with a
+separate-host copy and a reviewed retention policy.
+
+At an approved idle boundary, stop the selected producers, receiver and other
+state writers, then copy the complete private state directory with permissions,
+including WAL/checkpoints, plus each Gateway database/config and executable/unit
+versions. Never stop another project's owner as part of this step. Restore into
+a private isolated directory first; run SQLite `PRAGMA integrity_check`, compare
+receipt/request counts and identifiers, and keep all external routes disabled.
+A valid SQLite file alone does not establish application recovery.
+
+Build and test a new release in an independent checkout. Pin its executable in
+the reviewed unit, preserve the previous executable and state snapshot, reload
+systemd, then restart only the approved service and check readiness, receipts,
+consumer behavior and actual source replies. Before any new writes, rollback can
+restore the old executable/configuration and consistent state snapshot. After
+new writes, preserve both histories and reconcile event IDs, uncertain sends,
+outbox acknowledgements and Gateway checkpoints before resuming one writer.
+Do not blindly overwrite the new database with an old copy.
+
+Production acceptance still requires one new Linux CLI owner, verified login
+and permission scope, actual event consumption and reply, owner outage recovery,
+restore/reboot acceptance, and a project-specific single-writer cutover plan.
+Keep Mac production running until those gates and cutover authorization exist.
+
 ## Endpoints and security boundaries
 
 `shared-local` is an independent stdio writer using the official queue in the

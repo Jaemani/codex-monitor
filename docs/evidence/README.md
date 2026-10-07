@@ -9,7 +9,9 @@ and input detection have protocol-schema and fake-owner coverage. Notifications
 have five local PTY transport cases plus one-shot silence checks. Installed
 binary hashes and receiver readiness were checked separately.
 
-None of those checks establishes a real Codex reconnect, a real pending-question
+The September Linux TUI canary has separate native owner-reconnect evidence;
+it does not validate the new login-reload dashboard path. Current checks do not
+establish that login-reload flow, a real pending-question
 response, a popup visible on the user's SSH client, or completed model work.
 Earlier failed configuration/fixture checks remain recorded in
 [PUBLIC-SUMMARY.json](PUBLIC-SUMMARY.json); subsequent fixes do not erase them.
