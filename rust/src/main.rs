@@ -1,3 +1,4 @@
+mod alerts;
 mod board;
 mod discord_gateway;
 mod migration;
@@ -111,6 +112,12 @@ enum Command {
         color: String,
         #[arg(long)]
         no_animate: bool,
+        /// State-change alerts while the live dashboard is open.
+        #[arg(long, default_value="auto", value_parser=["auto", "osc9", "bel", "desktop", "off"])]
+        notifications: String,
+        /// Send a test notice through the selected live-dashboard notification mode.
+        #[arg(long, conflicts_with = "once")]
+        test_notification: bool,
     },
     Monitor {
         #[command(subcommand)]
@@ -689,6 +696,8 @@ async fn run(cli: Cli) -> Result<()> {
             interval,
             color,
             no_animate,
+            notifications,
+            test_notification,
         } => {
             if json && !once {
                 bail!("--json requires --once");
@@ -707,6 +716,8 @@ async fn run(cli: Cli) -> Result<()> {
                 Duration::from_secs_f64(interval),
                 color,
                 no_animate,
+                notifications,
+                test_notification,
             )
             .await?;
         }

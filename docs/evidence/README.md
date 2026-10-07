@@ -1,6 +1,24 @@
 # Public verification summary
 
-[PUBLIC-SUMMARY.json](PUBLIC-SUMMARY.json) records observed results, boolean checks and timings from local tests on 2026-09-08. This is a curated summary, not a raw transcript or independent verification.
+## Current evidence (2026-10-07)
+
+The current Rust suite passes 77 tests, strict Clippy, formatting and publication
+checks. Linux reconnect has disposable real systemd lifecycle evidence and a
+read-only match against an operational owner/resident configuration. Approval
+and input detection have protocol-schema and fake-owner coverage. Notifications
+have five local PTY transport cases plus one-shot silence checks. Installed
+binary hashes and receiver readiness were checked separately.
+
+None of those checks establishes a real Codex reconnect, a real pending-question
+response, a popup visible on the user's SSH client, or completed model work.
+Earlier failed configuration/fixture checks remain recorded in
+[PUBLIC-SUMMARY.json](PUBLIC-SUMMARY.json); subsequent fixes do not erase them.
+See [current status](../STATUS.md), [test instructions](../TESTING.md) and
+[remaining acceptance work](../TODO.md).
+
+## Historical records
+
+[PUBLIC-SUMMARY.json](PUBLIC-SUMMARY.json) contains dated local verification records beginning in September 2026. This is a curated summary, not a raw transcript or independent verification.
 
 Raw reports, terminal buffers, conversation IDs and host paths remain local and are excluded from Git. Report names in the documentation identify those local artifacts. Failures and incomplete runs remain represented; a later PASS does not erase them.
 

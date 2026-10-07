@@ -24,3 +24,6 @@ docs/evidence/*
 
 # Rust build output
 rust/target/
+
+# Local editor/agent project metadata.
+.serena/

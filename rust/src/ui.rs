@@ -491,6 +491,8 @@ pub async fn dashboard(
     interval: Duration,
     color: String,
     _no_animate: bool,
+    notifications: String,
+    test_notification: bool,
 ) -> Result<()> {
     let mut snapshot = runtime::snapshot(&store, &cfg, &root, &pool).await?;
     let mut rows = groups(&snapshot, thread.as_deref());
@@ -524,6 +526,15 @@ pub async fn dashboard(
         anyhow::bail!("live dashboard needs a terminal; use --once --json");
     }
     let mut guard = Some(TerminalGuard::enter()?);
+    let notifier = crate::alerts::Notifier::new(&notifications);
+    let mut alerts = crate::alerts::Tracker::default();
+    if test_notification {
+        notifier.send(&[
+            "Test notification: session alerts will appear here while this dashboard is running."
+                .into(),
+        ])?;
+    }
+    notifier.send(&alerts.update(&rows, &snapshot["receiver"]))?;
     let mut selected = 0usize;
     let mut route = rows.first().map(crate::board::preferred).unwrap_or(0);
     let mut detail = false;
@@ -577,6 +588,7 @@ pub async fn dashboard(
                 }
             }
             rows = groups(&snapshot, thread.as_deref());
+            notifier.send(&alerts.update(&rows, &snapshot["receiver"]))?;
             restore_selection(
                 &rows,
                 identity
@@ -596,6 +608,9 @@ pub async fn dashboard(
                 notice = "Selected connection changed; select again".into();
             }
             refresh = Instant::now();
+        }
+        if notifier.failed() {
+            notice = "Desktop notification unavailable; terminal bell sent. Use --notifications osc9 or bel for SSH.".into();
         }
         let (w, h) = terminal::size().unwrap_or((100, 32));
         let board = crate::board::build(

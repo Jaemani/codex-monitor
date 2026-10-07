@@ -1,4 +1,6 @@
 //! Explicit shared-owner recovery. Never creates turns or replays failed input.
+mod systemd;
+
 use anyhow::{Context, Result, bail};
 use codex_monitor_rs::session::SessionPool;
 use serde_json::{Value, json};
@@ -43,8 +45,11 @@ pub fn option(args: &[String], key: &str) -> Option<String> {
     }
 }
 pub fn jobs() -> Result<Vec<Job>> {
+    if cfg!(target_os = "linux") {
+        return systemd::jobs();
+    }
     if !cfg!(target_os = "macos") {
-        bail!("Service reconnect currently requires macOS LaunchAgents");
+        bail!("Service reconnect requires macOS LaunchAgents or Linux systemd user services");
     }
     let dir = PathBuf::from(std::env::var("HOME")?).join("Library/LaunchAgents");
     let mut paths: Vec<_> = std::fs::read_dir(dir)?
@@ -121,6 +126,9 @@ async fn launch(args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 async fn pid(job: &Job) -> Result<u32> {
+    if cfg!(target_os = "linux") {
+        return systemd::pid(job).await;
+    }
     let out = launch(&["print", &domain(job)]).await?;
     let lines: Vec<_> = out.lines().map(str::trim).collect();
     if !lines.contains(&format!("path = {}", job.path.display()).as_str()) {
@@ -245,6 +253,9 @@ async fn loaded(pool: &SessionPool, endpoint: &str) -> Result<BTreeSet<String>> 
     bail!("Owner inventory exceeds bounded inspection");
 }
 pub async fn plan(endpoint: &str, thread: &str, policy: Option<&str>) -> Result<Plan> {
+    if cfg!(target_os = "linux") && policy.is_some() {
+        bail!("Linux reconnect is supported; edit systemd user units to change permissions");
+    }
     if policy.is_some_and(|p| !["full", "read-only", "workspace-network"].contains(&p)) {
         bail!("Unsupported permission mode");
     }
@@ -637,7 +648,12 @@ pub async fn execute(root: &Path, plan: &Plan) -> Result<String> {
             backup.display()
         ));
     }
-    let _ = launch(&["kickstart", "-k", &domain(&plan.owner)]).await;
+    // A command timeout may follow restart acceptance. Reconcile once; never retry restart.
+    if cfg!(target_os = "linux") {
+        let _ = systemd::restart(&plan.owner).await;
+    } else {
+        let _ = launch(&["kickstart", "-k", &domain(&plan.owner)]).await;
+    }
     verify(plan, &plan.owner, &expected).await?;
     Ok(format!(
         "Reconnected with current login; {} conversations restored. No failed input replayed.",

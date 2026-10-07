@@ -110,6 +110,16 @@ fn ready(row: &Value) -> &'static str {
         .any(|b| b["owner_health"]["status"] == "execution-error")
     {
         "Execution error"
+    } else if active
+        .iter()
+        .any(|b| b["owner_health"]["status"] == "waiting-for-approval")
+    {
+        "Approval needed"
+    } else if active
+        .iter()
+        .any(|b| b["owner_health"]["status"] == "waiting-for-user-input")
+    {
+        "Response needed"
     } else if active.iter().all(|b| b["owner_health"]["ready"] == true) {
         "Ready"
     } else {
@@ -463,6 +473,15 @@ pub fn build(
             }
         ),
     ];
+    if binding["owner_health"]["attention"]["status"] == "required" {
+        lines.insert(
+            1,
+            binding["owner_health"]["reason"]
+                .as_str()
+                .unwrap_or("Open in Codex to review and respond.")
+                .to_owned(),
+        );
+    }
     if binding["owner_health"]["status"] == "execution-error" {
         lines.insert(
             1,
@@ -579,6 +598,23 @@ mod tests {
         r["routes"][1]["enabled"] = json!(true);
         assert_eq!(permission(&r), "Check permissions");
     }
+    #[test]
+    fn waiting_conversations_are_visible_and_paused_routes_do_not_alarm() {
+        for (state, label) in [
+            ("waiting-for-approval", "Approval needed"),
+            ("waiting-for-user-input", "Response needed"),
+        ] {
+            let mut data = rows();
+            data[0]["routes"][0]["owner_health"] = json!({"status":state,"ready":false,"attention":{"status":"required"},"reason":"Open in Codex to review and respond."});
+            assert_eq!(ready(&data[0]), label);
+            let text = build(&json!({}), &data, 0, 0, true, false, 0, 0, "", 100, 32).render();
+            assert!(text.contains(label));
+            assert!(text.contains("Open in Codex"));
+            data[0]["routes"][0]["enabled"] = json!(false);
+            assert_eq!(ready(&data[0]), "Paused");
+        }
+    }
+
     #[test]
     fn server_scope_is_explicit() {
         let b = build(&json!({}), &rows(), 0, 0, true, true, 0, 0, "", 100, 32);

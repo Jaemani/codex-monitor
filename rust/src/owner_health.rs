@@ -190,6 +190,7 @@ fn base(endpoint: &str, thread: &str, reason: &str) -> Value {
         "account": {"status":"unverified","present":Value::Null,"credential_validation":"unverified","refresh_token":false},
         "credential_validation": "unverified",
         "model_execution": "unverified",
+        "attention": {"status":"unverified"},
         "reason": reason,
     })
 }
@@ -319,6 +320,9 @@ async fn probe_thread(
                     Err(Failure::Unsupported) => json!({"status":"unsupported"}),
                     Err(_) => json!({"status":"unavailable"}),
                 };
+                return result;
+            }
+            if apply_attention(&mut result, &value) {
                 return result;
             }
             result["status"] = json!("ready-to-receive");
@@ -474,6 +478,50 @@ fn truthy(value: &Value) -> bool {
     }
 }
 
+// Read the owner's current flags, not historical tool requests or prose. Never
+// answer server requests: approval and question responses belong to the user client.
+fn apply_attention(result: &mut Value, value: &Value) -> bool {
+    let status = value.get("thread").unwrap_or(value).get("status");
+    let Some(status) = status else {
+        result["attention"] = json!({"status":"unverified"});
+        return false;
+    };
+    let kind = status_value(status);
+    let flags = status.get("activeFlags").and_then(Value::as_array);
+    if kind.as_deref() != Some("active") || flags.is_none() {
+        result["attention"] =
+            json!({"status": if kind.as_deref() == Some("idle") { "none" } else { "unverified" }});
+        return false;
+    }
+    let flags = flags.unwrap();
+    let approval = flags.iter().any(|flag| flag == "waitingOnApproval");
+    let input = flags.iter().any(|flag| flag == "waitingOnUserInput");
+    result["attention"] = json!({
+        "status": if approval || input { "required" } else { "none" },
+        "approval_required": approval,
+        "user_input_required": input,
+        "source": "thread/read.activeFlags",
+        "automatic_response": false,
+    });
+    if !approval && !input {
+        return false;
+    }
+    let state = if approval {
+        "waiting-for-approval"
+    } else {
+        "waiting-for-user-input"
+    };
+    result["status"] = json!(state);
+    result["state"] = json!(state);
+    result["ready"] = json!(false);
+    result["reason"] = json!(match (approval, input) {
+        (true, true) => "Approval and user response required. Open in Codex to review and respond.",
+        (true, false) => "Approval required. Open in Codex to review the requested action.",
+        _ => "User response required. Open in Codex to answer the pending question.",
+    });
+    true
+}
+
 fn status_value(value: &Value) -> Option<String> {
     if let Some(value) = value.as_str() {
         let value = value.trim();
@@ -574,6 +622,47 @@ fn latest_error(page: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attention_uses_current_flags_without_guessing_from_prose() {
+        for (flags, expected) in [
+            (json!(["waitingOnApproval"]), "waiting-for-approval"),
+            (json!(["waitingOnUserInput"]), "waiting-for-user-input"),
+            (
+                json!(["waitingOnApproval", "waitingOnUserInput"]),
+                "waiting-for-approval",
+            ),
+        ] {
+            let mut result = base("ws://127.0.0.1:1", "thread", "test");
+            assert!(apply_attention(
+                &mut result,
+                &json!({"thread":{"status":{"type":"active","activeFlags":flags}}})
+            ));
+            assert_eq!(result["status"], expected);
+            assert_eq!(result["ready"], false);
+            assert_eq!(result["attention"]["automatic_response"], false);
+            assert!(!apply_attention(
+                &mut result,
+                &json!({"thread":{"status":{"type":"active","activeFlags":[]}}})
+            ));
+            assert_eq!(result["attention"]["status"], "none");
+        }
+        for value in [
+            json!({}),
+            json!({"thread":{"status":{"type":"active"}}}),
+            json!({"thread":{"status":"unknown"}}),
+        ] {
+            let mut result = json!({});
+            assert!(!apply_attention(&mut result, &value));
+            assert_eq!(result["attention"]["status"], "unverified");
+        }
+        let mut result = json!({});
+        assert!(!apply_attention(
+            &mut result,
+            &json!({"thread":{"status":{"type":"idle","activeFlags":["waitingOnApproval"]},"preview":"Please approve sudo"}})
+        ));
+        assert_eq!(result["attention"]["status"], "none");
+    }
 
     #[test]
     fn only_explicit_supported_owner_transports_are_probeable() {

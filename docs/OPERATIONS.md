@@ -135,6 +135,10 @@ RestartSec=5
 WantedBy=default.target
 ```
 
+The dashboard can reconnect a Linux owner managed by `systemd --user`; see
+[Linux service reconnect](LINUX-RECONNECT.md) for owner/resident units and validation
+requirements. Receiver supervision and owner reconnect are separate operations.
+
 On macOS, install the immutable native release, then register its receiver
 LaunchAgent using the `service` command:
 
@@ -197,3 +201,90 @@ event ID. Events rejected before receipt are not stored. Socket inactivity
 times out after 5 seconds. Python Server's `max_connections` can adjust the
 connection limit, but it is not a total request deadline; public deployments
 should set that deadline in the external reverse proxy.
+
+## Pending approvals and user responses
+
+For explicit local owner connections, the dashboard shows **Approval needed**
+when Codex reports `waitingOnApproval` and **Response needed** when it reports
+`waitingOnUserInput`. Open the conversation in its owning Codex client to review
+the requested action or answer the question. Monitor does not approve `sudo`,
+choose answers or respond to feedback requests automatically.
+
+`codex-monitor dashboard --once --json` exposes these observations under each
+binding's `owner_health.attention`. `status` is `required`, `none` or `unverified`;
+recognized active flags include separate `approval_required` and
+`user_input_required` booleans. Transport reachability is separate from a
+conversation waiting for a human decision. Normal snapshots refresh the state;
+this does not send a Discord notification or create an unattended alert.
+
+Detection depends on the owner exposing the current flags. An ordinary prose
+question, a terminal password prompt, an unsupported owner, or a request managed
+outside that owner may not be detectable. Do not treat an absent flag as proof
+that every possible wait has been ruled out.
+
+## Session state-change notifications
+
+The live dashboard enables notifications by default. Keep it running in a
+separate terminal tab to hear or see session problems while working elsewhere:
+
+```bash
+codex-monitor dashboard
+codex-monitor dashboard --test-notification
+```
+
+Each active conversation is tracked by owner endpoint and thread, so multiple
+routes do not produce duplicate notices. Alerts identify the project and
+conversation and report login failures (including authentication-related execution
+errors), approval/input waits, execution errors, lost connections, unloaded
+conversations, lost status visibility and recovery. Receiver loss is tracked
+separately. Normal busy/idle changes and initial healthy or unverified states do
+not notify. Existing actionable problems notify once when the dashboard starts.
+
+Unchanged states never repeat. Disconnect, unload, lost-visibility and recovery
+transitions require two consecutive successful snapshots. Authentication and
+pending-decision notices fire on the next observed state change. Multiple changes
+in one snapshot are combined into one bounded message. Recovery means that the
+owner reports availability again, not that a failed task completed. Paused and
+removed routes do not produce session alerts. A thread-filtered dashboard watches
+only its visible conversations, plus receiver availability.
+
+Notification transport can be selected explicitly:
+
+```bash
+codex-monitor dashboard --notifications auto
+codex-monitor dashboard --notifications osc9
+codex-monitor dashboard --notifications bel
+codex-monitor dashboard --notifications desktop
+codex-monitor dashboard --notifications off
+```
+
+`auto` uses the same portable mechanisms as
+[Codex terminal notifications](https://learn.chatgpt.com/docs/config-file/config-advanced#notifications):
+OSC 9 where the terminal is recognized, and BEL otherwise. Monitor recognizes
+`TERM_PROGRAM` values `iTerm.app`, `WezTerm` and `ghostty`, or `WT_SESSION`.
+SSH often does not forward those hints, so use `osc9` explicitly if the local
+terminal supports notification escape sequences. BEL uses the local terminal's
+bell or activity indicator settings. OSC 9 travels through SSH to the terminal
+on the user's computer; it does not require a desktop on the server. tmux OSC
+passthrough is wrapped, but must also be permitted by the user's tmux settings.
+No local client configuration is changed automatically. These options match
+Codex's transport concepts, not every Codex focus/configuration behavior:
+monitor sends on state transitions regardless of tab focus.
+
+`desktop` is an optional host-local backend: Linux requires `notify-send`
+(the libnotify tools package), a running desktop notification service and access
+to its user session bus; macOS uses `/usr/bin/osascript`. Do not select it on a
+headless SSH server to notify a different computer. Delivery runs outside the UI
+loop with a bounded queue and command timeout. Failures show a dashboard notice;
+a terminal bell is also sent. Popup visibility, sound and focus behavior remain
+controlled by the terminal, desktop permissions and do-not-disturb settings.
+A successfully emitted signal is not proof that the user saw a popup.
+
+`--once`/JSON/status reads never emit notifications. Notification state is local
+to each dashboard process, so reopening it can repeat currently actionable
+problems. Notifications stop while that dashboard is closed, suspended inside
+its opened Codex client, or disconnected from SSH; this is not a background
+notification daemon. It never chooses answers, approves commands, refreshes
+credentials, restarts an owner or starts a model turn. Pending-decision coverage
+still depends on owner active flags; plain-text questions and subprocess password
+prompts are not inferred.

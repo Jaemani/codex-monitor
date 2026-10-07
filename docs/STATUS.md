@@ -1,5 +1,50 @@
 # Status and remaining verification
 
+## Current snapshot (2026-10-07)
+
+Rust in `rust/` is the canonical receiver, resident and dashboard runtime. Python
+is frozen reference and migration-test code. This snapshot supersedes historical
+feature descriptions below; [TODO.md](TODO.md) contains unfinished work.
+
+| Area | Implemented | Remaining limits |
+|---|---|---|
+| Linux reconnect | Direct systemd user owner/resident discovery; loaded PID, arguments, environment and configuration checks; one owner restart with verification | No Linux dashboard permission rewriting or receiver service installer; real Codex reconnect acceptance remains unverified |
+| Session attention | Current approval and user-input flags; authentication and execution-error observations; separate transport/loaded-thread state | Prose questions, subprocess password prompts and unsupported owner flags are not inferred; no automatic response or sudo approval |
+| Notifications | Live-dashboard state changes, route deduplication, debounce and recovery; OSC 9/BEL auto selection and optional host-local desktop backend | Dashboard and SSH must remain connected; client popup visibility and background-daemon operation are not established |
+
+The optimized native updates were installed locally on 2026-10-05/06 and their
+hashes matched the builds. Linux reconnect deployment restarted the receiver and
+verified readiness; attention and notification updates required only a new
+dashboard launch. Owner, resident and Gateway processes were not restarted to
+test those UI changes, and no model turn or operational approval was submitted.
+
+Local validation: 77 Rust tests, strict Clippy, formatting and publication checks.
+A disposable systemd sleep-service test verified PID replacement; a read-only
+check matched the operational owner/resident configuration. Five PTY cases
+verified OSC 9, BEL, off, automatic selection and clean exit; one-shot JSON stayed
+silent. These checks do not establish real conversation restoration or a visible
+popup on a user's SSH client. See [TESTING.md](TESTING.md) and the
+[curated evidence](evidence/README.md).
+
+Operations: [Linux reconnect](LINUX-RECONNECT.md),
+[pending decisions](OPERATIONS.md#pending-approvals-and-user-responses), and
+[state-change notifications](OPERATIONS.md#session-state-change-notifications).
+
+## Repository integration (2026-10-07)
+
+The checkout originally tracked only `codex/rust-runtime`; its remote fetch rule
+excluded main. Remote main was an ancestor of that branch, with 14 Rust adoption
+commits not yet integrated. The current cleanup records the Linux reconnect and
+notification work, restores normal branch fetching, and integrates the existing
+history into main without rewriting or deleting other branches. This is source
+integration, not a package release or new production-model acceptance result.
+
+## Historical implementation and validation
+
+The dated entries below retain previous measurements and limitations. Runtime
+names, feature availability and test counts refer to their dates, not the current
+snapshot above.
+
 ## Native Discord producer cutover and publication (2026-09-27)
 
 Both deployed Discord producers now use the installed Rust executable, in addition

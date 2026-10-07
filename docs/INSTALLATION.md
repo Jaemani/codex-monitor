@@ -11,7 +11,23 @@ assumed; use a trusted checkout or a verified native executable.
 ./scripts/install.sh --with-skill
 codex-monitor --version
 codex-monitor init
+```
+
+On macOS, register and start the receiver LaunchAgent:
+
+```bash
 codex-monitor service install
+```
+
+On Linux, run it in the foreground or configure an OS supervisor:
+
+```bash
+codex-monitor serve
+```
+
+Then open a separate terminal:
+
+```bash
 codex-monitor dashboard
 ```
 
@@ -29,7 +45,8 @@ Rust installations. Existing state is never silently initialized or migrated.
 
 `service` supports macOS user LaunchAgents. On Linux, run `codex-monitor serve`
 under the chosen supervisor; the native macOS service command does not claim Linux
-supervision support.
+supervision support. Dashboard reconnect is a separate operation and supports
+[Linux systemd user owner/resident services](LINUX-RECONNECT.md).
 
 ## Adopt an existing Python installation
 

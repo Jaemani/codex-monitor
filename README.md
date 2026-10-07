@@ -129,6 +129,16 @@ See [installation and upgrades](docs/INSTALLATION.md), [file monitor lifecycle](
 
 ## Watch the connections
 
+The dashboard identifies approval/input waits and authentication failures, and
+notifies on actionable session state changes through OSC 9 or a terminal bell,
+including over SSH. Keep the dashboard running in a separate tab. Test delivery
+with `codex-monitor dashboard --test-notification`; popup visibility depends on
+the terminal. See [notification modes](docs/OPERATIONS.md#session-state-change-notifications).
+
+Reconnect supports macOS LaunchAgents and
+[direct Linux systemd user services](docs/LINUX-RECONNECT.md). Linux dashboard
+permission switching remains unimplemented; reconnect does not grant sudo access.
+
 From a second terminal, with the receiver running:
 
 ```bash

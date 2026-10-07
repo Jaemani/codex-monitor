@@ -1,5 +1,43 @@
 # Test design and results
 
+## Current Rust checks (2026-10-07)
+
+```bash
+cargo test --locked --manifest-path rust/Cargo.toml
+cargo clippy --locked --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+cargo fmt --manifest-path rust/Cargo.toml --check
+python3 scripts/check-publication.py
+```
+
+The current suite passes 77 tests; two Linux service checks are opt-in. New
+coverage includes systemd unit/configuration identity, resource-only overrides,
+argument quoting, effective Codex home, approval/input flags, read-only owner
+probes, notification transitions, deduplication, debounce and terminal escaping.
+
+Optional service checks are documented in
+[Linux reconnect](LINUX-RECONNECT.md#verification-scope). The real-manager fixture
+uses only a disposable sleep service. A separate read-only fixture can inspect
+explicitly selected existing services:
+
+```bash
+CODEX_MONITOR_TEST_ENDPOINT=ws://127.0.0.1:4500 \
+  cargo test --locked --manifest-path rust/Cargo.toml \
+  configured_user_services_match_running_processes -- --ignored
+```
+
+Local PTY verification exercised OSC 9, BEL, off and both automatic-selection
+paths, repeated unchanged snapshots, clean exit and silent one-shot JSON. Use
+`codex-monitor dashboard --test-notification` for a user-visible client check;
+terminal and OS settings still control visibility. Raw PTY buffers remain outside
+Git. No operational approval, user response or model turn was submitted by these
+checks. Real pending-prompt handling, Linux conversation restoration and visible
+SSH client popups remain acceptance work, not claims established by local tests.
+
+## Historical test results
+
+The dated results below describe earlier candidates and runtimes. Use the current
+commands and counts above for this checkout.
+
 ## Native Gateway adoption checks (2026-09-27)
 
 The complete Rust suite passes 61 tests; the frozen Python reference suite passes

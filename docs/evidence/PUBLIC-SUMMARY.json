@@ -1,7 +1,94 @@
 {
-  "date": "2026-09-27",
+  "date": "2026-10-06",
   "kind": "curated summary; original logs retained locally, not independently reproducible evidence",
   "records": [
+    {
+      "date": "2026-10-06",
+      "result": "PASS",
+      "scope": "Live-dashboard state-change notifications; local state tests and disposable pseudo-terminal signal checks",
+      "checks": {
+        "rust_tests_passed": 77,
+        "strict_clippy_passed": true,
+        "osc9_bel_off_auto_pty_cases": 5,
+        "one_shot_emits_no_notifications": true,
+        "unchanged_state_not_repeated": true,
+        "user_ssh_popup_verified": false
+      },
+      "limitations": [
+        "Dashboard must remain live and connected.",
+        "Terminal/OS settings determine visible popups or bell behavior.",
+        "No background daemon, automatic response or credential refresh."
+      ]
+    },
+    {
+      "date": "2026-10-06",
+      "result": "PASS",
+      "scope": "Rust pending-approval and user-input detection; local protocol schema and fake-owner/UI regressions",
+      "checks": {
+        "rust_tests_passed": 70,
+        "strict_clippy_passed": true,
+        "codex_schema_version": "0.160.0",
+        "approval_and_input_flags_recognized": true,
+        "observer_sends_only_read_only_rpc": true,
+        "automatic_responses": false,
+        "real_client_pending_prompt_verified": false
+      },
+      "limitations": [
+        "Requires owner activeFlags; prose and subprocess password prompts are not inferred.",
+        "Dashboard observation only; no external notification.",
+        "No operational approval, sudo execution or model turn was initiated."
+      ]
+    },
+    {
+      "date": "2026-10-05",
+      "result": "PASS",
+      "scope": "Linux installed native update, receiver restart and read-only operational owner/resident configuration matching",
+      "checks": {
+        "rust_tests_passed": 67,
+        "linux_backend_regressions": 6,
+        "strict_clippy_passed": true,
+        "installed_release_hash_matches": true,
+        "receiver_runs_new_binary": true,
+        "receiver_ready": true,
+        "operational_owner_resident_configuration_matches": true,
+        "owner_resident_gateway_pids_unchanged": true,
+        "real_codex_reconnect_verified": false
+      },
+      "corrections": [
+        "Accept resource-only drop-ins and service resource limits.",
+        "Parse quotes embedded within systemd arguments.",
+        "Treat unset CODEX_HOME as HOME/.codex."
+      ],
+      "limitations": [
+        "No interactive dashboard was running on this host; next launch loads the update.",
+        "No operational owner restart, conversation restoration or model execution was requested."
+      ]
+    },
+    {
+      "date": "2026-10-05",
+      "result": "PASS",
+      "scope": "Rust Linux reconnect backend regressions and disposable real systemd user-service lifecycle; no Codex client or model",
+      "versions": {
+        "runtime": "Rust source 0.2.0",
+        "rustc": "1.97.1",
+        "systemd": "262"
+      },
+      "checks": {
+        "rust_tests_passed": 66,
+        "linux_backend_regressions": 5,
+        "opt_in_user_manager_test_passed": true,
+        "strict_clippy_passed": true,
+        "formatting_passed": true,
+        "publication_check_passed": true,
+        "real_codex_reconnect_verified": false
+      },
+      "earlier_attempt": "The first lifecycle fixture linked a temporary unit. FragmentPath verification correctly rejected the linked path; the fixture was changed to a direct runtime unit and passed.",
+      "limitations": [
+        "Only direct user units in the documented subset are supported.",
+        "Linux dashboard permission rewriting and receiver service installation remain out of scope.",
+        "No end-to-end conversation restoration or model execution was tested."
+      ]
+    },
     {
       "local_report": "desktop-launchd-2026-09-08.json",
       "result": "PASS",

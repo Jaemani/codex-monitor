@@ -14,6 +14,9 @@ enum FakeOwnerMode {
     MissingAccount,
     Ready,
     ExecutionError,
+    WaitingApproval,
+    WaitingInput,
+    WaitingBoth,
 }
 
 struct FakeOwner {
@@ -52,19 +55,40 @@ impl FakeOwner {
                         json!({"account":null,"requiresOpenaiAuth":true})
                     }
                     (
-                        FakeOwnerMode::Ready | FakeOwnerMode::ExecutionError,
+                        FakeOwnerMode::Ready
+                        | FakeOwnerMode::ExecutionError
+                        | FakeOwnerMode::WaitingApproval
+                        | FakeOwnerMode::WaitingInput
+                        | FakeOwnerMode::WaitingBoth,
                         Some("account/read"),
                     ) => {
                         json!({"account":{"type":"chatgpt"},"requiresOpenaiAuth":false})
                     }
                     (
-                        FakeOwnerMode::Ready | FakeOwnerMode::ExecutionError,
+                        FakeOwnerMode::Ready
+                        | FakeOwnerMode::ExecutionError
+                        | FakeOwnerMode::WaitingApproval
+                        | FakeOwnerMode::WaitingInput
+                        | FakeOwnerMode::WaitingBoth,
                         Some("thread/loaded/list"),
                     ) => {
                         json!({"data":[thread]})
                     }
                     (FakeOwnerMode::Ready, Some("thread/read")) => {
                         json!({"status":"loaded"})
+                    }
+                    (
+                        FakeOwnerMode::WaitingApproval
+                        | FakeOwnerMode::WaitingInput
+                        | FakeOwnerMode::WaitingBoth,
+                        Some("thread/read"),
+                    ) => {
+                        let flags = match mode {
+                            FakeOwnerMode::WaitingApproval => vec!["waitingOnApproval"],
+                            FakeOwnerMode::WaitingInput => vec!["waitingOnUserInput"],
+                            _ => vec!["waitingOnApproval", "waitingOnUserInput"],
+                        };
+                        json!({"thread":{"status":{"type":"active","activeFlags":flags}}})
                     }
                     (FakeOwnerMode::ExecutionError, Some("thread/read")) => {
                         json!({"thread":{"status":{"type":"systemError"}}})
@@ -248,4 +272,64 @@ async fn dashboard_reads_latest_execution_error_without_refresh_or_resume() {
     assert!(!message.contains("another-secret"));
     assert_no_operational_methods(&owner.requests.lock().await);
     owner.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dashboard_reports_pending_decisions_without_answering_or_resuming() {
+    for (mode, expected, approval, input) in [
+        (
+            FakeOwnerMode::WaitingApproval,
+            "waiting-for-approval",
+            true,
+            false,
+        ),
+        (
+            FakeOwnerMode::WaitingInput,
+            "waiting-for-user-input",
+            false,
+            true,
+        ),
+        (
+            FakeOwnerMode::WaitingBoth,
+            "waiting-for-approval",
+            true,
+            true,
+        ),
+    ] {
+        let owner = FakeOwner::start(mode, "waiting-thread").await;
+        let dir = TempDir::new().unwrap();
+        run_cli(dir.path(), &["init"]);
+        let store = Store::open(&dir.path().join("rust.sqlite3")).unwrap();
+        store
+            .bind(
+                "waiting",
+                "waiting-thread",
+                &owner.endpoint,
+                &["source".into()],
+            )
+            .unwrap();
+        let snapshot = run_cli(dir.path(), &["dashboard", "--once", "--json"]);
+        let health = &binding(&snapshot, "waiting")["owner_health"];
+        assert_eq!(health["status"], expected);
+        assert_eq!(health["ready"], false);
+        assert_eq!(health["transport_reachable"], true);
+        assert_eq!(health["thread_loaded"], true);
+        assert_eq!(health["attention"]["approval_required"], approval);
+        assert_eq!(health["attention"]["user_input_required"], input);
+        assert_eq!(health["attention"]["automatic_response"], false);
+        let requests = owner.requests.lock().await;
+        assert!(requests.iter().all(|r| matches!(
+            r["method"].as_str(),
+            Some(
+                "initialize"
+                    | "initialized"
+                    | "account/read"
+                    | "thread/loaded/list"
+                    | "thread/read"
+            )
+        )));
+        assert_no_operational_methods(&requests);
+        drop(requests);
+        owner.close().await;
+    }
 }

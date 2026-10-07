@@ -21,3 +21,13 @@ The check rejects known internal command wrappers in public documents, Korean te
 Run the applicable regression checks from [TESTING.md](docs/TESTING.md). Update [TODO.md](docs/TODO.md), [STATUS.md](docs/STATUS.md) and the curated public evidence summary when results change. Distinguish protocol acceptance, native consumption, actual user-visible behavior and completed model work.
 
 Keep original reports, conversation transcripts, credentials and local service data outside Git. Publish reviewed summaries with test dates, versions, scope, failures and remaining limitations. Publishing source is separate from publishing a release or choosing a license.
+
+## Branch integration
+
+`main` is the integration branch. Keep feature work on named branches until its
+source, documentation and applicable checks are ready, then integrate without
+rewriting published history. Verify the checkout's tracking branch and fetch
+configuration before assuming a remote branch is absent. Local agent metadata
+such as `.serena/` is not part of a publication candidate. Committing or updating
+main does not publish a versioned package release or establish real-client
+acceptance.
