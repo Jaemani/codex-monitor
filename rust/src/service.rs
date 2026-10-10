@@ -16,6 +16,24 @@ fn atomic_link(target: &Path, path: &Path) -> Result<()> {
     std::fs::rename(tmp, path)?;
     Ok(())
 }
+pub fn update_available() -> bool {
+    std::env::current_exe().is_ok_and(|exe| installed_update(&exe))
+}
+fn installed_update(exe: &Path) -> bool {
+    let Some(releases) = exe.ancestors().nth(3) else {
+        return false;
+    };
+    let Some(prefix) = releases.parent() else {
+        return false;
+    };
+    releases.file_name().is_some_and(|s| s == "releases")
+        && prefix.join("native-install.json").is_file()
+        && prefix
+            .join("current/bin/codex-monitor")
+            .canonicalize()
+            .is_ok_and(|current| current != exe)
+}
+
 pub fn install(prefix: Option<&Path>, bin_dir: Option<&Path>, adopt: bool) -> Result<Value> {
     let default = home()?.join(".local/share/codex-monitor-rust");
     let prefix = prefix.unwrap_or(&default);
@@ -304,4 +322,33 @@ pub fn install_skill() -> Result<Value> {
         include_bytes!("../../plugins/codex-monitor/skills/codex-monitor/scripts/monitor.py"),
     )?;
     Ok(json!({"path":target,"runtime":"rust"}))
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::*;
+    #[test]
+    fn only_owned_installations_report_replaced_executables() {
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path();
+        for version in ["old", "new"] {
+            std::fs::create_dir_all(prefix.join(format!("releases/{version}/bin"))).unwrap();
+            std::fs::write(
+                prefix.join(format!("releases/{version}/bin/codex-monitor")),
+                version,
+            )
+            .unwrap();
+        }
+        std::fs::write(prefix.join("native-install.json"), "{}").unwrap();
+        let old = prefix.join("releases/old/bin/codex-monitor");
+        atomic_link(&prefix.join("releases/old"), &prefix.join("current")).unwrap();
+        assert!(!installed_update(&old));
+        atomic_link(&prefix.join("releases/new"), &prefix.join("current")).unwrap();
+        assert!(installed_update(&old));
+        assert!(!installed_update(
+            &prefix.join("releases/new/bin/codex-monitor")
+        ));
+        std::fs::remove_file(prefix.join("native-install.json")).unwrap();
+        assert!(!installed_update(&old));
+    }
 }

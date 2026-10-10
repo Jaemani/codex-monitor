@@ -1,17 +1,21 @@
 # Public verification summary
 
-## Current evidence (2026-10-07)
+## Current evidence (2026-10-10)
 
-The current Rust suite passes 77 tests, strict Clippy, formatting and publication
+The current Rust suite passes 82 tests, strict Clippy, formatting and publication
 checks. Linux reconnect has disposable real systemd lifecycle evidence and a
 read-only match against an operational owner/resident configuration. Approval
-and input detection have protocol-schema and fake-owner coverage. Notifications
+and input detection have protocol-schema and fake-owner coverage. A real pending
+command approval was observed read-only on October 10. It was not answered;
+clearance remains unverified. Saved owner defaults were resolved for eight
+conversations. The disposable systemd fixture now also checks unit rewriting,
+stop/start and original-argument restoration. Notifications
 have five local PTY transport cases plus one-shot silence checks. Installed
 binary hashes and receiver readiness were checked separately.
 
 The September Linux TUI canary has separate native owner-reconnect evidence;
 it does not validate the new login-reload dashboard path. Current checks do not
-establish that login-reload flow, a real pending-question
+establish that login-reload flow, an end-to-end Codex permission change, a real pending-question
 response, a popup visible on the user's SSH client, or completed model work.
 Earlier failed configuration/fixture checks remain recorded in
 [PUBLIC-SUMMARY.json](PUBLIC-SUMMARY.json); subsequent fixes do not erase them.

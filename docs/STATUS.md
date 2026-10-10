@@ -1,6 +1,6 @@
 # Status and remaining verification
 
-## Current snapshot (2026-10-07)
+## Current snapshot (2026-10-10)
 
 Rust in `rust/` is the canonical receiver, resident and dashboard runtime. Python
 is frozen reference and migration-test code. This snapshot supersedes historical
@@ -8,7 +8,7 @@ feature descriptions below; [TODO.md](TODO.md) contains unfinished work.
 
 | Area | Implemented | Remaining limits |
 |---|---|---|
-| Linux reconnect | Direct systemd user owner/resident discovery; loaded PID, arguments, environment and configuration checks; one owner restart with verification | No Linux dashboard permission rewriting or receiver service installer; real login-reload dashboard reconnect acceptance remains unverified |
+| Linux reconnect | Direct systemd user owner/resident discovery; loaded PID, arguments, environment and configuration checks; one owner restart with verification; explicit permission preview, unit rewrite, backup and rollback | No Linux receiver service installer; real Codex permission-change and login-reload reconnect acceptance remain unverified |
 | Session attention | Current approval and user-input flags; authentication and execution-error observations; separate transport/loaded-thread state | Prose questions, subprocess password prompts and unsupported owner flags are not inferred; no automatic response or sudo approval |
 | Notifications | Live-dashboard state changes, route deduplication, debounce and recovery; OSC 9/BEL auto selection and optional host-local desktop backend | Dashboard and SSH must remain connected; client popup visibility and background-daemon operation are not established |
 
@@ -18,7 +18,8 @@ verified readiness; attention and notification updates required only a new
 dashboard launch. Owner, resident and Gateway processes were not restarted to
 test those UI changes, and no model turn or operational approval was submitted.
 
-Local validation: 77 Rust tests, strict Clippy, formatting and publication checks.
+Current local validation: 82 Rust tests, strict Clippy, formatting and publication
+checks. The earlier notification and reconnect checks below retain their scope.
 A disposable systemd sleep-service test verified PID replacement; a read-only
 check matched the operational owner/resident configuration. Five PTY cases
 verified OSC 9, BEL, off, automatic selection and clean exit; one-shot JSON stayed
@@ -29,6 +30,45 @@ popup on a user's SSH client. See [TESTING.md](TESTING.md) and the
 Operations: [Linux reconnect](LINUX-RECONNECT.md),
 [pending decisions](OPERATIONS.md#pending-approvals-and-user-responses), and
 [state-change notifications](OPERATIONS.md#session-state-change-notifications).
+
+## Linux permissions and attention correction (2026-10-10)
+
+Saved permission labels now inherit explicit owner sandbox configuration when a
+resident has no override. Labels remain saved defaults, not a claim about every
+attached client's effective permissions. Project permissions is offered when all
+configured conversations on the server map to one project; otherwise the action
+is Server permissions. The menu lists the affected conversations and projects.
+Project metadata does not create a permission isolation boundary.
+
+Linux permission changes now use the same preview/confirmation and idle/empty
+queue checks as macOS. The systemd path preserves non-ExecStart directives,
+backs up units, stops residents before the owner, reloads the manager, starts
+and verifies services, and restores saved units on failure. Approval policy is
+preserved; combined approval/sandbox presets require normalization. No OS sudo
+privileges or automatic approvals are granted. A full real-client permission
+change remains an acceptance task, not an operational action performed here.
+
+Approval and response waits now appear in the overview attention panel and
+summary count, including 24-row terminals. Unsupported or missing attention
+state no longer qualifies as Ready. Read-only observation of a real
+pending command approval confirmed `waiting-for-approval`; inherited saved
+permissions were resolved for eight conversations. No approval was answered and
+no operational owner or resident was restarted. Resolution/clearance and SSH
+popup visibility remain unverified. The user's running dashboard was an older
+immutable executable; installation alone cannot replace an already running
+process. New dashboards display a reopen banner after subsequent native updates.
+
+Regression checks cover inherited settings, cross-project scope, approval-policy
+preservation, unit serialization, compact attention rendering and update identity.
+The disposable systemd service check also exercises stop, rewrite, reload, start
+and restoration of original arguments. These are service lifecycle checks, not
+end-to-end Codex permission acceptance. The optimized binary was installed and
+its digest matched the build. An installed-dashboard PTY check displayed the real
+approval in the attention panel and all eight names in the project permission
+menu; requesting a permission preview was blocked by the pending decision before
+any service mutation. The dashboard exited cleanly. This local rendering check
+does not verify a popup in the user's SSH terminal. Raw observations remain
+outside Git.
 
 ## Repository integration (2026-10-07)
 

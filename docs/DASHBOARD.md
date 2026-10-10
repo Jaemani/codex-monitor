@@ -1,6 +1,6 @@
 # Live connection dashboard
 
-The canonical dashboard is native Rust. `Change Permission` is a shared-server
+The canonical dashboard is native Rust. `Project permissions` / `Server permissions` is a shared-server
 action: its separate menu identifies the server and its preview lists every
 affected conversation, including other projects. Project groups are navigation
 labels, not permission isolation boundaries. Reconnect retains permissions.
@@ -243,7 +243,8 @@ an explicit owner endpoint; queue-only routes cannot infer an owner.
 ## Reconnect with a permission mode
 
 Conversation details keep **Reconnect** (preserve permissions) separate from
-**Change Permission**. Open Change Permission to see the current saved policy and
+**Project permissions** (one project) or **Server permissions** (mixed or unknown
+projects). Open this menu to see the saved policy, inherited owner defaults and
 choose **Full Access**, **Read-only**, or **Project Access**. Use Left/Right
 and Enter; Back or Esc returns to the details without applying a choice.
 The first activation of a permission mode previews
@@ -291,7 +292,7 @@ When active connections exist, permission summaries exclude disabled legacy
 connections. Conflicting or partially unknown active connections require inspection
 and display Check permissions. All action buttons occupy one horizontal row when
 they fit; wrapping occurs only when the terminal is too narrow. The detail dialog
-uses up to 112 columns, with Change Permission and Close always present.
+uses up to 112 columns, with the permission menu and Close always present.
 
 ## Back to codex-monitor Dashboard
 
@@ -302,3 +303,14 @@ command; codex-monitor does not rename its native command-picker description.
 For an explicit remote owner this detaches the TUI and returns to the waiting
 dashboard. The shared owner, residents and receiver continue running. Do not stop
 the owner process to return to the dashboard.
+
+## Installed dashboard updates
+
+Native installs use immutable executables. After installing an update, exit the
+old dashboard with `q` and run `codex-monitor dashboard` again. Existing owner and
+resident conversations do not need to be restarted for display changes. Updated
+dashboards detect subsequent native installs and display a reopen banner.
+Approval and response waits appear in the attention summary and panel; they are
+not counted as Ready. Unsupported or missing decision state is shown as Needs
+review. SSH alerts still require a live dashboard and terminal
+support for the selected OSC 9 or BEL backend.

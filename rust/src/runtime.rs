@@ -72,11 +72,12 @@ pub async fn snapshot(
 ) -> Result<Value> {
     let mut bindings = store.dashboard_bindings()?;
     owner_health::attach(&mut bindings, pool).await;
-    crate::reconnect::attach_permissions(&mut bindings);
+    let metadata = store.metadata_list(None)?;
+    crate::reconnect::attach_permissions(&mut bindings, &metadata);
     let receiver = health(c, root).await;
     let resources = crate::resources::sample(root, &receiver).await;
     Ok(
-        json!({"runtime":"rust","generated_at":now(),"receiver":receiver,"resources":resources,"bindings":bindings,"conversations":store.metadata_list(None)?,"monitors":store.watches(None)?,"delivery":store.status()?,"scope":{"event_delivery":"persisted_observations","model_telemetry":"not_collected","tool_telemetry":"not_collected"}}),
+        json!({"runtime":"rust","dashboard_update_available":crate::service::update_available(),"generated_at":now(),"receiver":receiver,"resources":resources,"bindings":bindings,"conversations":metadata,"monitors":store.watches(None)?,"delivery":store.status()?,"scope":{"event_delivery":"persisted_observations","model_telemetry":"not_collected","tool_telemetry":"not_collected"}}),
     )
 }
 #[derive(Clone)]

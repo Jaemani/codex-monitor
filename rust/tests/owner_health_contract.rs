@@ -13,6 +13,7 @@ use tokio_tungstenite::tungstenite::Message;
 enum FakeOwnerMode {
     MissingAccount,
     Ready,
+    Unverified,
     ExecutionError,
     WaitingApproval,
     WaitingInput,
@@ -56,6 +57,7 @@ impl FakeOwner {
                     }
                     (
                         FakeOwnerMode::Ready
+                        | FakeOwnerMode::Unverified
                         | FakeOwnerMode::ExecutionError
                         | FakeOwnerMode::WaitingApproval
                         | FakeOwnerMode::WaitingInput
@@ -66,6 +68,7 @@ impl FakeOwner {
                     }
                     (
                         FakeOwnerMode::Ready
+                        | FakeOwnerMode::Unverified
                         | FakeOwnerMode::ExecutionError
                         | FakeOwnerMode::WaitingApproval
                         | FakeOwnerMode::WaitingInput
@@ -75,7 +78,10 @@ impl FakeOwner {
                         json!({"data":[thread]})
                     }
                     (FakeOwnerMode::Ready, Some("thread/read")) => {
-                        json!({"status":"loaded"})
+                        json!({"thread":{"status":{"type":"idle"}}})
+                    }
+                    (FakeOwnerMode::Unverified, Some("thread/read")) => {
+                        json!({"thread":{"status":{"type":"active"}}})
                     }
                     (
                         FakeOwnerMode::WaitingApproval
@@ -332,4 +338,27 @@ async fn dashboard_reports_pending_decisions_without_answering_or_resuming() {
         drop(requests);
         owner.close().await;
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn missing_attention_flags_do_not_claim_ready() {
+    let root = TempDir::new().unwrap();
+    let owner = FakeOwner::start(FakeOwnerMode::Unverified, "unknown-thread").await;
+    run_cli(root.path(), &["init", "--port", "1"]);
+    let store = Store::open(&root.path().join("rust.sqlite3")).unwrap();
+    store
+        .bind(
+            "unknown",
+            "unknown-thread",
+            &owner.endpoint,
+            &["source".into()],
+        )
+        .unwrap();
+    let snapshot = run_cli(root.path(), &["status"]);
+    let health = &binding(&snapshot, "unknown")["owner_health"];
+    assert_eq!(health["ready"], false);
+    assert_eq!(health["attention"]["status"], "unverified");
+    assert_ne!(health["status"], "ready-to-receive");
+    assert_no_operational_methods(&owner.requests.lock().await);
+    owner.close().await;
 }

@@ -81,8 +81,23 @@ owner PID, the verified account, account access and restored loaded conversation
 No failed input is replayed. A restart timeout is reconciled without issuing a
 second restart.
 
-Linux permission changes through the dashboard are not implemented by this
-change; edit the units explicitly when changing permissions. The receiver
+The dashboard supports explicit **Project permissions** or **Server permissions**
+changes. Both affect the shared owner, not just the selected conversation. The
+project label is used only when every configured conversation maps to one project;
+the menu lists all affected names and the confirmation also lists thread IDs.
+Saved labels inherit explicit owner sandbox options when a resident has no override.
+They do not verify the effective policy of an already attached client.
+
+All loaded conversations must be idle or in an execution-error state, and all
+covered queues must be empty. Resolve pending approvals or questions in Codex
+before applying a change. Confirmation backs up units, changes only ExecStart,
+reloads systemd, restarts the owner and residents, and checks returned sandbox
+modes for all configured conversations. Failure restores the saved files and
+reports whether service restoration completed; inspect effective state before
+retrying. Full Access preserves approval policy and does not grant OS sudo
+privileges. Project Access preserves configured additional writable roots.
+
+The receiver
 `service` installer remains macOS-specific; Linux receiver supervision is
 configured separately as described in [operations](OPERATIONS.md).
 
@@ -91,7 +106,8 @@ configured separately as described in [operations](OPERATIONS.md).
 Local regression tests cover unit discovery, quoting, unsafe file exclusion,
 loaded-unit identity, stale configurations, process arguments, login environment
 and working-directory mismatches. A separate opt-in test uses a disposable
-`/usr/bin/sleep` user service to verify real manager restart and PID replacement:
+`/usr/bin/sleep` user service to verify real manager restart, PID replacement,
+unit rewriting, stop/start and restoration of original arguments:
 
 ```bash
 cargo test --locked --manifest-path rust/Cargo.toml

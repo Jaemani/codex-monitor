@@ -325,6 +325,12 @@ async fn probe_thread(
             if apply_attention(&mut result, &value) {
                 return result;
             }
+            if result["attention"]["status"] != "none" {
+                result["reason"] = json!(
+                    "Owner reachable, but pending approvals and user input cannot be verified. Open in Codex to inspect."
+                );
+                return result;
+            }
             result["status"] = json!("ready-to-receive");
             result["state"] = json!("ready-to-receive");
             result["ready"] = json!(true);
@@ -336,10 +342,9 @@ async fn probe_thread(
             result["loaded_threads"] = json!(loaded);
             result["thread_loaded"] = json!(true);
             result["thread_read"] = json!({"status":"unsupported"});
-            result["status"] = json!("ready-to-receive");
-            result["state"] = json!("ready-to-receive");
-            result["ready"] = json!(true);
-            result["reason"] = json!("owner transport reachable and conversation loaded");
+            result["reason"] = json!(
+                "Owner reachable, but thread status is unsupported. Open in Codex to inspect pending decisions."
+            );
             result
         }
         Err(Failure::Auth) => thread_failure(

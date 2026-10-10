@@ -128,7 +128,7 @@ path is not proof of provisioning access. Offer targeted access, temporary full
 access with restoration, or keeping the current restrictions. Full access is not
 a Discord API requirement and cannot replace bot permissions.
 
-Monitor's dashboard separates ordinary Reconnect from a Change Permission menu
+Monitor's dashboard separates ordinary Reconnect from its Project permissions / Server permissions menu
 with Full Access, Read-only and Project Access for verified local macOS owners. The first action previews all configured
 conversation IDs; the same second action within 60 seconds confirms. The mode is
 persistent and applies to the shared owner and all matching residents, not just

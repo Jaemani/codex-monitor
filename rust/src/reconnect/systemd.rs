@@ -1,4 +1,4 @@
-//! Reconnect direct, user-owned systemd services without modifying unit files.
+//! Reconnect and explicitly update verified, direct systemd user services.
 use super::Job;
 use anyhow::{Context, Result, bail};
 use std::{
@@ -335,6 +335,84 @@ pub(super) async fn restart(job: &Job) -> Result<()> {
     Ok(())
 }
 
+// Replace only ExecStart; preserve environment, resource limits and installation policy.
+pub(super) fn rewrite(job: &Job, args: &[String]) -> Result<Vec<u8>> {
+    let mut quoted = Vec::new();
+    for arg in args {
+        if arg
+            .chars()
+            .any(|c| c.is_control() || ['\\', '$', '%'].contains(&c))
+        {
+            bail!("Permission arguments require literal systemd values");
+        }
+        // A single quote can be represented in its own double-quoted segment.
+        quoted.push(format!("'{}'", arg.replace('\'', "'\"'\"'")));
+    }
+    let mut service = false;
+    let mut count = 0;
+    let mut output = String::new();
+    for line in std::str::from_utf8(&job.raw)?.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            service = trimmed == "[Service]";
+        }
+        if service
+            && trimmed
+                .split_once('=')
+                .is_some_and(|(key, _)| key.trim() == "ExecStart")
+        {
+            count += 1;
+            output.push_str(&format!("ExecStart={}\n", quoted.join(" ")));
+        } else {
+            output.push_str(line);
+        }
+    }
+    let parsed = parse(job.path.clone(), output.as_bytes().to_vec())?;
+    if count != 1 || parsed.args != args || parsed.env != job.env || parsed.cwd != job.cwd {
+        bail!("Rewritten unit did not preserve service configuration");
+    }
+    Ok(output.into_bytes())
+}
+
+pub(super) async fn reload() -> Result<()> {
+    systemctl(&["daemon-reload"]).await?;
+    Ok(())
+}
+
+pub(super) async fn stop(job: &Job) -> Result<()> {
+    systemctl(&["--no-block", "stop", "--", &job.label]).await?;
+    tokio::time::timeout(Duration::from_secs(35), async {
+        loop {
+            let state =
+                systemctl(&["show", "--property=ActiveState,MainPID", "--", &job.label]).await?;
+            if state
+                .lines()
+                .any(|s| matches!(s, "ActiveState=inactive" | "ActiveState=failed"))
+                && state.lines().any(|s| s == "MainPID=0")
+            {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .context("Service did not stop; configuration was not applied")?
+}
+
+pub(super) async fn start(job: &Job) -> Result<()> {
+    systemctl(&["--no-block", "start", "--", &job.label]).await?;
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            if pid(job).await.is_ok() {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .context("Started service did not match saved configuration")?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,6 +432,28 @@ mod tests {
         )
     }
 
+    #[test]
+    fn permission_rewrite_preserves_unit_settings_and_literal_arguments() {
+        let original = parse(
+            PathBuf::from("/tmp/owner.service"),
+            unit("Environment=EXAMPLE=literal\nMemoryMax=4G\nUMask=0077"),
+        )
+        .unwrap();
+        for policy in ["full", "read-only", "workspace-network"] {
+            let mut args = super::super::policy_args(&original.args, policy, false).unwrap();
+            args.extend(["-c".into(), "model=\"example's model\"".into()]);
+            let raw = rewrite(&original, &args).unwrap();
+            let next = parse(original.path.clone(), raw).unwrap();
+            assert_eq!(next.args, args);
+            assert_eq!(next.env, original.env);
+            let text = String::from_utf8(next.raw).unwrap();
+            assert!(text.contains("MemoryMax=4G\nUMask=0077"));
+            assert!(text.contains("[Install]\nWantedBy=default.target"));
+        }
+        for value in ["$HOME", "%h", "line\nbreak", "back\\slash"] {
+            assert!(rewrite(&original, &["/bin/codex".into(), value.into()]).is_err());
+        }
+    }
     #[test]
     fn parses_direct_owner_and_resident_units() {
         let owner = parse(PathBuf::from("/tmp/owner.service"), unit("Environment=\"CODEX_HOME=/tmp/codex home\" HOME=/tmp\nWorkingDirectory=/tmp\nRestart=always\nUMask=0077\nMemoryMax=4G\nTasksMax=2048")).unwrap();
@@ -534,6 +634,20 @@ mod tests {
             for _ in 0..40 {
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 if pid(&job).await.is_ok_and(|after| after != before) {
+                    stop(&job).await?;
+                    let args = vec!["/usr/bin/sleep".into(), "121".into()];
+                    let raw = rewrite(&job, &args)?;
+                    let changed = parse(path.clone(), raw.clone())?;
+                    std::fs::write(&path, raw)?;
+                    reload().await?;
+                    start(&changed).await?;
+                    pid(&changed).await?;
+                    assert!(pid(&job).await.is_err());
+                    stop(&changed).await?;
+                    std::fs::write(&path, &job.raw)?;
+                    reload().await?;
+                    start(&job).await?;
+                    pid(&job).await?;
                     return Ok(());
                 }
             }

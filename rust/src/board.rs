@@ -217,7 +217,16 @@ pub fn build(
     let w = width.max(24);
     let h = height.max(8);
     let mut b = Board::new(w, h);
-    b.text(1, 0, "CODEX MONITOR · Rust", w - 2);
+    b.text(
+        1,
+        0,
+        if snapshot["dashboard_update_available"] == true {
+            "UPDATE INSTALLED · q then reopen codex-monitor dashboard"
+        } else {
+            "CODEX MONITOR · Rust"
+        },
+        w - 2,
+    );
     let failures = rows
         .iter()
         .filter(|r| ready(r) == "Execution error" || ready(r) == "Login required")
@@ -229,6 +238,10 @@ pub fn build(
         .map(|r| r["events"]["counts"]["pending"].as_u64().unwrap_or(0))
         .sum();
     let unchecked = rows.iter().filter(|r| ready(r) == "Needs review").count();
+    let decisions = rows
+        .iter()
+        .filter(|r| ["Approval needed", "Response needed"].contains(&ready(r)))
+        .count();
     let mut top = 3usize;
     if w >= 76 && h >= 20 {
         let metrics = [
@@ -240,7 +253,10 @@ pub fn build(
                     "Unavailable".into()
                 },
             ),
-            ("EXECUTION", format!("{failures} failed")),
+            (
+                "ATTENTION",
+                format!("{decisions} waiting · {failures} failed"),
+            ),
             ("DELIVERY", format!("{pending} pending")),
             ("VERIFICATION", format!("{unchecked} unchecked")),
         ];
@@ -255,7 +271,7 @@ pub fn build(
             1,
             1,
             &format!(
-                "{} conversations · {failures} failed · {pending} pending",
+                "{} conversations · {decisions} waiting · {failures} failed",
                 rows.len()
             ),
             w - 2,
@@ -310,10 +326,19 @@ pub fn build(
     let issues: Vec<_> = rows
         .iter()
         .enumerate()
-        .filter(|(_, r)| ["Execution error", "Login required", "Needs review"].contains(&ready(r)))
+        .filter(|(_, r)| {
+            [
+                "Execution error",
+                "Login required",
+                "Approval needed",
+                "Response needed",
+                "Needs review",
+            ]
+            .contains(&ready(r))
+        })
         .take(4)
         .collect();
-    if !issues.is_empty() && h >= 32 {
+    if !issues.is_empty() && h >= 20 {
         let count = issues.len().min(2);
         b.box_at(0, top, w, count + 2, "NEEDS ATTENTION");
         for (n, (i, r)) in issues.iter().take(count).enumerate() {
@@ -391,7 +416,7 @@ pub fn build(
             b.text(
                 x + 4,
                 py + 1,
-                &format!("{} · {}", permission(r), last_seen(r)),
+                &format!("Saved: {} · {}", permission(r), last_seen(r)),
                 cw.saturating_sub(6),
             );
             b.hit(x + 1, py, cw - 2, Hit::Conversation(*i));
@@ -434,7 +459,14 @@ pub fn build(
             row["name"].as_str().unwrap_or("")
         ),
     );
-    let labels = labels(menu, binding["enabled"] == true);
+    let mut labels = labels(menu, binding["enabled"] == true);
+    if !menu {
+        labels[4] = if binding["permission"]["scope"] == "project" {
+            "Project permissions"
+        } else {
+            "Server permissions"
+        };
+    }
     let mut buttons: Vec<Vec<(usize, &str, usize)>> = vec![Vec::new()];
     let mut used = 0;
     for (i, label) in labels.iter().enumerate() {
@@ -450,7 +482,7 @@ pub fn build(
     let mut lines = vec![
         ready(row).into(),
         format!(
-            "Saved permissions: {}",
+            "Saved permissions (server/resident defaults): {}",
             binding["permission"]["label"]
                 .as_str()
                 .unwrap_or("Access unknown")
@@ -494,9 +526,13 @@ pub fn build(
         );
     }
     if menu {
-        lines=vec!["CHANGE SHARED SERVER PERMISSIONS".into(),format!("Server: {}",binding["endpoint"].as_str().unwrap_or("unknown")),"This changes ALL conversations using this server, including other projects. It does not change only this conversation.".into(),"Full Access: unrestricted filesystem and command networking.".into(),"Read-only: no filesystem writes or command networking.".into(),"Project Access: project writes and internet; other paths remain restricted.".into(),"Settings persist until changed. Choose a mode to preview affected conversations; choose the same mode again to apply.".into()];
+        lines=vec!["CHANGE SHARED SERVER PERMISSIONS".into(),format!("Server: {}",binding["endpoint"].as_str().unwrap_or("unknown")),"This changes ALL conversations using this server, including other projects. It does not change only this conversation.".into(),"Full Access: unrestricted filesystem and command networking. Approval policy and OS sudo privileges stay unchanged.".into(),"Read-only: no filesystem writes or command networking.".into(),"Project Access: workspace writes and internet; configured writable roots are preserved.".into(),"Settings persist until changed. Choose a mode to preview affected conversations; choose the same mode again to apply.".into()];
+        lines.insert(
+            1,
+            crate::reconnect::permission_scope(&binding["permission"]),
+        );
     } else {
-        lines.extend(["".into(),"Reconnect reloads the current login for this shared server. It preserves permissions and does not replay failed input.".into(),"Change Permission applies to the entire shared server. Inspect the affected conversation list before confirming.".into(),"Project Access allows project writes and internet access; external setup paths remain restricted.".into()]);
+        lines.extend(["".into(),"Reconnect reloads the current login for this shared server. It preserves permissions and does not replay failed input.".into(),"Permission changes apply to the entire shared server. Inspect the affected conversation list before confirming.".into(),"Project Access allows project writes and internet access; external setup paths remain restricted.".into()]);
     }
     if !notice.is_empty() {
         lines.splice(0..0, [notice.to_owned(), String::new()]);
@@ -610,6 +646,13 @@ mod tests {
             let text = build(&json!({}), &data, 0, 0, true, false, 0, 0, "", 100, 32).render();
             assert!(text.contains(label));
             assert!(text.contains("Open in Codex"));
+            for height in [24, 32] {
+                let overview =
+                    build(&json!({}), &data, 0, 0, false, false, 0, 0, "", 100, height).render();
+                assert!(overview.contains("NEEDS ATTENTION"));
+                assert!(overview.contains("1 waiting"));
+                assert!(overview.contains(label));
+            }
             data[0]["routes"][0]["enabled"] = json!(false);
             assert_eq!(ready(&data[0]), "Paused");
         }

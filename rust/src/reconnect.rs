@@ -253,9 +253,6 @@ async fn loaded(pool: &SessionPool, endpoint: &str) -> Result<BTreeSet<String>> 
     bail!("Owner inventory exceeds bounded inspection");
 }
 pub async fn plan(endpoint: &str, thread: &str, policy: Option<&str>) -> Result<Plan> {
-    if cfg!(target_os = "linux") && policy.is_some() {
-        bail!("Linux reconnect is supported; edit systemd user units to change permissions");
-    }
     if policy.is_some_and(|p| !["full", "read-only", "workspace-network"].contains(&p)) {
         bail!("Unsupported permission mode");
     }
@@ -284,7 +281,7 @@ pub async fn plan(endpoint: &str, thread: &str, policy: Option<&str>) -> Result<
                 .or_else(|| status["type"].as_str())
                 .unwrap_or("");
             if !["idle", "systemError"].contains(&status) {
-                bail!("A conversation is busy or unverified; retry when idle");
+                bail!("A conversation is running, awaiting approval/input, or unverified. Open it in Codex and resolve pending decisions; retry when all conversations are idle");
             }
         }
         let covered = configured(&residents);
@@ -350,6 +347,17 @@ pub fn policy_args(args: &[String], policy: &str, resident: bool) -> Result<Vec<
     let mut i = 0;
     while i < args.len() {
         let a = &args[i];
+        if [
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--yolo",
+            "--full-auto",
+        ]
+        .contains(&a.as_str())
+        {
+            bail!(
+                "Normalize combined approval/sandbox flags before changing permissions; approval policy must remain explicit"
+            );
+        }
         if ["--sandbox", "-s"].contains(&a.as_str()) {
             if i + 1 >= args.len() {
                 bail!("Malformed sandbox option");
@@ -461,7 +469,23 @@ async fn fresh_account(plan: &Plan) -> Result<Value> {
     let _ = std::fs::remove_dir_all(temp);
     result?
 }
+async fn stop(job: &Job) -> Result<()> {
+    if cfg!(target_os = "linux") {
+        return systemd::stop(job).await;
+    }
+    launch(&["bootout", &domain(job)]).await?;
+    Ok(())
+}
+async fn reload() -> Result<()> {
+    if cfg!(target_os = "linux") {
+        systemd::reload().await?;
+    }
+    Ok(())
+}
 async fn bootstrap(job: &Job) -> Result<()> {
+    if cfg!(target_os = "linux") {
+        return systemd::start(job).await;
+    }
     for i in 0..4 {
         if launch(&[
             "bootstrap",
@@ -486,7 +510,7 @@ async fn verify(plan: &Plan, owner: &Job, expected: &Value) -> Result<()> {
         loop {
             let attempt = async {
                 let current = pid(owner).await?;
-                if plan.policy.is_none() && current == plan.pid {
+                if current == plan.pid {
                     bail!("Waiting for owner restart");
                 }
                 let v = pool
@@ -512,7 +536,7 @@ async fn verify(plan: &Plan, owner: &Job, expected: &Value) -> Result<()> {
                     bail!("Account access unverified");
                 }
                 if let Some(policy) = &plan.policy {
-                    for id in &plan.threads {
+                    for id in &configured(&plan.residents) {
                         let response = pool
                             .call(
                                 &plan.endpoint,
@@ -526,9 +550,12 @@ async fn verify(plan: &Plan, owner: &Job, expected: &Value) -> Result<()> {
                             _ => "workspaceWrite",
                         };
                         if response["sandbox"]["type"] != expected
-                            || policy != "full"
-                                && response["sandbox"]["networkAccess"].as_bool()
-                                    != Some(policy == "workspace-network")
+                            || policy == "workspace-network"
+                                && response["sandbox"]["networkAccess"].as_bool() != Some(true)
+                            || policy == "read-only"
+                                && response["sandbox"]["networkAccess"]
+                                    .as_bool()
+                                    .unwrap_or(false)
                         {
                             bail!("Effective permissions differ from selected mode");
                         }
@@ -579,11 +606,15 @@ pub async fn execute(root: &Path, plan: &Plan) -> Result<String> {
             }
             let mut next = job.clone();
             next.args = policy_args(&job.args, policy, i > 0)?;
-            let mut spec: Value = plist::from_bytes(&job.raw)?;
-            spec["ProgramArguments"] = json!(next.args);
-            let mut raw = Vec::new();
-            plist::to_writer_xml(&mut raw, &spec)?;
-            next.raw = raw;
+            next.raw = if cfg!(target_os = "linux") {
+                systemd::rewrite(job, &next.args)?
+            } else {
+                let mut spec: Value = plist::from_bytes(&job.raw)?;
+                spec["ProgramArguments"] = json!(next.args);
+                let mut raw = Vec::new();
+                plist::to_writer_xml(&mut raw, &spec)?;
+                raw
+            };
             changed.push(next);
         }
         for job in &plan.residents {
@@ -612,11 +643,12 @@ pub async fn execute(root: &Path, plan: &Plan) -> Result<String> {
         let result: Result<()> = async {
             for job in plan.residents.iter().chain(std::iter::once(&plan.owner)) {
                 stopped.push(job.clone());
-                launch(&["bootout", &domain(job)]).await?;
+                stop(job).await?;
             }
             for job in &changed {
                 crate::private_write(&job.path, &job.raw)?;
             }
+            reload().await?;
             for job in &changed {
                 bootstrap(job).await?;
             }
@@ -626,11 +658,12 @@ pub async fn execute(root: &Path, plan: &Plan) -> Result<String> {
         if let Err(error) = result {
             let mut restored = true;
             for job in stopped.iter().rev() {
-                let _ = launch(&["bootout", &domain(job)]).await;
+                restored &= stop(job).await.is_ok();
             }
             for job in &all {
                 restored &= crate::private_write(&job.path, &job.raw).is_ok();
             }
+            restored &= reload().await.is_ok();
             for job in &all {
                 if stopped.contains(job) {
                     restored &= bootstrap(job).await.is_ok();
@@ -644,7 +677,7 @@ pub async fn execute(root: &Path, plan: &Plan) -> Result<String> {
         }
         return Ok(format!(
             "Shared server permissions changed for {} conversations. Settings persist. No input replayed. Backup: {}",
-            plan.threads.len(),
+            configured(&plan.residents).len(),
             backup.display()
         ));
     }
@@ -669,28 +702,210 @@ pub fn permission_label(args: &[String]) -> &'static str {
         _ => "Access unknown",
     }
 }
-pub fn attach_permissions(bindings: &mut Value) {
-    let all = jobs().unwrap_or_default();
-    if let Some(rows) = bindings.as_array_mut() {
-        for b in rows {
-            let labels: BTreeSet<_> = all
-                .iter()
-                .filter(|j| {
-                    j.args.iter().any(|a| a == "resident")
-                        && option(&j.args, "--endpoint").as_deref() == b["endpoint"].as_str()
-                        && j.args.windows(2).any(|w| {
-                            w[0] == "--thread" && Some(w[1].as_str()) == b["thread"].as_str()
-                        })
-                })
-                .map(|j| permission_label(&j.args))
-                .collect();
-            b["permission"] = json!({"label":if labels.len()==1{*labels.first().unwrap()}else if labels.is_empty(){"Access unknown"}else{"Check permissions"},"source":"saved-service-config","effective_verified":false});
+fn owner_permission(args: &[String]) -> &'static str {
+    let mut mode = None;
+    let mut network = None;
+    for pair in args
+        .windows(2)
+        .filter(|w| ["-c", "--config"].contains(&w[0].as_str()))
+    {
+        if let Some((key, value)) = pair[1].split_once('=') {
+            let key = key.trim();
+            let value = value.trim().trim_matches(['\"', '\'']);
+            match key {
+                "sandbox_mode" => mode = Some(value),
+                "sandbox_workspace_write.network_access" => network = Some(value),
+                "default_permissions" | "permissions" => return "Access unknown",
+                _ if key.starts_with("permissions.") => return "Access unknown",
+                _ => {}
+            }
         }
     }
+    if args.iter().any(|s| {
+        s == "--profile"
+            || s == "-p"
+            || s.starts_with("--config=")
+            || s.starts_with("--profile=")
+            || s.starts_with("-c") && s != "-c"
+    }) {
+        return "Access unknown";
+    }
+    match mode {
+        Some("danger-full-access") => "Full Access",
+        Some("read-only") => "Read-only",
+        Some("workspace-write") if network == Some("true") => "Project Access",
+        Some("workspace-write") => "Workspace",
+        _ => "Access unknown",
+    }
+}
+fn attach_saved_permissions(bindings: &mut Value, metadata: &Value, all: &[Job]) {
+    if let Some(rows) = bindings.as_array_mut() {
+        for b in rows {
+            let endpoint = b["endpoint"].as_str();
+            let residents: Vec<_> = all
+                .iter()
+                .filter(|j| {
+                    matches!(
+                        Path::new(&j.args[0]).file_name().and_then(|s| s.to_str()),
+                        Some("codex-monitor" | "codex-monitor-rs")
+                    ) && j.args.iter().any(|a| a == "resident")
+                        && option(&j.args, "--endpoint").as_deref() == endpoint
+                })
+                .cloned()
+                .collect();
+            let owners: Vec<_> = all
+                .iter()
+                .filter(|j| {
+                    Path::new(&j.args[0]).file_name().and_then(|s| s.to_str()) == Some("codex")
+                        && j.args.iter().any(|a| a == "app-server")
+                        && !j.args.iter().any(|a| a == "proxy")
+                        && option(&j.args, "--listen").as_deref() == endpoint
+                })
+                .collect();
+            let inherited = if owners.len() == 1 {
+                owner_permission(&owners[0].args)
+            } else {
+                "Access unknown"
+            };
+            let labels: BTreeSet<_> = residents
+                .iter()
+                .filter(|j| {
+                    j.args
+                        .windows(2)
+                        .any(|w| w[0] == "--thread" && Some(w[1].as_str()) == b["thread"].as_str())
+                })
+                .map(|j| {
+                    if option(&j.args, "--sandbox").is_some() {
+                        permission_label(&j.args)
+                    } else {
+                        inherited
+                    }
+                })
+                .collect();
+            let affected: Vec<_> = configured(&residents).into_iter().map(|id| {
+                let info = metadata.as_array().and_then(|a| a.iter().find(|m| m["thread"] == id));
+                json!({"thread":id,"project":info.and_then(|m|m["project"].as_str()).unwrap_or("Ungrouped"),"name":info.and_then(|m|m["display_name"].as_str()).unwrap_or(&id)})
+            }).collect();
+            let projects: BTreeSet<_> = affected
+                .iter()
+                .filter_map(|a| a["project"].as_str())
+                .collect();
+            let scope = if projects.len() == 1 && !projects.contains("Ungrouped") {
+                "project"
+            } else {
+                "server"
+            };
+            b["permission"] = json!({
+                "label":if labels.len()==1{*labels.first().unwrap()}else if labels.is_empty(){"Access unknown"}else{"Check permissions"},
+                "source":"saved-service-config","effective_verified":false,
+                "inherited_owner_label":inherited,"scope":scope,"projects":projects,"affected":affected
+            });
+        }
+    }
+}
+pub fn attach_permissions(bindings: &mut Value, metadata: &Value) {
+    attach_saved_permissions(bindings, metadata, &jobs().unwrap_or_default());
+}
+
+pub fn permission_scope(permission: &Value) -> String {
+    let projects = permission["projects"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    let names = permission["affected"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|r| r["name"].as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    format!(
+        "Shared server scope: {projects}. Affected conversations: {names}. All loaded conversations must be idle; approval policy and OS sudo privileges are not changed."
+    )
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn fixture(args: &[&str]) -> Job {
+        Job {
+            path: "/tmp/fixture.service".into(),
+            raw: vec![],
+            label: "fixture.service".into(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            env: Default::default(),
+            cwd: None,
+        }
+    }
+    #[test]
+    fn inherited_permissions_and_shared_scope_do_not_depend_on_selected_route() {
+        let owner = fixture(&[
+            "/bin/codex",
+            "-c",
+            "sandbox_mode=\"workspace-write\"",
+            "-c",
+            "sandbox_workspace_write.network_access=true",
+            "app-server",
+            "--listen",
+            "ws://localhost:1",
+        ]);
+        let resident = fixture(&[
+            "/bin/codex-monitor",
+            "resident",
+            "--endpoint",
+            "ws://localhost:1",
+            "--thread",
+            "one",
+            "--thread",
+            "two",
+        ]);
+        let mut bindings = json!([{"thread":"one","endpoint":"ws://localhost:1"}]);
+        let mut metadata = json!([{"thread":"one","project":"Project","display_name":"One"},{"thread":"two","project":"Project","display_name":"Two"}]);
+        let mut jobs = vec![owner, resident];
+        attach_saved_permissions(&mut bindings, &metadata, &jobs);
+        let p = &bindings[0]["permission"];
+        assert_eq!(p["label"], "Project Access");
+        assert_eq!(p["effective_verified"], false);
+        assert_eq!(p["scope"], "project");
+        assert_eq!(p["affected"].as_array().unwrap().len(), 2);
+        metadata[1]["project"] = json!("Other project");
+        attach_saved_permissions(&mut bindings, &metadata, &jobs);
+        assert_eq!(bindings[0]["permission"]["scope"], "server");
+        jobs[1]
+            .args
+            .extend(["--sandbox".into(), "read-only".into()]);
+        attach_saved_permissions(&mut bindings, &metadata, &jobs);
+        assert_eq!(bindings[0]["permission"]["label"], "Read-only");
+        metadata.as_array_mut().unwrap().pop();
+        attach_saved_permissions(&mut bindings, &metadata, &jobs);
+        assert_eq!(bindings[0]["permission"]["scope"], "server");
+    }
+    #[test]
+    fn owner_profiles_remain_unverified_and_approval_policy_is_preserved() {
+        let job = fixture(&[
+            "/bin/codex",
+            "-c",
+            "sandbox_mode=\"read-only\"",
+            "-c",
+            "approval_policy=\"on-request\"",
+            "app-server",
+        ]);
+        assert_eq!(owner_permission(&job.args), "Read-only");
+        let changed = policy_args(&job.args, "full", false).unwrap();
+        assert!(changed.contains(&"approval_policy=\"on-request\"".to_owned()));
+        assert!(!changed.iter().any(|s| s.contains("never")));
+        let mut args = job.args;
+        args.extend(["--profile".into(), "custom".into()]);
+        assert_eq!(owner_permission(&args), "Access unknown");
+        args.push("--yolo".into());
+        assert!(policy_args(&args, "full", false).is_err());
+    }
     #[test]
     fn permission_rewrite_preserves_endpoint_and_unrelated_config() {
         let args = vec![

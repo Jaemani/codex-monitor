@@ -814,6 +814,7 @@ pub async fn dashboard(
                     let endpoint = endpoint.to_owned();
                     let id = id.to_owned();
                     let root = root.clone();
+                    let scope = crate::reconnect::permission_scope(&binding["permission"]);
                     notice = if execute.is_some() {
                         "Reconnecting shared server; verifying login and restoring conversations…"
                     } else {
@@ -827,7 +828,7 @@ pub async fn dashboard(
                         } else {
                             let p =
                                 crate::reconnect::plan(&endpoint, &id, policy.as_deref()).await?;
-                            let message = p.summary();
+                            let message = format!("{} {}", scope, p.summary());
                             Ok((Some(p), message))
                         }
                     }));

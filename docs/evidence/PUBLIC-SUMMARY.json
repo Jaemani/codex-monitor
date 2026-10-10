@@ -1,7 +1,30 @@
 {
-  "date": "2026-10-07",
+  "date": "2026-10-10",
   "kind": "curated summary; original logs retained locally, not independently reproducible evidence",
   "records": [
+    {
+      "date": "2026-10-10",
+      "result": "PASS",
+      "scope": "Linux saved permission inheritance, scoped controls and attention visibility; regression and read-only observations",
+      "checks": {
+        "rust_tests_passed": 82,
+        "strict_clippy_passed": true,
+        "formatting_passed": true,
+        "publication_checks_passed": true,
+        "disposable_systemd_rewrite_start_restore": true,
+        "real_pending_command_approval_observed": true,
+        "saved_owner_defaults_resolved_conversations": 8,
+        "installed_release_digest_matches": true,
+        "installed_pty_attention_and_project_scope": true,
+        "live_busy_permission_preview_blocked_without_mutation": true
+      },
+      "limitations": [
+        "No operational permission change, owner restart or command approval was performed.",
+        "Disposable service restoration is not end-to-end Codex permission rollback evidence.",
+        "Real question response, attention clearance and visible SSH popup remain unverified.",
+        "Already running old dashboards require reopening after installation."
+      ]
+    },
     {
       "date": "2026-10-07",
       "result": "PASS",

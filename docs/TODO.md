@@ -1,21 +1,22 @@
 # Project TODO
 
-Updated 2026-10-07. This file tracks unfinished work; completed implementation and
+Updated 2026-10-10. This file tracks unfinished work; completed implementation and
 historical measurements live in [STATUS.md](STATUS.md) and the
 [verification summary](evidence/README.md). Python remains frozen reference code;
 new runtime work belongs in `rust/`.
 
 ## Current follow-up
 
-- [ ] Implement Linux dashboard permission changes with preview, shared-owner
-  scope, rollback and effective-permission verification. Linux reconnect is
-  implemented; Full Access switching is not. Never grant OS sudo privileges as
-  a side effect.
+- [ ] Validate the implemented Linux permission-change transaction on an isolated
+  real Codex owner, including effective sandbox modes and failure restoration.
+  Preview, shared scope, unit rewriting and lifecycle checks are implemented;
+  operational Full Access has not been applied.
 - [ ] Validate Linux reconnect against a real idle Codex conversation, including
   account access and restored resident subscriptions. The disposable systemd
   test and read-only configuration match are not end-to-end reconnect evidence.
-- [ ] Observe a real pending approval and user-input question through the owning
-  client and verify the dashboard clears attention after the user responds.
+- [ ] Verify real user-input questions and attention clearance after the user
+  responds. A real pending command approval was observed read-only on 2026-10-10;
+  the updated dashboard reports it as attention, not Ready.
 - [ ] Verify visible notifications on a real SSH client, including terminal/OS
   permissions and tmux forwarding. Local PTY checks verify emitted OSC 9/BEL,
   not a displayed popup. Live-dashboard notification support is implemented;
@@ -30,7 +31,7 @@ new runtime work belongs in `rust/`.
 
 - [ ] Validate reboot recovery in an infrastructure-approved maintenance window.
 - [ ] Validate Linux dashboard interaction and implement the remaining receiver
-  service and permission controls before claiming parity with macOS. The new
+  service controls and accept the permission workflow before claiming parity with macOS. The new
   login-reload dashboard flow still needs acceptance; the older isolated CLI
   owner-reconnect canary is recorded separately in [TESTING.md](TESTING.md).
 - [ ] Verify project-specific filesystem permissions, source adapters, real
