@@ -798,7 +798,13 @@ fn attach_saved_permissions(bindings: &mut Value, metadata: &Value, all: &[Job])
             b["permission"] = json!({
                 "label":if labels.len()==1{*labels.first().unwrap()}else if labels.is_empty(){"Access unknown"}else{"Check permissions"},
                 "source":"saved-service-config","effective_verified":false,
-                "inherited_owner_label":inherited,"scope":scope,"projects":projects,"affected":affected
+                "inherited_owner_label":inherited,"scope":scope,"projects":projects,"affected":affected,
+                "working_directory":owners.first().filter(|_|owners.len()==1).and_then(|j|j.cwd.as_deref()),
+                "additional_writable_roots":owners.first().filter(|_|owners.len()==1).and_then(|j|j.args.windows(2)
+                    .filter(|w|["-c","--config"].contains(&w[0].as_str()))
+                    .filter_map(|w|w[1].split_once('='))
+                    .filter(|(key,_)|key.trim()=="sandbox_workspace_write.writable_roots")
+                    .map(|(_,value)|value.trim()).next_back())
             });
         }
     }

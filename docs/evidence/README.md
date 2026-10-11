@@ -1,8 +1,10 @@
 # Public verification summary
 
-## Current evidence (2026-10-10)
+## Current evidence (2026-10-11)
 
-The current Rust suite passes 82 tests, strict Clippy, formatting and publication
+The project Permissions entry point and running-conversation blocker were also
+checked in a local PTY on October 11 without changing an operational mode.
+The current Rust suite passes 84 tests, strict Clippy, formatting and publication
 checks. Linux reconnect has disposable real systemd lifecycle evidence and a
 read-only match against an operational owner/resident configuration. Approval
 and input detection have protocol-schema and fake-owner coverage. A real pending

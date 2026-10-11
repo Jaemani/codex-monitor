@@ -1,7 +1,7 @@
 # Live connection dashboard
 
-The canonical dashboard is native Rust. `Project permissions` / `Server permissions` is a shared-server
-action: its separate menu identifies the server and its preview lists every
+The canonical dashboard is native Rust. The **Permissions** row on each project
+card opens a project action: its menu identifies the server and its preview lists every
 affected conversation, including other projects. Project groups are navigation
 labels, not permission isolation boundaries. Reconnect retains permissions.
 The receiver resource totals exclude Codex owners and their tools; reusable sampler
@@ -243,14 +243,15 @@ an explicit owner endpoint; queue-only routes cannot infer an owner.
 ## Reconnect with a permission mode
 
 Conversation details keep **Reconnect** (preserve permissions) separate from
-**Project permissions** (one project) or **Server permissions** (mixed or unknown
-projects). Open this menu to see the saved policy, inherited owner defaults and
+**Permissions** on the project card (or press `p` with a conversation in that
+project selected). Conversation details have no permission-switching action.
+Open the project menu to see the saved policy, inherited owner defaults and
 choose **Full Access**, **Read-only**, or **Project Access**. Use Left/Right
-and Enter; Back or Esc returns to the details without applying a choice.
+and Enter; Back or Esc returns to the overview without applying a choice.
 The first activation of a permission mode previews
 all configured conversations affected by the shared owner and the persistent
 policy change. Activate the same action again within 60 seconds to confirm.
-Changing actions discards the previous confirmation. Ordinary Reconnect retains
+Selecting another mode replaces the previous confirmation. Ordinary Reconnect retains
 service configuration.
 
 | Mode | Filesystem | Command network |
@@ -292,7 +293,7 @@ When active connections exist, permission summaries exclude disabled legacy
 connections. Conflicting or partially unknown active connections require inspection
 and display Check permissions. All action buttons occupy one horizontal row when
 they fit; wrapping occurs only when the terminal is too narrow. The detail dialog
-uses up to 112 columns, with the permission menu and Close always present.
+uses up to 112 columns, with Close always present.
 
 ## Back to codex-monitor Dashboard
 
@@ -314,3 +315,23 @@ Approval and response waits appear in the attention summary and panel; they are
 not counted as Ready. Unsupported or missing decision state is shown as Needs
 review. SSH alerts still require a live dashboard and terminal
 support for the selected OSC 9 or BEL backend.
+
+## Project permission controls
+
+Permissions are managed from the project overview. The project card shows one
+saved-mode summary; individual rows show conversation state and recency. Active work is labeled
+Running; Ready indicates observed idle availability. Press
+`p` or click the project's Permissions row to see current saved defaults, all
+shared-server conversations, working directory and explicit additional writable
+roots. Full Access, Read-only and Project Access remain alternative modes for
+that entire shared server, not per-conversation switches.
+
+The project panel names pending approvals, responses, running conversations and
+unverified state before attempting a change. It refreshes automatically and
+blocks selection while those conditions are observed. Resolve decisions in
+Codex and wait for work to finish, then choose a mode to preview and confirm.
+The backend still verifies service configuration, every loaded conversation and
+empty queues before applying. Project connections must identify one shared
+server; projects spanning multiple servers are explicitly blocked rather than
+partially changed. Conversations in other projects on the same server are also
+listed and included in the transaction.

@@ -1,7 +1,27 @@
 {
-  "date": "2026-10-10",
+  "date": "2026-10-11",
   "kind": "curated summary; original logs retained locally, not independently reproducible evidence",
   "records": [
+    {
+      "date": "2026-10-11",
+      "result": "PASS",
+      "scope": "Project-level permission navigation and preflight visibility",
+      "checks": {
+        "rust_tests_passed": 84,
+        "strict_clippy_passed": true,
+        "conversation_permission_switch_removed": true,
+        "project_keyboard_and_hit_target_coverage": true,
+        "full_snapshot_and_cross_project_blockers": true,
+        "multi_server_partial_change_rejected": true,
+        "real_project_panel_rendered_in_local_pty": true,
+        "running_conversation_identified_before_change": true
+      },
+      "limitations": [
+        "No operational permission change, owner restart or command approval was performed.",
+        "Projects spanning multiple servers remain unsupported.",
+        "Local PTY rendering is not a real-client permission transaction or SSH popup check."
+      ]
+    },
     {
       "date": "2026-10-10",
       "result": "PASS",

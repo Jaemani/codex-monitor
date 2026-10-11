@@ -5,6 +5,7 @@ use unicode_width::UnicodeWidthChar;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Hit {
     Conversation(usize),
+    Project(usize),
     Action(usize),
 }
 pub struct Board {
@@ -121,11 +122,71 @@ fn ready(row: &Value) -> &'static str {
     {
         "Response needed"
     } else if active.iter().all(|b| b["owner_health"]["ready"] == true) {
-        "Ready"
+        if active
+            .iter()
+            .any(|b| b["owner_health"]["thread_read"]["status"] == "active")
+        {
+            "Running"
+        } else {
+            "Ready"
+        }
     } else {
         "Needs review"
     }
 }
+// Project actions use the full snapshot, including conversations hidden by filters.
+pub fn project_permission_blocker(snapshot: &Value, project: &str) -> Option<String> {
+    let metadata = snapshot["conversations"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let routes = snapshot["bindings"].as_array().cloned().unwrap_or_default();
+    let project_of = |id: &Value| {
+        metadata
+            .iter()
+            .find(|m| m["thread"] == *id)
+            .and_then(|m| m["project"].as_str())
+            .unwrap_or("Ungrouped")
+    };
+    let endpoints: BTreeSet<_> = routes
+        .iter()
+        .filter(|r| r["removed"] != true && project_of(&r["thread"]) == project)
+        .filter_map(|r| r["endpoint"].as_str())
+        .collect();
+    if endpoints.len() != 1 {
+        return Some("Project permission changes require one shared server. This project's connections do not identify a single server.".into());
+    }
+    let mut blocked = BTreeSet::new();
+    for r in routes.iter().filter(|r| {
+        r["removed"] != true && endpoints.contains(r["endpoint"].as_str().unwrap_or(""))
+    }) {
+        let h = &r["owner_health"];
+        let state = match h["status"].as_str().unwrap_or("") {
+            "waiting-for-approval" => Some("approval needed"),
+            "waiting-for-user-input" => Some("response needed"),
+            "auth-required" => Some("login required"),
+            _ if h["thread_read"]["status"] == "idle"
+                || h["thread_read"]["status"] == "systemError" =>
+            {
+                None
+            }
+            _ if h["thread_read"]["status"] == "active" => Some("running"),
+            _ if r["enabled"] != true => None, // Backend still verifies paused, loaded conversations.
+            _ => Some("state unverified"),
+        };
+        if let Some(state) = state {
+            let name = metadata
+                .iter()
+                .find(|m| m["thread"] == r["thread"])
+                .and_then(|m| m["display_name"].as_str())
+                .or_else(|| r["thread"].as_str())
+                .unwrap_or("Conversation");
+            blocked.insert(format!("{name}: {state}"));
+        }
+    }
+    (!blocked.is_empty()).then(||format!("Cannot apply yet: {}. Resolve decisions in Codex and wait for running conversations to finish. This panel refreshes automatically.", blocked.into_iter().collect::<Vec<_>>().join("; ")))
+}
+
 pub fn preferred(row: &Value) -> usize {
     row["routes"]
         .as_array()
@@ -195,7 +256,6 @@ pub fn labels(menu: bool, enabled: bool) -> Vec<&'static str> {
             if enabled { "Pause" } else { "Resume" },
             "Remove",
             "Reconnect",
-            "Change Permission",
             "Close",
         ]
     }
@@ -372,10 +432,10 @@ pub fn build(
     for (project, indices) in groups {
         let col = (0..columns).min_by_key(|c| ys[*c]).unwrap();
         let y = ys[col];
-        let height = indices.len() * 2 + 2;
+        let height = indices.len() * 2 + 4;
         for (n, i) in indices.iter().enumerate() {
             if *i == selected {
-                selected_y = y + 1 + n * 2;
+                selected_y = y + 3 + n * 2;
             }
         }
         panels.push((col * cardw, y, cardw, height, project, indices));
@@ -393,8 +453,26 @@ pub fn build(
                 &format!("{} · {} conversations", project, indices.len()),
             );
         }
+        let project_y = shifted + 1;
+        if project_y >= top as isize && (project_y as usize) < h - 1 {
+            let saved: BTreeSet<_> = indices.iter().map(|i| permission(&rows[*i])).collect();
+            let saved = if saved.len() == 1 {
+                saved.first().unwrap().as_str()
+            } else {
+                "Mixed defaults"
+            };
+            b.text(
+                x + 2,
+                project_y as usize,
+                &format!("[p Permissions] Saved: {saved}"),
+                cw.saturating_sub(4),
+            );
+            if let Some(first) = indices.first() {
+                b.hit(x + 1, project_y as usize, cw - 2, Hit::Project(*first));
+            }
+        }
         for (n, i) in indices.iter().enumerate() {
-            let py = shifted + 1 + (n * 2) as isize;
+            let py = shifted + 3 + (n * 2) as isize;
             if py < top as isize || py as usize >= h - 1 {
                 continue;
             }
@@ -413,17 +491,17 @@ pub fn build(
                 namew,
             );
             b.text(x + cw.saturating_sub(18), py, state, 16);
-            b.text(
-                x + 4,
-                py + 1,
-                &format!("Saved: {} · {}", permission(r), last_seen(r)),
-                cw.saturating_sub(6),
-            );
+            b.text(x + 4, py + 1, &last_seen(r), cw.saturating_sub(6));
             b.hit(x + 1, py, cw - 2, Hit::Conversation(*i));
             b.hit(x + 1, py + 1, cw - 2, Hit::Conversation(*i));
         }
     }
-    b.line(0, h - 1, w, "↑↓ select · Enter details · q quit");
+    b.line(
+        0,
+        h - 1,
+        w,
+        "↑↓ select · Enter details · p project permissions · q quit",
+    );
     if !detail {
         if !notice.is_empty() {
             b.line(1, h - 2, w - 2, notice);
@@ -453,20 +531,20 @@ pub fn build(
         y,
         dw,
         dh,
-        &format!(
-            "{} / {}",
-            row["project"].as_str().unwrap_or(""),
-            row["name"].as_str().unwrap_or("")
-        ),
-    );
-    let mut labels = labels(menu, binding["enabled"] == true);
-    if !menu {
-        labels[4] = if binding["permission"]["scope"] == "project" {
-            "Project permissions"
+        &if menu {
+            format!(
+                "{} / Project permissions",
+                row["project"].as_str().unwrap_or("Ungrouped")
+            )
         } else {
-            "Server permissions"
-        };
-    }
+            format!(
+                "{} / {}",
+                row["project"].as_str().unwrap_or(""),
+                row["name"].as_str().unwrap_or("")
+            )
+        },
+    );
+    let labels = labels(menu, binding["enabled"] == true);
     let mut buttons: Vec<Vec<(usize, &str, usize)>> = vec![Vec::new()];
     let mut used = 0;
     for (i, label) in labels.iter().enumerate() {
@@ -526,13 +604,39 @@ pub fn build(
         );
     }
     if menu {
-        lines=vec!["CHANGE SHARED SERVER PERMISSIONS".into(),format!("Server: {}",binding["endpoint"].as_str().unwrap_or("unknown")),"This changes ALL conversations using this server, including other projects. It does not change only this conversation.".into(),"Full Access: unrestricted filesystem and command networking. Approval policy and OS sudo privileges stay unchanged.".into(),"Read-only: no filesystem writes or command networking.".into(),"Project Access: workspace writes and internet; configured writable roots are preserved.".into(),"Settings persist until changed. Choose a mode to preview affected conversations; choose the same mode again to apply.".into()];
+        lines=vec!["CHANGE PROJECT PERMISSIONS".into(),format!("Current saved mode: {}", permission(row)),format!("Server: {}",binding["endpoint"].as_str().unwrap_or("unknown")),"This changes ALL conversations using this server, including other projects. It does not change only this conversation.".into(),"Full Access: unrestricted filesystem and command networking. Approval policy and OS sudo privileges stay unchanged.".into(),"Read-only: no filesystem writes or command networking.".into(),"Project Access: workspace writes and internet; configured writable roots are preserved.".into(),"Settings persist until changed. Choose a mode to preview affected conversations; choose the same mode again to apply.".into()];
         lines.insert(
-            1,
+            2,
             crate::reconnect::permission_scope(&binding["permission"]),
         );
+        lines.insert(
+            3,
+            format!(
+                "Saved working directory: {}",
+                binding["permission"]["working_directory"]
+                    .as_str()
+                    .unwrap_or("not specified")
+            ),
+        );
+        lines.insert(
+            4,
+            format!(
+                "Saved additional writable roots: {}",
+                binding["permission"]["additional_writable_roots"]
+                    .as_str()
+                    .unwrap_or("not specified in owner arguments")
+            ),
+        );
+
+        if let Some(reason) =
+            project_permission_blocker(snapshot, row["project"].as_str().unwrap_or("Ungrouped"))
+        {
+            lines.insert(2, reason);
+        } else {
+            lines.insert(2, "Choose a mode to preview the project change. The same choice a second time confirms it; all conversations on the shared server are restarted.".into());
+        }
     } else {
-        lines.extend(["".into(),"Reconnect reloads the current login for this shared server. It preserves permissions and does not replay failed input.".into(),"Permission changes apply to the entire shared server. Inspect the affected conversation list before confirming.".into(),"Project Access allows project writes and internet access; external setup paths remain restricted.".into()]);
+        lines.extend(["".into(),"Reconnect reloads the current login for this shared server. It preserves permissions and does not replay failed input.".into(),"Change permissions from the project card (p). The setting applies to the whole shared server.".into(),"Project Access allows project writes and internet access; external setup paths remain restricted.".into()]);
     }
     if !notice.is_empty() {
         lines.splice(0..0, [notice.to_owned(), String::new()]);
@@ -554,7 +658,11 @@ pub fn build(
         b.text(
             x + 3,
             button_top - 1,
-            "↑↓ scroll details · Tab next connection",
+            if menu {
+                "↑↓ scroll project permissions"
+            } else {
+                "↑↓ scroll details · Tab next connection"
+            },
             dw - 6,
         );
     }
@@ -593,6 +701,48 @@ mod tests {
         ]
     }
     #[test]
+    fn project_card_owns_permissions_and_conversation_actions_do_not() {
+        let data = rows();
+        let board = build(&json!({}), &data, 0, 0, false, false, 0, 0, "", 100, 36);
+        assert!(board.render().contains("[p Permissions]"));
+        assert!(board.hits.values().any(|h| matches!(h, Hit::Project(0))));
+        assert_eq!(
+            labels(false, true),
+            vec!["Open in Codex", "Pause", "Remove", "Reconnect", "Close"]
+        );
+        let project = build(&json!({}), &data, 0, 0, true, true, 0, 0, "", 100, 36).render();
+        assert!(project.contains("Project / Project permissions"));
+        assert!(!project.contains("Project / PM"));
+    }
+    #[test]
+    fn project_blockers_include_other_conversations_and_cross_project_server_users() {
+        let mut snapshot = json!({"conversations":[{"thread":"a","project":"Project","display_name":"A"},{"thread":"b","project":"Other","display_name":"B"}],"bindings":[
+            {"thread":"a","endpoint":"ws://localhost:1","enabled":true,"owner_health":{"status":"ready-to-receive","thread_read":{"status":"idle"}}},
+            {"thread":"b","endpoint":"ws://localhost:1","enabled":true,"owner_health":{"status":"waiting-for-approval","thread_read":{"status":"active"}}}
+        ]});
+        assert!(
+            project_permission_blocker(&snapshot, "Project")
+                .unwrap()
+                .contains("B: approval needed")
+        );
+        snapshot["bindings"][1]["owner_health"] =
+            json!({"status":"ready-to-receive","thread_read":{"status":"idle"}});
+        assert!(project_permission_blocker(&snapshot, "Project").is_none());
+        let mut row = rows().remove(0);
+        row["routes"][0]["owner_health"] =
+            json!({"status":"ready-to-receive","ready":true,"thread_read":{"status":"active"}});
+        assert_eq!(ready(&row), "Running");
+        row["routes"][0]["owner_health"]["thread_read"]["status"] = json!("idle");
+        assert_eq!(ready(&row), "Ready");
+        snapshot["conversations"][1]["project"] = json!("Project");
+        snapshot["bindings"][1]["endpoint"] = json!("ws://localhost:2");
+        assert!(
+            project_permission_blocker(&snapshot, "Project")
+                .unwrap()
+                .contains("one shared server")
+        );
+    }
+    #[test]
     fn narrow_preview_preserves_complete_identifiers() {
         let id = "00000000-1111-4222-8333-444444444444";
         let lines = wrap(id, 20);
@@ -614,7 +764,7 @@ mod tests {
                     }
                 })
                 .collect();
-            assert_eq!(actions.len(), 6);
+            assert_eq!(actions.len(), 5);
             if w >= 100 {
                 assert_eq!(
                     b.hits.keys().map(|(_, y)| y).collect::<BTreeSet<_>>().len(),

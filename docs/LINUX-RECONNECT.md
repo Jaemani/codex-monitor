@@ -81,10 +81,11 @@ owner PID, the verified account, account access and restored loaded conversation
 No failed input is replayed. A restart timeout is reconciled without issuing a
 second restart.
 
-The dashboard supports explicit **Project permissions** or **Server permissions**
-changes. Both affect the shared owner, not just the selected conversation. The
-project label is used only when every configured conversation maps to one project;
-the menu lists all affected names and the confirmation also lists thread IDs.
+The dashboard supports permission changes from the **Permissions** row on the
+project card, or with `p`. This affects the shared owner, not just the selected
+conversation. The menu lists all affected names, including other projects sharing
+the server, and the confirmation also lists thread IDs. Projects spanning
+multiple servers are explicitly blocked; partial project changes are not made.
 Saved labels inherit explicit owner sandbox options when a resident has no override.
 They do not verify the effective policy of an already attached client.
 

@@ -656,6 +656,11 @@ pub async fn dashboard(
                             preview = None;
                             continue;
                         }
+                        Some(crate::board::Hit::Project(i)) => {
+                            selected = *i;
+                            route = crate::board::preferred(&rows[selected]);
+                            event::KeyEvent::new(KeyCode::Char('p'), event::KeyModifiers::NONE)
+                        }
                         Some(crate::board::Hit::Action(i)) => {
                             action = *i;
                             event::KeyEvent::new(KeyCode::Enter, event::KeyModifiers::NONE)
@@ -696,13 +701,17 @@ pub async fn dashboard(
             continue;
         }
         match key.code {
+            KeyCode::Char('p') if !detail && !rows.is_empty() => {
+                detail = true;
+                menu = true;
+                action = 0;
+                scroll = 0;
+                notice.clear();
+                preview = None;
+            }
             KeyCode::Esc => {
-                if menu {
-                    menu = false;
-                    action = 4;
-                } else {
-                    detail = false;
-                }
+                menu = false;
+                detail = false;
                 preview = None;
                 notice.clear();
                 scroll = 0;
@@ -728,12 +737,12 @@ pub async fn dashboard(
                 }
             }
             KeyCode::Left => {
-                action = (action + if menu { 3 } else { 5 }) % if menu { 4 } else { 6 };
+                action = (action + if menu { 3 } else { 4 }) % if menu { 4 } else { 5 };
             }
             KeyCode::Right => {
-                action = (action + 1) % if menu { 4 } else { 6 };
+                action = (action + 1) % if menu { 4 } else { 5 };
             }
-            KeyCode::Tab => {
+            KeyCode::Tab if !menu => {
                 route += 1;
                 preview = None;
                 notice.clear();
@@ -775,28 +784,21 @@ pub async fn dashboard(
                     preview = None;
                     continue;
                 }
-                if menu && action == 3 {
+                if menu && action == 3 || !menu && action == 4 {
                     menu = false;
-                    action = 4;
-                    preview = None;
-                    continue;
-                }
-                if !menu && action == 5 {
                     detail = false;
+                    preview = None;
                     continue;
                 }
-                if !menu && action == 4 {
-                    menu = true;
-                    action = 0;
-                    scroll = 0;
+                if menu
+                    && let Some(reason) = crate::board::project_permission_blocker(
+                        &snapshot,
+                        row["project"].as_str().unwrap_or("Ungrouped"),
+                    )
+                {
+                    notice = reason;
                     preview = None;
-                    notice = format!(
-                        "Current saved permissions: {}. This menu changes the SHARED SERVER, not only {}.",
-                        binding["permission"]["label"]
-                            .as_str()
-                            .unwrap_or("Access unknown"),
-                        row["name"].as_str().unwrap_or("this conversation")
-                    );
+                    scroll = 0;
                     continue;
                 }
                 if menu || action == 3 {

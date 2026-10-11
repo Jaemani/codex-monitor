@@ -1,6 +1,6 @@
 # Status and remaining verification
 
-## Current snapshot (2026-10-10)
+## Current snapshot (2026-10-11)
 
 Rust in `rust/` is the canonical receiver, resident and dashboard runtime. Python
 is frozen reference and migration-test code. This snapshot supersedes historical
@@ -18,7 +18,7 @@ verified readiness; attention and notification updates required only a new
 dashboard launch. Owner, resident and Gateway processes were not restarted to
 test those UI changes, and no model turn or operational approval was submitted.
 
-Current local validation: 82 Rust tests, strict Clippy, formatting and publication
+Current local validation: 84 Rust tests, strict Clippy, formatting and publication
 checks. The earlier notification and reconnect checks below retain their scope.
 A disposable systemd sleep-service test verified PID replacement; a read-only
 check matched the operational owner/resident configuration. Five PTY cases
@@ -30,6 +30,25 @@ popup on a user's SSH client. See [TESTING.md](TESTING.md) and the
 Operations: [Linux reconnect](LINUX-RECONNECT.md),
 [pending decisions](OPERATIONS.md#pending-approvals-and-user-responses), and
 [state-change notifications](OPERATIONS.md#session-state-change-notifications).
+
+## Project permission entry point (2026-10-11)
+
+Permission switching has moved out of conversation details into a Permissions
+row on each project card, also available with `p`. Saved mode is summarized once
+per project. The project panel shows affected names, explicit owner working
+directory and additional writable roots, and names the conversations preventing
+application before the user chooses a mode. It uses the full snapshot, including
+filtered conversations and other projects sharing the server. Multi-server
+projects are explicitly blocked instead of partially updated. Backend preflight,
+confirmation, backup and rollback remain required; no approvals are answered and
+no operational permission mode is changed by this UI correction.
+
+Tests cover project hit targets, removal of per-conversation switches, hidden
+shared-server blockers, automatic clearance and multiple-server rejection.
+Active work is labeled Running instead of Ready. A read-only local PTY check
+opened the project panel, showed all eight affected conversations and writable
+roots, and identified one running conversation blocking application. No mode
+change, operational restart or approval was performed.
 
 ## Linux permissions and attention correction (2026-10-10)
 

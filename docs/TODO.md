@@ -1,11 +1,14 @@
 # Project TODO
 
-Updated 2026-10-10. This file tracks unfinished work; completed implementation and
+Updated 2026-10-11. This file tracks unfinished work; completed implementation and
 historical measurements live in [STATUS.md](STATUS.md) and the
 [verification summary](evidence/README.md). Python remains frozen reference code;
 new runtime work belongs in `rust/`.
 
 ## Current follow-up
+
+- [ ] Extend project permission transactions to projects spanning multiple owners.
+  The project UI currently requires a single shared server and blocks partial changes.
 
 - [ ] Validate the implemented Linux permission-change transaction on an isolated
   real Codex owner, including effective sandbox modes and failure restoration.
