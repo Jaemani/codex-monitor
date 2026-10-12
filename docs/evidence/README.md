@@ -1,6 +1,12 @@
 # Public verification summary
 
-## Current evidence (2026-10-11)
+## Current evidence (2026-10-12)
+
+On October 12, the corrected source passed 84 tests and strict Clippy on macOS
+arm64. Installation and receiver replacement were verified with a matching build
+digest, new PID, readiness and retained definitions. One-shot project controls
+rendered correctly. Two existing GUI/Mosh dashboards still require relaunch;
+this does not establish an interactive permission transaction.
 
 The project Permissions entry point and running-conversation blocker were also
 checked in a local PTY on October 11 without changing an operational mode.

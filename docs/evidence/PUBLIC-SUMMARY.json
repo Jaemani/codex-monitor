@@ -1,7 +1,32 @@
 {
-  "date": "2026-10-11",
+  "date": "2026-10-12",
   "kind": "curated summary; original logs retained locally, not independently reproducible evidence",
   "records": [
+    {
+      "date": "2026-10-12",
+      "result": "PARTIAL",
+      "scope": "macOS arm64 native update and receiver restart; interactive dashboard relaunch incomplete",
+      "checks": {
+        "rust_tests_passed": 84,
+        "strict_clippy_passed": true,
+        "publication_checks_passed": true,
+        "installed_digest_matches": true,
+        "receiver_pid_replaced_and_ready": true,
+        "receiver_bindings_preserved": 67,
+        "monitor_definitions_preserved": 32,
+        "project_controls_rendered_once": true
+      },
+      "initial_failures": [
+        "Executable update detection compared aliased and canonical paths; fixed by canonicalizing both operands.",
+        "Receiver install initially found the previous job still loaded and restored the old service; retry after verified job removal succeeded."
+      ],
+      "limitations": [
+        "cmux denied control from outside its process tree.",
+        "The Mosh dashboard had no remotely accessible terminal input channel.",
+        "Two interactive windows need user-initiated relaunch; owners and residents were not restarted.",
+        "No model completion or effective permission-change acceptance was tested."
+      ]
+    },
     {
       "date": "2026-10-11",
       "result": "PASS",

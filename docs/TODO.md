@@ -7,6 +7,12 @@ new runtime work belongs in `rust/`.
 
 ## Current follow-up
 
+- [ ] Reopen the two existing macOS dashboard windows after the October 12 native
+  update. Receiver replacement is verified; remote cmux control was denied and
+  the Mosh window requires local input.
+- [ ] Make macOS receiver stop/install lifecycle wait explicitly for launchd job
+  removal; deployment currently verifies that boundary before installation.
+
 - [ ] Extend project permission transactions to projects spanning multiple owners.
   The project UI currently requires a single shared server and blocks partial changes.
 

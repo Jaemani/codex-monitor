@@ -31,7 +31,7 @@ Operations: [Linux reconnect](LINUX-RECONNECT.md),
 [pending decisions](OPERATIONS.md#pending-approvals-and-user-responses), and
 [state-change notifications](OPERATIONS.md#session-state-change-notifications).
 
-## macOS deployment preparation (2026-10-12)
+## macOS deployment (2026-10-12)
 
 Native macOS validation exposed a release-path comparison failure when a path
 uses a filesystem alias, such as `/var` versus `/private/var`. Update detection
@@ -39,6 +39,22 @@ now canonicalizes both the installed and running executable before comparing.
 The initial macOS test failure is retained as a platform finding, not a successful
 deployment result. Existing uncommitted documentation on the target checkout is
 preserved by building in a separate worktree.
+
+The corrected source passed 84 tests, strict Clippy, formatting, publication
+checks and an optimized arm64 build on macOS. The installed executable matched
+the build digest. The first receiver replacement reported the old job still
+loaded and restored the original service. A second transaction waited for job
+removal before installation and verified a new receiver PID, readiness, 67
+bindings and 32 monitor definitions. The new one-shot dashboard rendered project
+permission controls and did not report a stale executable. State and LaunchAgent
+backups remain private on the target host.
+
+Two interactive dashboards were not restarted: cmux denied socket control from
+outside its process tree, and the Mosh terminal had no accessible input-control
+channel. Those windows require a user-initiated exit and relaunch. Owner sessions,
+resident subscriptions and permission modes were not restarted or changed by
+this receiver deployment. No model completion or live permission transaction is
+claimed by these checks.
 
 ## Project permission entry point (2026-10-11)
 
