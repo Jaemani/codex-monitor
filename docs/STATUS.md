@@ -18,7 +18,7 @@ verified readiness; attention and notification updates required only a new
 dashboard launch. Owner, resident and Gateway processes were not restarted to
 test those UI changes, and no model turn or operational approval was submitted.
 
-Current local validation: 84 Rust tests, strict Clippy, formatting and publication
+Current local validation: 87 Rust tests, strict Clippy, formatting and publication
 checks. The earlier notification and reconnect checks below retain their scope.
 A disposable systemd sleep-service test verified PID replacement; a read-only
 check matched the operational owner/resident configuration. Five PTY cases
@@ -30,6 +30,30 @@ popup on a user's SSH client. See [TESTING.md](TESTING.md) and the
 Operations: [Linux reconnect](LINUX-RECONNECT.md),
 [pending decisions](OPERATIONS.md#pending-approvals-and-user-responses), and
 [state-change notifications](OPERATIONS.md#session-state-change-notifications).
+
+## Project targeting and login diagnosis (2026-10-12)
+
+Paused legacy `shared-local` connections no longer make an otherwise single-owner
+project appear multi-server. Project controls choose the actionable owner even
+when opened from a legacy conversation or a filtered view. Enabled legacy routes
+and distinct explicit servers still block partial changes; no routes are removed
+or resumed by this correction.
+
+Reconnect and permission previews now verify the saved login using a temporary
+owner before offering an explicit Confirm button. The preview states that no
+changes have been applied, and an expired preview loses its confirmation. Current
+server account access is probed separately when the last turn reports an
+authentication failure: a verified login with an old failed turn is shown as
+Previous failure, while a current authentication rejection is Login required.
+Neither observation replays a turn or proves model work completed.
+
+Read-only Mac diagnosis found an existing owner retaining an account while its
+account-access request failed. The same executable reported Not logged in in the
+service's default Codex home, and a fresh temporary owner found no saved account.
+The user-reported global login therefore has not been established for that owner
+environment. The operational owner was not restarted and no permission mode or
+credential store was changed during diagnosis. Regression checks cover legacy
+routing, explicit confirmation and current-versus-historical authentication.
 
 ## macOS deployment (2026-10-12)
 

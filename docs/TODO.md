@@ -7,6 +7,10 @@ new runtime work belongs in `rust/`.
 
 ## Current follow-up
 
+- [ ] Verify the intended login is saved in the Mac owner's Codex home, then
+  accept the reconnect and permission transaction on the intended account.
+  Read-only diagnosis found no saved account in that environment on October 12.
+
 - [ ] Reopen the two existing macOS dashboard windows after the October 12 native
   update. Receiver replacement is verified; remote cmux control was denied and
   the Mosh window requires local input.

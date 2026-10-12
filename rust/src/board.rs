@@ -113,6 +113,11 @@ fn ready(row: &Value) -> &'static str {
         "Execution error"
     } else if active
         .iter()
+        .any(|b| b["owner_health"]["status"] == "previous-execution-error")
+    {
+        "Previous failure"
+    } else if active
+        .iter()
         .any(|b| b["owner_health"]["status"] == "waiting-for-approval")
     {
         "Approval needed"
@@ -134,6 +139,31 @@ fn ready(row: &Value) -> &'static str {
         "Needs review"
     }
 }
+fn permission_route(r: &Value) -> bool {
+    r["removed"] != true && !(r["enabled"] != true && r["endpoint"] == "shared-local")
+}
+pub fn project_target(rows: &[Value], selected: usize) -> Option<(usize, usize)> {
+    let project = &rows.get(selected)?["project"];
+    for enabled in [true, false] {
+        for (i, row) in rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r["project"] == *project)
+        {
+            if let Some(route) = row["routes"].as_array().and_then(|routes| {
+                routes.iter().position(|r| {
+                    permission_route(r)
+                        && r["endpoint"] != "shared-local"
+                        && (r["enabled"] == true) == enabled
+                })
+            }) {
+                return Some((i, route));
+            }
+        }
+    }
+    None
+}
+
 // Project actions use the full snapshot, including conversations hidden by filters.
 pub fn project_permission_blocker(snapshot: &Value, project: &str) -> Option<String> {
     let metadata = snapshot["conversations"]
@@ -150,17 +180,19 @@ pub fn project_permission_blocker(snapshot: &Value, project: &str) -> Option<Str
     };
     let endpoints: BTreeSet<_> = routes
         .iter()
-        .filter(|r| r["removed"] != true && project_of(&r["thread"]) == project)
+        .filter(|r| permission_route(r) && project_of(&r["thread"]) == project)
         .filter_map(|r| r["endpoint"].as_str())
         .collect();
     if endpoints.len() != 1 {
         return Some("Project permission changes require one shared server. This project's connections do not identify a single server.".into());
     }
     let mut blocked = BTreeSet::new();
+    let mut login_required = false;
     for r in routes.iter().filter(|r| {
         r["removed"] != true && endpoints.contains(r["endpoint"].as_str().unwrap_or(""))
     }) {
         let h = &r["owner_health"];
+        login_required |= h["status"] == "auth-required";
         let state = match h["status"].as_str().unwrap_or("") {
             "waiting-for-approval" => Some("approval needed"),
             "waiting-for-user-input" => Some("response needed"),
@@ -184,7 +216,10 @@ pub fn project_permission_blocker(snapshot: &Value, project: &str) -> Option<Str
             blocked.insert(format!("{name}: {state}"));
         }
     }
-    (!blocked.is_empty()).then(||format!("Cannot apply yet: {}. Resolve decisions in Codex and wait for running conversations to finish. This panel refreshes automatically.", blocked.into_iter().collect::<Vec<_>>().join("; ")))
+    (!blocked.is_empty()).then(||format!("Cannot apply yet: {}. {} This panel refreshes automatically.",
+        blocked.into_iter().collect::<Vec<_>>().join("; "),
+        if login_required { "Sign in using the owner's Codex home, then confirm Reconnect from the affected conversation." }
+        else { "Resolve decisions in Codex and wait for running conversations to finish." }))
 }
 
 pub fn preferred(row: &Value) -> usize {
@@ -271,6 +306,7 @@ pub fn build(
     action: usize,
     scroll: usize,
     notice: &str,
+    confirming: bool,
     width: usize,
     height: usize,
 ) -> Board {
@@ -389,6 +425,7 @@ pub fn build(
         .filter(|(_, r)| {
             [
                 "Execution error",
+                "Previous failure",
                 "Login required",
                 "Approval needed",
                 "Response needed",
@@ -455,8 +492,20 @@ pub fn build(
         }
         let project_y = shifted + 1;
         if project_y >= top as isize && (project_y as usize) < h - 1 {
-            let saved: BTreeSet<_> = indices.iter().map(|i| permission(&rows[*i])).collect();
-            let saved = if saved.len() == 1 {
+            let managed: Vec<_> = indices
+                .iter()
+                .filter(|i| {
+                    rows[**i]["routes"].as_array().is_some_and(|routes| {
+                        routes
+                            .iter()
+                            .any(|r| permission_route(r) && r["endpoint"] != "shared-local")
+                    })
+                })
+                .collect();
+            let saved: BTreeSet<_> = managed.iter().map(|i| permission(&rows[**i])).collect();
+            let saved = if saved.is_empty() {
+                "Access unknown"
+            } else if saved.len() == 1 {
                 saved.first().unwrap().as_str()
             } else {
                 "Mixed defaults"
@@ -544,7 +593,18 @@ pub fn build(
             )
         },
     );
-    let labels = labels(menu, binding["enabled"] == true);
+    let mut labels = labels(menu, binding["enabled"] == true);
+    if confirming {
+        if menu {
+            labels[action.min(2)] = [
+                "Confirm Full Access",
+                "Confirm Read-only",
+                "Confirm Project Access",
+            ][action.min(2)];
+        } else {
+            labels[3] = "Confirm reconnect";
+        }
+    }
     let mut buttons: Vec<Vec<(usize, &str, usize)>> = vec![Vec::new()];
     let mut used = 0;
     for (i, label) in labels.iter().enumerate() {
@@ -592,14 +652,23 @@ pub fn build(
                 .to_owned(),
         );
     }
-    if binding["owner_health"]["status"] == "execution-error" {
+    if binding["owner_health"]["execution_error"]["status"] == "observed" {
         lines.insert(
             1,
             format!(
-                "EXECUTION ERROR: {}",
+                "LAST TURN ERROR: {}",
                 binding["owner_health"]["execution_error"]["message"]
                     .as_str()
                     .unwrap_or("Recent error details unavailable. Open in Codex to inspect.")
+            ),
+        );
+    }
+    if let Some(status) = binding["owner_health"]["current_auth"]["status"].as_str() {
+        lines.insert(
+            1,
+            format!(
+                "Current server login: {status}. {}",
+                binding["owner_health"]["reason"].as_str().unwrap_or("")
             ),
         );
     }
@@ -701,16 +770,112 @@ mod tests {
         ]
     }
     #[test]
+    fn retired_local_routes_do_not_block_or_select_the_wrong_project_owner() {
+        let snapshot = json!({"conversations":[{"thread":"old","project":"Project","display_name":"Old"},{"thread":"live","project":"Project","display_name":"Live"}],"bindings":[
+            {"thread":"old","endpoint":"shared-local","enabled":false},
+            {"thread":"live","endpoint":"ws://localhost:1","enabled":true,"owner_health":{"status":"ready-to-receive","thread_read":{"status":"idle"}}}
+        ]});
+        assert!(project_permission_blocker(&snapshot, "Project").is_none());
+        let rows = vec![
+            json!({"project":"Project","routes":[snapshot["bindings"][0].clone()]}),
+            json!({"project":"Project","routes":[snapshot["bindings"][1].clone()]}),
+        ];
+        assert_eq!(project_target(&rows, 0), Some((1, 0)));
+        let mut active_legacy = snapshot;
+        active_legacy["bindings"][0]["enabled"] = json!(true);
+        assert!(project_permission_blocker(&active_legacy, "Project").is_some());
+    }
+    #[test]
+    fn previews_have_explicit_confirm_buttons() {
+        let data = rows();
+        let reconnect = build(
+            &json!({}),
+            &data,
+            0,
+            0,
+            true,
+            false,
+            3,
+            0,
+            "PREVIEW ONLY - No changes applied.",
+            true,
+            120,
+            36,
+        )
+        .render();
+        assert!(reconnect.contains("Confirm reconnect"));
+        assert!(reconnect.contains("No changes applied"));
+        let permission = build(
+            &json!({}),
+            &data,
+            0,
+            0,
+            true,
+            true,
+            0,
+            0,
+            "PREVIEW ONLY - No changes applied.",
+            true,
+            120,
+            36,
+        )
+        .render();
+        assert!(permission.contains("Confirm Full Access"));
+        let expired = build(
+            &json!({}),
+            &data,
+            0,
+            0,
+            true,
+            false,
+            3,
+            0,
+            "Preview expired",
+            false,
+            120,
+            36,
+        )
+        .render();
+        assert!(!expired.contains("Confirm reconnect"));
+    }
+    #[test]
     fn project_card_owns_permissions_and_conversation_actions_do_not() {
         let data = rows();
-        let board = build(&json!({}), &data, 0, 0, false, false, 0, 0, "", 100, 36);
+        let board = build(
+            &json!({}),
+            &data,
+            0,
+            0,
+            false,
+            false,
+            0,
+            0,
+            "",
+            false,
+            100,
+            36,
+        );
         assert!(board.render().contains("[p Permissions]"));
         assert!(board.hits.values().any(|h| matches!(h, Hit::Project(0))));
         assert_eq!(
             labels(false, true),
             vec!["Open in Codex", "Pause", "Remove", "Reconnect", "Close"]
         );
-        let project = build(&json!({}), &data, 0, 0, true, true, 0, 0, "", 100, 36).render();
+        let project = build(
+            &json!({}),
+            &data,
+            0,
+            0,
+            true,
+            true,
+            0,
+            0,
+            "",
+            false,
+            100,
+            36,
+        )
+        .render();
         assert!(project.contains("Project / Project permissions"));
         assert!(!project.contains("Project / PM"));
     }
@@ -752,7 +917,20 @@ mod tests {
     #[test]
     fn wide_buttons_stay_in_one_row_and_narrow_buttons_remain_visible() {
         for w in [40, 60, 80, 100, 120, 160] {
-            let b = build(&json!({}), &rows(), 0, 0, true, false, 0, 0, "", w, 32);
+            let b = build(
+                &json!({}),
+                &rows(),
+                0,
+                0,
+                true,
+                false,
+                0,
+                0,
+                "",
+                false,
+                w,
+                32,
+            );
             let actions: BTreeSet<_> = b
                 .hits
                 .values()
@@ -793,12 +971,39 @@ mod tests {
             let mut data = rows();
             data[0]["routes"][0]["owner_health"] = json!({"status":state,"ready":false,"attention":{"status":"required"},"reason":"Open in Codex to review and respond."});
             assert_eq!(ready(&data[0]), label);
-            let text = build(&json!({}), &data, 0, 0, true, false, 0, 0, "", 100, 32).render();
+            let text = build(
+                &json!({}),
+                &data,
+                0,
+                0,
+                true,
+                false,
+                0,
+                0,
+                "",
+                false,
+                100,
+                32,
+            )
+            .render();
             assert!(text.contains(label));
             assert!(text.contains("Open in Codex"));
             for height in [24, 32] {
-                let overview =
-                    build(&json!({}), &data, 0, 0, false, false, 0, 0, "", 100, height).render();
+                let overview = build(
+                    &json!({}),
+                    &data,
+                    0,
+                    0,
+                    false,
+                    false,
+                    0,
+                    0,
+                    "",
+                    false,
+                    100,
+                    height,
+                )
+                .render();
                 assert!(overview.contains("NEEDS ATTENTION"));
                 assert!(overview.contains("1 waiting"));
                 assert!(overview.contains(label));
@@ -810,7 +1015,20 @@ mod tests {
 
     #[test]
     fn server_scope_is_explicit() {
-        let b = build(&json!({}), &rows(), 0, 0, true, true, 0, 0, "", 100, 32);
+        let b = build(
+            &json!({}),
+            &rows(),
+            0,
+            0,
+            true,
+            true,
+            0,
+            0,
+            "",
+            false,
+            100,
+            32,
+        );
         assert!(b.render().contains("ALL conversations"));
     }
 }

@@ -73,7 +73,8 @@ systemctl --user status codex-owner.service codex-resident.service
 codex-monitor dashboard
 ```
 
-Select the conversation and use Reconnect, then confirm its preview. The action
+Select the conversation and use Reconnect, then select **Confirm reconnect** in
+the preview. The first click verifies the saved login but makes no service changes. The action
 verifies the current saved login and idle conversations, rechecks the service
 configuration, and requests one restart of the exact owner unit. Residents
 remain running and restore their subscriptions. Completion requires a changed

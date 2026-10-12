@@ -320,6 +320,46 @@ async fn probe_thread(
                     Err(Failure::Unsupported) => json!({"status":"unsupported"}),
                     Err(_) => json!({"status":"unavailable"}),
                 };
+                if result["execution_error"]["kind"] == "authentication" {
+                    // A failed turn survives reconnect. Verify current account access separately.
+                    match call(
+                        pool,
+                        endpoint,
+                        "account/rateLimits/read",
+                        json!({}),
+                        deadline,
+                    )
+                    .await
+                    {
+                        Ok(limits)
+                            if limits["rateLimits"].is_object()
+                                || limits["rateLimitsByLimitId"].is_object() =>
+                        {
+                            result["current_auth"] =
+                                json!({"status":"verified","source":"account/rateLimits/read"});
+                            result["status"] = json!("previous-execution-error");
+                            result["state"] = json!("previous-execution-error");
+                            result["reason"] = json!(
+                                "Current server login access is verified. The previous turn failed; no input has been replayed."
+                            );
+                        }
+                        Err(Failure::Auth) => {
+                            result["current_auth"] = json!({"status":"auth-required","source":"account/rateLimits/read"});
+                            result["status"] = json!("auth-required");
+                            result["state"] = json!("auth-required");
+                            result["reason"] = json!(
+                                "Current server account access failed. Sign in using the owner service's Codex home, then confirm Reconnect to reload that login."
+                            );
+                        }
+                        _ => {
+                            result["current_auth"] =
+                                json!({"status":"unverified","source":"account/rateLimits/read"});
+                            result["reason"] = json!(
+                                "The previous turn reported a login error. Current account access could not be verified."
+                            );
+                        }
+                    }
+                }
                 return result;
             }
             if apply_attention(&mut result, &value) {

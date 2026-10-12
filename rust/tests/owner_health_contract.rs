@@ -15,6 +15,8 @@ enum FakeOwnerMode {
     Ready,
     Unverified,
     ExecutionError,
+    RecoveredAuth,
+    CurrentAuthFailure,
     WaitingApproval,
     WaitingInput,
     WaitingBoth,
@@ -50,6 +52,12 @@ impl FakeOwner {
                     continue;
                 };
                 let method = request.get("method").and_then(Value::as_str);
+                if matches!(mode, FakeOwnerMode::CurrentAuthFailure)
+                    && method == Some("account/rateLimits/read")
+                {
+                    websocket.send(Message::Text(json!({"id":id,"error":{"code":-32600,"message":"Account authentication required"}}).to_string().into())).await.unwrap();
+                    continue;
+                }
                 let result = match (mode, method) {
                     (_, Some("initialize")) => json!({"userAgent":"owner-health-test"}),
                     (FakeOwnerMode::MissingAccount, Some("account/read")) => {
@@ -59,6 +67,8 @@ impl FakeOwner {
                         FakeOwnerMode::Ready
                         | FakeOwnerMode::Unverified
                         | FakeOwnerMode::ExecutionError
+                        | FakeOwnerMode::RecoveredAuth
+                        | FakeOwnerMode::CurrentAuthFailure
                         | FakeOwnerMode::WaitingApproval
                         | FakeOwnerMode::WaitingInput
                         | FakeOwnerMode::WaitingBoth,
@@ -70,6 +80,8 @@ impl FakeOwner {
                         FakeOwnerMode::Ready
                         | FakeOwnerMode::Unverified
                         | FakeOwnerMode::ExecutionError
+                        | FakeOwnerMode::RecoveredAuth
+                        | FakeOwnerMode::CurrentAuthFailure
                         | FakeOwnerMode::WaitingApproval
                         | FakeOwnerMode::WaitingInput
                         | FakeOwnerMode::WaitingBoth,
@@ -96,11 +108,24 @@ impl FakeOwner {
                         };
                         json!({"thread":{"status":{"type":"active","activeFlags":flags}}})
                     }
-                    (FakeOwnerMode::ExecutionError, Some("thread/read")) => {
+                    (
+                        FakeOwnerMode::ExecutionError
+                        | FakeOwnerMode::RecoveredAuth
+                        | FakeOwnerMode::CurrentAuthFailure,
+                        Some("thread/read"),
+                    ) => {
                         json!({"thread":{"status":{"type":"systemError"}}})
                     }
-                    (FakeOwnerMode::ExecutionError, Some("thread/turns/list")) => {
+                    (
+                        FakeOwnerMode::ExecutionError
+                        | FakeOwnerMode::RecoveredAuth
+                        | FakeOwnerMode::CurrentAuthFailure,
+                        Some("thread/turns/list"),
+                    ) => {
                         json!({"data":[{"status":"failed","error":{"message":"Your access token could not be refreshed. Bearer private-secret refresh_token=another-secret"}}]})
+                    }
+                    (FakeOwnerMode::RecoveredAuth, Some("account/rateLimits/read")) => {
+                        json!({"rateLimits":{"primary":{}}})
                     }
                     _ => json!({}),
                 };
@@ -361,4 +386,49 @@ async fn missing_attention_flags_do_not_claim_ready() {
     assert_ne!(health["status"], "ready-to-receive");
     assert_no_operational_methods(&owner.requests.lock().await);
     owner.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn old_login_failures_are_distinct_from_current_account_access() {
+    for (mode, status, auth) in [
+        (
+            FakeOwnerMode::RecoveredAuth,
+            "previous-execution-error",
+            "verified",
+        ),
+        (
+            FakeOwnerMode::CurrentAuthFailure,
+            "auth-required",
+            "auth-required",
+        ),
+    ] {
+        let owner = FakeOwner::start(mode, "failed-thread").await;
+        let dir = TempDir::new().unwrap();
+        run_cli(dir.path(), &["init", "--port", "1"]);
+        let store = Store::open(&dir.path().join("rust.sqlite3")).unwrap();
+        store
+            .bind(
+                "failed",
+                "failed-thread",
+                &owner.endpoint,
+                &["source".into()],
+            )
+            .unwrap();
+        let snapshot = run_cli(dir.path(), &["dashboard", "--once", "--json"]);
+        let health = &binding(&snapshot, "failed")["owner_health"];
+        assert_eq!(health["status"], status);
+        assert_eq!(health["current_auth"]["status"], auth);
+        assert_eq!(health["ready"], false); // Never claim the failed work completed.
+        assert_eq!(health["execution_error"]["kind"], "authentication");
+        let requests = owner.requests.lock().await;
+        assert_no_operational_methods(&requests);
+        assert!(
+            requests
+                .iter()
+                .filter(|r| r["method"] == "account/read")
+                .all(|r| r["params"]["refreshToken"] == false)
+        );
+        drop(requests);
+        owner.close().await;
+    }
 }

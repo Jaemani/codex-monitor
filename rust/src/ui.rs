@@ -514,6 +514,7 @@ pub async fn dashboard(
                     0,
                     0,
                     "",
+                    false,
                     size.0 as usize,
                     size.1 as usize
                 )
@@ -587,7 +588,7 @@ pub async fn dashboard(
                     continue;
                 }
             }
-            rows = groups(&snapshot, thread.as_deref());
+            rows = groups(&snapshot, if menu { None } else { thread.as_deref() });
             notifier.send(&alerts.update(&rows, &snapshot["receiver"]))?;
             restore_selection(
                 &rows,
@@ -612,10 +613,30 @@ pub async fn dashboard(
         if notifier.failed() {
             notice = "Desktop notification unavailable; terminal bell sent. Use --notifications osc9 or bel for SSH.".into();
         }
+        if preview
+            .as_ref()
+            .is_some_and(|p| p.created.elapsed() >= Duration::from_secs(60))
+        {
+            preview = None;
+            notice =
+                "Preview expired without applying changes. Select the action to preview again."
+                    .into();
+        }
+        let confirming = preview.as_ref().is_some_and(|p| {
+            p.policy.as_deref()
+                == if menu {
+                    ["full", "read-only", "workspace-network"]
+                        .get(action)
+                        .copied()
+                } else {
+                    None
+                }
+                && (menu || action == 3)
+        });
         let (w, h) = terminal::size().unwrap_or((100, 32));
         let board = crate::board::build(
-            &snapshot, &rows, selected, route, detail, menu, action, scroll, &notice, w as usize,
-            h as usize,
+            &snapshot, &rows, selected, route, detail, menu, action, scroll, &notice, confirming,
+            w as usize, h as usize,
         );
         let frame = board.render();
         if frame != previous {
@@ -702,6 +723,16 @@ pub async fn dashboard(
         }
         match key.code {
             KeyCode::Char('p') if !detail && !rows.is_empty() => {
+                let project = rows[selected]["project"].clone();
+                let all = groups(&snapshot, None);
+                if let Some(anchor) = all.iter().position(|r| r["project"] == project)
+                    && let Some((project_row, project_route)) =
+                        crate::board::project_target(&all, anchor)
+                {
+                    rows = all;
+                    selected = project_row;
+                    route = project_route;
+                }
                 detail = true;
                 menu = true;
                 action = 0;
@@ -710,6 +741,7 @@ pub async fn dashboard(
                 preview = None;
             }
             KeyCode::Esc => {
+                refresh = Instant::now() - interval;
                 menu = false;
                 detail = false;
                 preview = None;
@@ -785,6 +817,7 @@ pub async fn dashboard(
                     continue;
                 }
                 if menu && action == 3 || !menu && action == 4 {
+                    refresh = Instant::now() - interval;
                     menu = false;
                     detail = false;
                     preview = None;
@@ -828,9 +861,9 @@ pub async fn dashboard(
                         if let Some(p) = execute {
                             Ok((None, crate::reconnect::execute(&root, &p).await?))
                         } else {
-                            let p =
-                                crate::reconnect::plan(&endpoint, &id, policy.as_deref()).await?;
-                            let message = format!("{} {}", scope, p.summary());
+                            let p = crate::reconnect::preview(&endpoint, &id, policy.as_deref())
+                                .await?;
+                            let message = format!("{} {}", p.summary(), scope);
                             Ok((Some(p), message))
                         }
                     }));

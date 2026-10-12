@@ -248,9 +248,10 @@ project selected). Conversation details have no permission-switching action.
 Open the project menu to see the saved policy, inherited owner defaults and
 choose **Full Access**, **Read-only**, or **Project Access**. Use Left/Right
 and Enter; Back or Esc returns to the overview without applying a choice.
-The first activation of a permission mode previews
-all configured conversations affected by the shared owner and the persistent
-policy change. Activate the same action again within 60 seconds to confirm.
+The first activation verifies the saved login and previews all configured
+conversations affected by the shared owner and the persistent policy change.
+The screen says PREVIEW ONLY and the selected action becomes Confirm. Select
+that Confirm action within 60 seconds to apply; viewing the preview makes no changes.
 Selecting another mode replaces the previous confirmation. Ordinary Reconnect retains
 service configuration.
 
@@ -335,3 +336,16 @@ empty queues before applying. Project connections must identify one shared
 server; projects spanning multiple servers are explicitly blocked rather than
 partially changed. Conversations in other projects on the same server are also
 listed and included in the transaction.
+
+Paused legacy `shared-local` routes are excluded from project permission targeting
+when a managed server is available. They remain visible and paused. Opening the
+project control from one of those rows selects the managed owner, including when
+a thread filter hid it. Active local-only routes or multiple explicit servers
+still prevent an ambiguous project transaction.
+
+A historical authentication failure is not proof of a current login failure.
+For such failed turns, the dashboard separately reads current account access.
+Login required means the current server rejected authentication; Previous failure
+means account access was verified but the old turn remains failed. Sign in using
+the owner executable and its Codex home, then use Reconnect and its Confirm action
+to reload that saved login. Reconnect never repairs or replays the failed turn.

@@ -317,6 +317,11 @@ pub async fn plan(endpoint: &str, thread: &str, policy: Option<&str>) -> Result<
         policy: policy.map(str::to_owned),
     })
 }
+pub async fn preview(endpoint: &str, thread: &str, policy: Option<&str>) -> Result<Plan> {
+    let candidate = plan(endpoint, thread, policy).await?;
+    fresh_account(&candidate).await?;
+    Ok(candidate)
+}
 impl Plan {
     pub fn summary(&self) -> String {
         let ids = configured(&self.residents)
@@ -324,7 +329,7 @@ impl Plan {
             .collect::<Vec<_>>()
             .join(", ");
         format!(
-            "SHARED SERVER {}: {}. Affects ALL conversations: {}. Existing terminals disconnect. {} Select the SAME action again within 60 seconds to confirm.",
+            "PREVIEW ONLY - No changes applied. SHARED SERVER {}: {}. Affects ALL conversations: {}. Existing terminals disconnect. {} Select the Confirm action within 60 seconds to apply.",
             self.endpoint,
             self.policy.as_deref().unwrap_or("Reconnect current login"),
             ids,
@@ -449,7 +454,7 @@ async fn fresh_account(plan: &Plan) -> Result<Value> {
         let mut account=None;
         for _ in 0..40 {if let Ok(v)=pool.call(&endpoint,"account/read",json!({"refreshToken":false})).await {account=Some(v["account"].clone());break;}tokio::time::sleep(Duration::from_millis(100)).await;}
         let account=account.context("Fresh login unavailable; sign in first")?;
-        if account["type"]!="chatgpt" || !account["email"].is_string(){bail!("Current ChatGPT login cannot be verified");}
+        if account["type"]!="chatgpt" || !account["email"].is_string(){bail!("No saved ChatGPT login is available in the owner service environment. Sign in with the owner executable and CODEX_HOME, then reconnect");}
         let limits=pool.call(&endpoint,"account/rateLimits/read",json!({})).await?;
         if !limits["rateLimits"].is_object() && !limits["rateLimitsByLimitId"].is_object(){bail!("Current login access unverified");}
         for id in &plan.threads {

@@ -13,6 +13,7 @@ enum State {
     Disconnected,
     Unloaded,
     Execution,
+    PreviousExecution,
     Approval,
     Input,
     Both,
@@ -26,6 +27,7 @@ impl State {
             Self::Disconnected => "Connection lost",
             Self::Unloaded => "Conversation unloaded",
             Self::Execution => "Execution error",
+            Self::PreviousExecution => "Login access verified; previous turn still failed",
             Self::Approval => "Approval needed",
             Self::Input => "Response needed",
             Self::Both => "Approval and response needed",
@@ -50,10 +52,14 @@ fn observed(health: &Value) -> State {
         Some("auth-required") => State::Auth,
         Some("unavailable") => State::Disconnected,
         Some("unloaded") => State::Unloaded,
-        Some("execution-error") if health["execution_error"]["kind"] == "authentication" => {
+        Some("execution-error")
+            if health["execution_error"]["kind"] == "authentication"
+                && health["current_auth"]["status"] != "unverified" =>
+        {
             State::Auth
         }
         Some("execution-error") => State::Execution,
+        Some("previous-execution-error") => State::PreviousExecution,
         Some("waiting-for-approval") if health["attention"]["user_input_required"] == true => {
             State::Both
         }
