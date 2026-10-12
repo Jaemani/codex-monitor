@@ -1,6 +1,6 @@
 # Project TODO
 
-Updated 2026-10-11. This file tracks unfinished work; completed implementation and
+Updated 2026-10-12. This file tracks unfinished work; completed implementation and
 historical measurements live in [STATUS.md](STATUS.md) and the
 [verification summary](evidence/README.md). Python remains frozen reference code;
 new runtime work belongs in `rust/`.

@@ -20,6 +20,9 @@ pub fn update_available() -> bool {
     std::env::current_exe().is_ok_and(|exe| installed_update(&exe))
 }
 fn installed_update(exe: &Path) -> bool {
+    let Ok(running) = exe.canonicalize() else {
+        return false;
+    };
     let Some(releases) = exe.ancestors().nth(3) else {
         return false;
     };
@@ -31,7 +34,7 @@ fn installed_update(exe: &Path) -> bool {
         && prefix
             .join("current/bin/codex-monitor")
             .canonicalize()
-            .is_ok_and(|current| current != exe)
+            .is_ok_and(|current| current != running)
 }
 
 pub fn install(prefix: Option<&Path>, bin_dir: Option<&Path>, adopt: bool) -> Result<Value> {

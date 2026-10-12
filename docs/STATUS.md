@@ -31,6 +31,15 @@ Operations: [Linux reconnect](LINUX-RECONNECT.md),
 [pending decisions](OPERATIONS.md#pending-approvals-and-user-responses), and
 [state-change notifications](OPERATIONS.md#session-state-change-notifications).
 
+## macOS deployment preparation (2026-10-12)
+
+Native macOS validation exposed a release-path comparison failure when a path
+uses a filesystem alias, such as `/var` versus `/private/var`. Update detection
+now canonicalizes both the installed and running executable before comparing.
+The initial macOS test failure is retained as a platform finding, not a successful
+deployment result. Existing uncommitted documentation on the target checkout is
+preserved by building in a separate worktree.
+
 ## Project permission entry point (2026-10-11)
 
 Permission switching has moved out of conversation details into a Permissions
