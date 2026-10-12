@@ -10,6 +10,8 @@ new runtime work belongs in `rust/`.
 - [ ] Verify the intended login is saved in the Mac owner's Codex home, then
   accept the reconnect and permission transaction on the intended account.
   Read-only diagnosis found no saved account in that environment on October 12.
+  Installed macOS PTY checks now verify the login blocker and safe rejection;
+  compare the user's logged-in terminal with the owner's executable and home.
 
 - [ ] Reopen the two existing macOS dashboard windows after the October 12 native
   update. Receiver replacement is verified; remote cmux control was denied and

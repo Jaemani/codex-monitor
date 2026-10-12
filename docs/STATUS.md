@@ -55,6 +55,14 @@ environment. The operational owner was not restarted and no permission mode or
 credential store was changed during diagnosis. Regression checks cover legacy
 routing, explicit confirmation and current-versus-historical authentication.
 
+The correction passed 87 Rust tests and strict Clippy on both Linux and macOS,
+and the native arm64 build was installed on macOS. An installed dashboard in a
+disposable PTY selected the managed project from a legacy row, displayed the
+login blocker, and rejected reconnect during saved-login preflight. The
+operational owner PID remained unchanged and the dashboard exited cleanly.
+This verifies navigation and rejection, not a successful login or permission
+change. Existing interactive dashboards still require relaunch.
+
 ## macOS deployment (2026-10-12)
 
 Native macOS validation exposed a release-path comparison failure when a path

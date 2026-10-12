@@ -2,6 +2,16 @@
 
 ## Current evidence (2026-10-12)
 
+The subsequent legacy-project and login-state correction passed 87 Rust tests
+and strict Clippy on Linux and macOS and was installed as an arm64 build.
+An installed macOS dashboard in a disposable PTY selected the managed owner
+from a paused legacy row, displayed the current login blocker, rejected
+reconnect when a fresh owner found no saved account, and exited cleanly. The
+operational owner PID remained unchanged. Earlier PTY driver attempts failed
+because of Escape/Enter coalescing and undrained output; the corrected driver
+passed. These checks do not establish restored authentication or a completed
+permission transaction. Existing user dashboards still require relaunch.
+
 On October 12, the corrected source passed 84 tests and strict Clippy on macOS
 arm64. Installation and receiver replacement were verified with a matching build
 digest, new PID, readiness and retained definitions. One-shot project controls
@@ -10,7 +20,7 @@ this does not establish an interactive permission transaction.
 
 The project Permissions entry point and running-conversation blocker were also
 checked in a local PTY on October 11 without changing an operational mode.
-The current Rust suite passes 84 tests, strict Clippy, formatting and publication
+The current Rust suite passes 87 tests, strict Clippy, formatting and publication
 checks. Linux reconnect has disposable real systemd lifecycle evidence and a
 read-only match against an operational owner/resident configuration. Approval
 and input detection have protocol-schema and fake-owner coverage. A real pending
